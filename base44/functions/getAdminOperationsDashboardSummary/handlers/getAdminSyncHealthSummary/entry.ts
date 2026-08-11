@@ -1,23 +1,11 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const HUB_API_URL = Deno.env.get('HUB_API_URL');
-const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
 const MAX_RANGE_DAYS = 31;
 const DEFAULT_LIMIT = 300;
 const MAX_LIMIT = 500;
 const BUSINESS_TIME_ZONE = 'America/Chicago';
 const VALID_PRESETS = new Set(['today', 'last_7_days', 'last_30_days']);
-const VALID_STATUSES = new Set([
-  'success',
-  'failed',
-  'failure',
-  'error',
-  'pending',
-  'stale',
-  'skipped',
-  'rejected',
-]);
 
 async function readJsonBody(req) {
   try {
@@ -69,15 +57,6 @@ function normalizeLimit(value) {
   return Math.min(parsed, MAX_LIMIT);
 }
 
-function normalizeStatus(value) {
-  const status = normalizeLower(value);
-  if (!status) return '';
-  if (!VALID_STATUSES.has(status)) {
-    throw new Error('status must be one of success, failed, pending, stale, skipped, rejected, error');
-  }
-  return status === 'failure' ? 'failed' : status;
-}
-
 function numberOrZero(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -127,14 +106,6 @@ function sanitizeErrorCategory(category) {
     category: sanitizeText(category?.category, 80) || 'Other',
     count: numberOrZero(category?.count),
     latest_seen_at: sanitizeDate(category?.latest_seen_at),
-  };
-}
-
-function sanitizeTool(tool) {
-  return {
-    name: sanitizeText(tool?.name, 100) || 'Tool',
-    status: sanitizeText(tool?.status, 60) || 'unknown',
-    note: sanitizeText(tool?.note, 180),
   };
 }
 
@@ -243,6 +214,7 @@ async function getNativeCustomerAppContext(base44, dateFrom, dateTo) {
   const activeReviewItems = reviewItems.filter(item => !['resolved', 'archived'].includes(normalizeLower(item.status)));
   const failedLogs = nativeLogs.filter(log => ['error', 'failed', 'failure', 'rejected'].includes(normalizeLower(log.status)));
   const pendingLogs = nativeLogs.filter(log => ['pending', 'queued_for_review'].includes(normalizeLower(log.status)));
+  const staleLogs = nativeLogs.filter(log => normalizeLower(log.status) === 'stale');
   const successfulLogs = nativeLogs.filter(log => ['success', 'deduped', 'skipped'].includes(normalizeLower(log.status)));
   const groupedReviewItems = new Map();
   for (const item of activeReviewItems) {
@@ -262,6 +234,7 @@ async function getNativeCustomerAppContext(base44, dateFrom, dateTo) {
       native_success_count: successfulLogs.length,
       native_failed_count: failedLogs.length,
       native_pending_count: pendingLogs.length,
+      native_stale_count: staleLogs.length,
       active_review_count: activeReviewItems.length,
       total_review_count: reviewItems.length,
       latest_failure_at: failedLogs
@@ -310,7 +283,6 @@ export default async function handler(req: Request) {
     let dateFrom;
     let dateTo;
     let preset;
-    let status;
     let limit;
 
     try {
@@ -339,106 +311,72 @@ export default async function handler(req: Request) {
         }
       }
 
-      status = normalizeStatus(body.status);
       limit = normalizeLimit(body.limit);
     } catch (error) {
       return Response.json({ error: error.message }, { status: 400 });
     }
 
-    const source = sanitizeText(body.source, 80) || '';
-    const action = sanitizeText(body.action, 80) || '';
     const selectedRange = selectedDateRange(preset, dateFrom, dateTo);
     const nativeCustomerApp = await getNativeCustomerAppContext(base44, selectedRange.from, selectedRange.to);
-
-    if (!HUB_API_URL || !CUSTOMER_APP_SYNC_SECRET) {
-      return Response.json({
-        success: true,
-        hub_available: false,
-        hub_error: 'Hub sync health service is not configured',
-        date_from: selectedRange.from,
-        date_to: selectedRange.to,
-        generated_at: new Date().toISOString(),
-        summary: sanitizeSummary({}),
-        directions: {
-          customer_app_to_hub: sanitizeDirection({}),
-          hub_to_customer_app: sanitizeDirection({}),
-        },
-        error_categories: [],
-        disabled_or_deprecated_tools: [],
-        native_customer_app: nativeCustomerApp,
-        truncated: false,
-      });
+    const nativeSummary = nativeCustomerApp.summary || {};
+    const reviewIssues = Array.isArray(nativeCustomerApp.recent_review_issues) ? nativeCustomerApp.recent_review_issues : [];
+    const failedLogs = (Array.isArray(nativeCustomerApp.recent_sync_logs) ? nativeCustomerApp.recent_sync_logs : [])
+      .filter(log => ['failed', 'failure', 'error', 'rejected', 'stale'].includes(normalizeLower(log.status)));
+    const errorCategoryMap = new Map();
+    for (const issue of reviewIssues) {
+      const category = sanitizeText(issue.incident_type, 80) || 'Operational review';
+      const current = errorCategoryMap.get(category) || { category, count: 0, latest_seen_at: null };
+      current.count += Math.max(1, numberOrZero(issue.affected_record_count || issue.occurrence_count));
+      if (!current.latest_seen_at || new Date(issue.last_seen_at || 0) > new Date(current.latest_seen_at || 0)) current.latest_seen_at = issue.last_seen_at || null;
+      errorCategoryMap.set(category, current);
     }
-
-    const hubBase = HUB_API_URL.replace(/\/$/, '').replace(/\/api\/functions\/.*$/, '').replace(/\/functions\/.*$/, '');
-    const params = new URLSearchParams({
-      limit: limit.toString(),
-    });
-    if (preset === 'custom') {
-      params.set('date_from', dateFrom);
-      params.set('date_to', dateTo);
-    } else {
-      params.set('preset', preset);
+    for (const log of failedLogs) {
+      const category = sanitizeText(log.reason || log.event_type || 'Sync failure', 80) || 'Sync failure';
+      const current = errorCategoryMap.get(category) || { category, count: 0, latest_seen_at: null };
+      current.count += 1;
+      if (!current.latest_seen_at || new Date(log.timestamp || 0) > new Date(current.latest_seen_at || 0)) current.latest_seen_at = log.timestamp || null;
+      errorCategoryMap.set(category, current);
     }
-    if (status) params.set('status', status);
-    if (source) params.set('source', source);
-    if (action) params.set('action', action);
-
-    const hubResponse = await fetch(`${hubBase}/functions/getSyncHealthSummaryForCustomerApp?${params.toString()}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${CUSTOMER_APP_SYNC_SECRET}`,
-      },
-    });
-
-    if (!hubResponse.ok) {
-      return Response.json({
-        success: true,
-        hub_available: false,
-        hub_error: 'Unable to load sync health summary',
-        hub_status: hubResponse.status,
-        date_from: selectedRange.from,
-        date_to: selectedRange.to,
-        generated_at: new Date().toISOString(),
-        summary: sanitizeSummary({}),
-        directions: {
-          customer_app_to_hub: sanitizeDirection({}),
-          hub_to_customer_app: sanitizeDirection({}),
-        },
-        error_categories: [],
-        disabled_or_deprecated_tools: [],
-        native_customer_app: nativeCustomerApp,
-        truncated: false,
-      });
-    }
-
-    const hubData = await hubResponse.json().catch(() => null);
-    if (
-      !hubData ||
-      hubData.success !== true ||
-      !hubData.summary ||
-      !hubData.directions ||
-      !Array.isArray(hubData.error_categories) ||
-      !Array.isArray(hubData.disabled_or_deprecated_tools)
-    ) {
-      return Response.json({ error: 'Malformed sync health summary response' }, { status: 502 });
-    }
-
+    const activeReviewCount = numberOrZero(nativeSummary.active_review_count);
+    const pendingCount = numberOrZero(nativeSummary.native_pending_count) + activeReviewCount;
     return Response.json({
       success: true,
-      hub_available: true,
-      date_from: hubData.date_from || selectedRange.from,
-      date_to: hubData.date_to || selectedRange.to,
-      generated_at: hubData.generated_at || null,
-      summary: sanitizeSummary(hubData.summary),
+      authority: 'customer_app_native',
+      native_available: true,
+      hub_operational_dependency: false,
+      date_from: selectedRange.from,
+      date_to: selectedRange.to,
+      generated_at: new Date().toISOString(),
+      summary: sanitizeSummary({
+        total_events: numberOrZero(nativeSummary.native_sync_events) + activeReviewCount,
+        success_count: nativeSummary.native_success_count,
+        failed_count: nativeSummary.native_failed_count,
+        pending_count: pendingCount,
+        stale_count: nativeSummary.native_stale_count,
+        latest_success_at: nativeSummary.latest_success_at,
+        latest_failure_at: nativeSummary.latest_failure_at,
+      }),
       directions: {
-        customer_app_to_hub: sanitizeDirection(hubData.directions.customer_app_to_hub),
-        hub_to_customer_app: sanitizeDirection(hubData.directions.hub_to_customer_app),
+        customer_app_native_events: sanitizeDirection({
+          total: nativeSummary.native_sync_events,
+          success: nativeSummary.native_success_count,
+          failed: nativeSummary.native_failed_count,
+          pending: numberOrZero(nativeSummary.native_pending_count) + numberOrZero(nativeSummary.native_stale_count),
+        }),
+        operational_review_queue: sanitizeDirection({
+          total: activeReviewCount,
+          success: 0,
+          failed: 0,
+          pending: activeReviewCount,
+        }),
       },
-      error_categories: hubData.error_categories.map(sanitizeErrorCategory).slice(0, 30),
-      disabled_or_deprecated_tools: hubData.disabled_or_deprecated_tools.map(sanitizeTool).slice(0, 30),
+      error_categories: [...errorCategoryMap.values()].map(sanitizeErrorCategory).slice(0, 30),
+      disabled_or_deprecated_tools: [],
       native_customer_app: nativeCustomerApp,
-      truncated: hubData.truncated === true,
+      truncated: numberOrZero(nativeSummary.native_sync_events) > limit,
+      writes_performed: false,
+      provider_calls_performed: false,
+      customer_notifications_sent: false,
     });
   } catch (error) {
     console.error('[getAdminSyncHealthSummary] Error:', error.message);

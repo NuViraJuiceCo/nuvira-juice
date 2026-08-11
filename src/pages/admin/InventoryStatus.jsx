@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
-import { AlertTriangle, ClipboardList, Copy, Download, MapPin, Package, Pencil, RefreshCw, Search, ShoppingCart } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Copy, Download, Link2, MapPin, Package, Pencil, Plus, RefreshCw, Search, ShoppingCart } from 'lucide-react';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { base44 } from '@/api/base44Client';
@@ -46,6 +46,7 @@ function isDemandBasedFood(item) {
 
 function stockBasisLabel(item, field) {
   if (isDemandBasedFood(item)) return field === 'stock' ? 'Demand-based' : 'Not tracked';
+  if (item?.count_status === 'pending_count') return field === 'stock' ? 'Count required' : 'Set after count';
   return formatQuantity(item?.[field], item?.unit);
 }
 
@@ -135,7 +136,7 @@ function StatusBadge({ status }) {
   return <AdminStatusPill value={status} label={formatStatus(status)} size="md" />;
 }
 
-function InventoryTable({ items, onEdit }) {
+function InventoryTable({ items, onEdit, onShopify }) {
   return (
     <div className="hidden sm:block bg-card border border-border rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
@@ -143,7 +144,7 @@ function InventoryTable({ items, onEdit }) {
           <thead>
             <tr className="border-b border-border bg-muted/30">
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Ingredient</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Category</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stock Basis</th>
               <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Reorder At</th>
               <th className="hidden lg:table-cell px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Max Stock</th>
@@ -159,7 +160,10 @@ function InventoryTable({ items, onEdit }) {
             {items.map(item => (
               <tr key={item.id || item.ingredient} className="border-b border-border/50 last:border-0 hover:bg-muted/20 transition-colors">
                 <td className="px-4 py-3.5 font-medium text-foreground">{item.ingredient || 'Unnamed item'}</td>
-                <td className="px-4 py-3.5 text-muted-foreground">{item.category || 'Uncategorized'}</td>
+                <td className="px-4 py-3.5 text-muted-foreground">
+                  <p>{formatStatus(item.inventory_kind || item.category || 'other')}</p>
+                  {item.inventory_kind === 'bag' && <p className="mt-0.5 text-[10px]">{item.shopify_sync_enabled ? `Shopify POS · ${formatStatus(item.shopify_sync_status)}` : 'Native only'}</p>}
+                </td>
                 <td className="px-4 py-3.5 font-semibold text-foreground">{stockBasisLabel(item, 'stock')}</td>
                 <td className="hidden md:table-cell px-4 py-3.5 text-muted-foreground">{stockBasisLabel(item, 'reorder_point')}</td>
                 <td className="hidden lg:table-cell px-4 py-3.5 text-muted-foreground">{stockBasisLabel(item, 'max_stock')}</td>
@@ -169,15 +173,22 @@ function InventoryTable({ items, onEdit }) {
                 <td className="hidden xl:table-cell px-4 py-3.5 text-muted-foreground truncate">{item.location || '-'}</td>
                 <td className="hidden xl:table-cell px-4 py-3.5 text-muted-foreground">{formatDateTime(item.updated_date) || '-'}</td>
                 <td className="px-4 py-3.5 text-right">
-                  <button
-                    type="button"
-                    onClick={() => onEdit(item)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:border-primary/60"
-                    aria-label={`Edit ${item.ingredient || 'inventory item'}`}
-                    title="Edit inventory item"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex items-center justify-end gap-1.5">
+                    {item.inventory_kind === 'bag' && (
+                      <button type="button" onClick={() => onShopify(item)} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:border-primary/60" aria-label={`Manage Shopify POS inventory for ${item.ingredient || 'bag'}`} title="Manage Shopify POS inventory">
+                        <Link2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onEdit(item)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground hover:border-primary/60"
+                      aria-label={`Edit ${item.ingredient || 'inventory item'}`}
+                      title="Edit inventory item"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -188,7 +199,7 @@ function InventoryTable({ items, onEdit }) {
   );
 }
 
-function InventoryCards({ items, onEdit }) {
+function InventoryCards({ items, onEdit, onShopify }) {
   return (
     <div className="sm:hidden space-y-3">
       {items.map(item => (
@@ -197,11 +208,16 @@ function InventoryCards({ items, onEdit }) {
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-foreground text-sm">{item.ingredient || 'Unnamed item'}</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {item.category || 'Uncategorized'} · {sourceLabel(item.source)}
+                {formatStatus(item.inventory_kind || item.category || 'other')} · {sourceLabel(item.source)}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <StatusBadge status={item.status} />
+              {item.inventory_kind === 'bag' && (
+                <button type="button" onClick={() => onShopify(item)} className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground" aria-label={`Manage Shopify POS inventory for ${item.ingredient || 'bag'}`}>
+                  <Link2 className="h-3.5 w-3.5" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onEdit(item)}
@@ -253,7 +269,7 @@ function InventoryCards({ items, onEdit }) {
   );
 }
 
-function InventoryEditor({ item, open, onOpenChange, onSave, pending }) {
+function InventoryEditor({ item, open, onOpenChange, onSave, pending, productOptions = [] }) {
   const [form, setForm] = useState(null);
 
   React.useEffect(() => {
@@ -271,19 +287,49 @@ function InventoryEditor({ item, open, onOpenChange, onSave, pending }) {
       cost_per_supplier_unit: item.cost_per_supplier_unit ?? '',
       location: item.location || '',
       category: item.category || 'Supplies',
+      notes: item.notes || '',
+      inventory_kind: item.inventory_kind || 'supply',
+      count_status: item.count_status || 'pending_count',
+      linked_product_id: item.linked_product_id || '',
+      linked_product_title: item.linked_product_title || '',
     });
   }, [item, open]);
 
   if (!form) return null;
   const setField = (field, value) => setForm(current => ({ ...current, [field]: value }));
+  const isNew = !item?.id;
+  const stockControlledByShopify = item?.shopify_sync_enabled === true && item?.shopify_inventory_authority === 'shopify_pos';
+
+  function setKind(value) {
+    setForm(current => ({
+      ...current,
+      inventory_kind: value,
+      category: ['label', 'bag', 'packaging'].includes(value) ? 'Packaging' : current.category,
+      unit: ['label', 'bag', 'packaging'].includes(value) ? 'units' : current.unit,
+      linked_product_id: ['label', 'bag'].includes(value) ? current.linked_product_id : '',
+      linked_product_title: ['label', 'bag'].includes(value) ? current.linked_product_title : '',
+    }));
+  }
+
+  function setLinkedProduct(productId) {
+    const product = productOptions.find(option => option.id === productId);
+    setForm(current => ({
+      ...current,
+      linked_product_id: product?.id || '',
+      linked_product_title: product?.title || '',
+      ingredient: product
+        ? current.inventory_kind === 'label' ? `${product.title} Label` : product.title
+        : current.ingredient,
+    }));
+  }
 
   return (
     <Dialog open={open} onOpenChange={next => !pending && onOpenChange(next)}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto border-border bg-card p-0 text-card-foreground">
         <DialogHeader className="border-b border-border bg-secondary/40 px-4 py-4 pr-12 text-left">
-          <DialogTitle className="text-base font-black text-foreground">Update Tracked Supply</DialogTitle>
+          <DialogTitle className="text-base font-black text-foreground">{isNew ? 'Add Tracked Inventory' : 'Update Tracked Inventory'}</DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Save Customer App stock thresholds for this non-food item. Food and juice ingredients remain demand-based.
+            Track labels, bags, packaging, and supplies. Unknown opening counts stay out of stock alerts until verified.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -295,8 +341,40 @@ function InventoryEditor({ item, open, onOpenChange, onSave, pending }) {
         >
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor="inventory-item-name">Item</label>
-            <input id="inventory-item-name" value={form.ingredient} disabled className="h-10 w-full rounded-lg border border-border bg-muted px-3 text-sm text-foreground opacity-80" />
+            <input id="inventory-item-name" value={form.ingredient} onChange={event => setField('ingredient', event.target.value)} disabled={!isNew || pending} required className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground disabled:bg-muted disabled:opacity-80" />
           </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Inventory type
+              <select value={form.inventory_kind} onChange={event => setKind(event.target.value)} disabled={!isNew || pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground disabled:bg-muted">
+                <option value="label">Product label</option>
+                <option value="bag">Sellable bag</option>
+                <option value="packaging">Packaging</option>
+                <option value="supply">Supply</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            {['label', 'bag'].includes(form.inventory_kind) && (
+              <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Linked product
+                <select value={form.linked_product_id} onChange={event => setLinkedProduct(event.target.value)} disabled={!isNew || pending} required className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground disabled:bg-muted">
+                  <option value="">Select product</option>
+                  {productOptions
+                    .filter(product => form.inventory_kind === 'label' ? ['juice', 'shot'].includes(product.category) : ['merch', 'apparel'].includes(product.category))
+                    .map(product => <option key={product.id} value={product.id}>{product.title}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
+
+          <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-3 normal-case">
+            <input type="checkbox" checked={form.count_status === 'verified'} onChange={event => setField('count_status', event.target.checked ? 'verified' : 'pending_count')} disabled={pending || stockControlledByShopify} className="mt-0.5 h-4 w-4" />
+            <span>
+              <span className="block text-xs font-bold text-foreground">Physical count completed</span>
+              <span className="mt-0.5 block text-[10px] text-muted-foreground">Leave this off when the opening count is unknown. The item will show Count Required without creating a false stock warning.</span>
+            </span>
+          </label>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -321,10 +399,17 @@ function InventoryEditor({ item, open, onOpenChange, onSave, pending }) {
             ].map(([field, label]) => (
               <label key={field} className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 {label}
-                <input type="number" min="0" step="any" value={form[field]} onChange={event => setField(field, event.target.value)} disabled={pending} required={field !== 'max_stock'} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground" />
+                <input type="number" min="0" step="any" value={form[field]} onChange={event => setField(field, event.target.value)} disabled={pending || (field === 'stock' && (form.count_status !== 'verified' || stockControlledByShopify))} required={field !== 'max_stock' && (field !== 'stock' || form.count_status === 'verified')} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground disabled:bg-muted" />
               </label>
             ))}
           </div>
+
+          {stockControlledByShopify && <p className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">Current stock is controlled by Shopify POS. Use the Shopify POS inventory control from the inventory list to change its quantity.</p>}
+
+          <label className="block space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Notes
+            <textarea value={form.notes} maxLength={500} rows={3} onChange={event => setField('notes', event.target.value)} disabled={pending} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium normal-case text-foreground" />
+          </label>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -358,9 +443,101 @@ function InventoryEditor({ item, open, onOpenChange, onSave, pending }) {
 
           <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
             <button type="button" onClick={() => onOpenChange(false)} disabled={pending} className="h-10 rounded-lg border border-border bg-background px-4 text-xs font-bold text-foreground disabled:opacity-50">Cancel</button>
-            <button type="submit" disabled={pending} className="h-10 rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">{pending ? 'Saving...' : 'Save inventory item'}</button>
+            <button type="submit" disabled={pending} className="h-10 rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">{pending ? 'Saving...' : isNew ? 'Add inventory item' : 'Save inventory item'}</button>
           </div>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ShopifyInventoryDialog({ item, open, onOpenChange, preview, loading, pending, error, onRefresh, onLink, onCreate, onSync }) {
+  const [quantity, setQuantity] = useState('');
+  const [locationId, setLocationId] = useState('');
+
+  React.useEffect(() => {
+    if (!open || !item) return;
+    setQuantity(item.shopify_available_quantity ?? item.stock ?? '');
+    setLocationId(item.shopify_location_id || '');
+  }, [item, open]);
+
+  React.useEffect(() => {
+    if (!open || locationId || !preview?.locations?.length) return;
+    setLocationId(preview.locations[0].id);
+  }, [locationId, open, preview]);
+
+  if (!item) return null;
+  const linked = item.shopify_sync_enabled === true && item.shopify_inventory_authority === 'shopify_pos';
+
+  return (
+    <Dialog open={open} onOpenChange={next => !pending && onOpenChange(next)}>
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto border-border bg-card p-0 text-card-foreground">
+        <DialogHeader className="border-b border-border bg-secondary/40 px-4 py-4 pr-12 text-left">
+          <DialogTitle className="text-base font-black text-foreground">Shopify POS Bag Inventory</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">{item.ingredient} · one verified quantity shared with the selected Shopify POS location.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 px-4 py-4">
+          {error && <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">{error}</div>}
+
+          {linked ? (
+            <>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                <p className="text-xs font-bold text-foreground">Connected to Shopify POS</p>
+                <p className="mt-1 text-xs text-muted-foreground">{item.shopify_location_name || 'Linked location'} · {formatStatus(item.shopify_sync_status)}</p>
+                <p className="mt-2 text-2xl font-black text-foreground">{formatQuantity(item.shopify_available_quantity ?? item.stock, 'units')}</p>
+              </div>
+              <label className="block space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Correct available quantity
+                <input type="number" min="0" step="1" value={quantity} onChange={event => setQuantity(event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground" />
+              </label>
+              <p className="text-[10px] text-muted-foreground">This performs a guarded compare-and-set. If a POS sale changes the quantity first, the save stops and asks you to refresh instead of overwriting the sale.</p>
+              <button type="button" onClick={() => onSync(Number(quantity))} disabled={pending || !Number.isInteger(Number(quantity)) || Number(quantity) < 0} className="h-10 w-full rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">{pending ? 'Syncing...' : 'Update Shopify POS quantity'}</button>
+            </>
+          ) : loading ? (
+            <div className="flex items-center justify-center py-12"><RefreshCw className="h-5 w-5 animate-spin text-primary" /></div>
+          ) : preview ? (
+            <>
+              {preview.candidates?.length > 0 ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-bold text-foreground">Matching Shopify product found</p>
+                    <p className="text-xs text-muted-foreground">Choose the inventory-tracked variant and POS location. Its live available quantity becomes authoritative here.</p>
+                  </div>
+                  {preview.candidates.flatMap(candidate => candidate.variants.flatMap(variant => variant.levels.map(level => (
+                    <button key={`${variant.variant_id}-${level.location_id}`} type="button" onClick={() => onLink(candidate, variant, level)} disabled={pending || !variant.tracked || level.available_quantity === null} className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-background p-3 text-left disabled:opacity-50">
+                      <span>
+                        <span className="block text-xs font-bold text-foreground">{candidate.title} · {variant.title || 'Default'}</span>
+                        <span className="mt-0.5 block text-[10px] text-muted-foreground">{level.location_name || 'Location'} · SKU {variant.sku || 'not set'}</span>
+                      </span>
+                      <span className="shrink-0 text-sm font-black text-foreground">{level.available_quantity ?? '—'}</span>
+                    </button>
+                  ))))}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-bold text-foreground">No matching Shopify bag product found</p>
+                    <p className="text-xs text-muted-foreground">A new product can be created and published only to Point of Sale after the opening physical count is verified.</p>
+                  </div>
+                  {item.count_status !== 'verified' ? (
+                    <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">Complete the physical bag count from Edit before creating the Shopify POS item.</div>
+                  ) : (
+                    <>
+                      <label className="block space-y-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Shopify POS location
+                        <select value={locationId} onChange={event => setLocationId(event.target.value)} disabled={pending} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium normal-case text-foreground">
+                          {(preview.locations || []).map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+                        </select>
+                      </label>
+                      <button type="button" onClick={() => onCreate(locationId, preview.point_of_sale_publication?.id)} disabled={pending || !preview.creation_ready || !locationId || !preview.point_of_sale_publication?.id} className="h-10 w-full rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50">{pending ? 'Creating...' : 'Create and publish to Shopify POS'}</button>
+                    </>
+                  )}
+                </div>
+              )}
+              <button type="button" onClick={onRefresh} disabled={pending || loading} className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-bold text-foreground disabled:opacity-50"><RefreshCw className="h-3.5 w-3.5" /> Refresh Shopify</button>
+            </>
+          ) : null}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -505,6 +682,8 @@ export default function InventoryStatus() {
   const [copyMessage, setCopyMessage] = useState(null);
   const [migrationPreview, setMigrationPreview] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
+  const [shopifyItem, setShopifyItem] = useState(null);
+  const [shopifyPreview, setShopifyPreview] = useState(null);
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['admin-inventory-status-summary', search, statusFilter, categoryFilter],
@@ -531,6 +710,7 @@ export default function InventoryStatus() {
   const openPurchaseOrders = data?.open_purchase_orders || [];
   const dataSources = data?.data_sources || {};
   const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
+  const productOptions = Array.isArray(data?.product_options) ? data.product_options : [];
   const categoryOptions = useMemo(() => categorySelectOptions(items, categoryFilter), [items, categoryFilter]);
   const procurementExportDate = format(new Date(), 'yyyy-MM-dd');
 
@@ -565,9 +745,9 @@ export default function InventoryStatus() {
       const fallback = Math.random().toString(36).slice(2);
       const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
       const res = await base44.functions.invoke('getAdminInventoryStatusSummary', {
-        operation: 'update_native_item',
-        item_id: editingItem.id,
-        expected_updated_date: editingItem.updated_date || '',
+        operation: editingItem?.id ? 'update_native_item' : 'create_native_item',
+        item_id: editingItem?.id || undefined,
+        expected_updated_date: editingItem?.updated_date || '',
         request_id: `inventory_item_update_${Date.now()}_${randomId}`,
         confirm: true,
         item,
@@ -576,12 +756,49 @@ export default function InventoryStatus() {
       if (result?.error) throw new Error(result.error);
       return result;
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setEditingItem(null);
-      setCopyMessage({ type: 'success', text: 'Inventory item updated in the Customer App.' });
+      setCopyMessage({ type: 'success', text: result?.operation === 'create_native_item' ? 'Inventory item added. Record its opening count when ready.' : 'Inventory item updated in the Customer App.' });
       await queryClient.invalidateQueries({ queryKey: ['admin-inventory-status-summary'] });
     },
   });
+
+  const shopifyInventory = useMutation({
+    mutationFn: async ({ operation, item, ...values }) => {
+      const fallback = Math.random().toString(36).slice(2);
+      const randomId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallback;
+      const writeOperation = operation !== 'preview_shopify_inventory_link';
+      const res = await base44.functions.invoke('getAdminInventoryStatusSummary', {
+        operation,
+        item_id: item.id,
+        request_id: writeOperation ? `shopify_inventory_${Date.now()}_${randomId}` : undefined,
+        confirm: writeOperation,
+        ...values,
+      });
+      const result = res?.data || res;
+      if (result?.error) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: async result => {
+      if (result?.dry_run) {
+        setShopifyPreview(result);
+        return;
+      }
+      setShopifyItem(null);
+      setShopifyPreview(null);
+      setCopyMessage({ type: 'success', text: result?.operation === 'sync_shopify_inventory_quantity' ? 'Shopify POS bag quantity updated.' : 'Bag inventory is now connected to Shopify POS.' });
+      await queryClient.invalidateQueries({ queryKey: ['admin-inventory-status-summary'] });
+    },
+  });
+
+  function openShopifyInventory(item) {
+    setShopifyItem(item);
+    setShopifyPreview(null);
+    shopifyInventory.reset();
+    if (item.shopify_sync_enabled !== true) {
+      shopifyInventory.mutate({ operation: 'preview_shopify_inventory_link', item });
+    }
+  }
 
   async function copyProcurementPlan() {
     try {
@@ -618,9 +835,10 @@ export default function InventoryStatus() {
       />
 
       <div className="px-4 mt-4 space-y-4">
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
           <StatCard icon={Package} label="Tracked Items" value={summary.total_items ?? 0} />
           <StatCard icon={Package} label="Tracked Supplies" value={summary.stock_tracked_item_count ?? 0} />
+          <StatCard icon={ClipboardList} label="Counts Needed" value={summary.count_required_count ?? 0} />
           <StatCard icon={AlertTriangle} label="Supply Critical / Out" value={(summary.critical_count ?? 0) + (summary.out_of_stock_count ?? 0)} />
           <StatCard icon={ShoppingCart} label="Supply Needs" value={summary.net_procurement_item_count ?? 0} />
           <StatCard icon={ClipboardList} label="Open POs" value={summary.open_purchase_order_count ?? 0} />
@@ -650,6 +868,8 @@ export default function InventoryStatus() {
                 <option value="low">Low</option>
                 <option value="critical">Critical</option>
                 <option value="out_of_stock">Out of Stock</option>
+                <option value="count_required">Count Required</option>
+                <option value="sync_error">Sync Error</option>
               </select>
             </label>
             <label className="space-y-1">
@@ -672,7 +892,7 @@ export default function InventoryStatus() {
           <div>
             <p className="text-xs font-semibold text-foreground">Inventory view</p>
             <p className="text-[10px] text-muted-foreground">
-              Packaging, supplies, merch, and other non-food items are stock-tracked here. Food and juice ingredients are purchased from production demand and are excluded from inventory counts.
+              Product labels, sellable bags, packaging, supplies, and other non-food items are stock-tracked here. Shopify-linked bag quantities reflect the selected POS location. Food and juice ingredients remain demand-based.
             </p>
             <p className="text-[10px] text-muted-foreground mt-1">
               Customer App {dataSources.native_authoritative ? 'is authoritative' : 'cutover is pending'} · Food rows hidden {dataSources.food_inventory_rows_hidden ? 'yes' : 'no'}
@@ -680,6 +900,14 @@ export default function InventoryStatus() {
             <AdminStatusLegend className="mt-2" />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditingItem({ id: null, ingredient: '', unit: 'units', stock: '', reorder_point: 0, max_stock: '', category: 'Packaging', inventory_kind: 'label', count_status: 'pending_count' })}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add item
+            </button>
             <button
               type="button"
               onClick={copyProcurementPlan}
@@ -811,8 +1039,8 @@ export default function InventoryStatus() {
                 Results are capped. Narrow the search or filters for a more complete view.
               </p>
             )}
-            <InventoryTable items={items} onEdit={setEditingItem} />
-            <InventoryCards items={items} onEdit={setEditingItem} />
+            <InventoryTable items={items} onEdit={setEditingItem} onShopify={openShopifyInventory} />
+            <InventoryCards items={items} onEdit={setEditingItem} onShopify={openShopifyInventory} />
           </div>
         )}
       </div>
@@ -823,6 +1051,41 @@ export default function InventoryStatus() {
         onOpenChange={open => !open && setEditingItem(null)}
         onSave={item => inventoryItemUpdate.mutate(item)}
         pending={inventoryItemUpdate.isPending}
+        productOptions={productOptions}
+      />
+      <ShopifyInventoryDialog
+        item={shopifyItem}
+        open={Boolean(shopifyItem)}
+        onOpenChange={open => {
+          if (!open) {
+            setShopifyItem(null);
+            setShopifyPreview(null);
+            shopifyInventory.reset();
+          }
+        }}
+        preview={shopifyPreview}
+        loading={shopifyInventory.isPending && !shopifyPreview}
+        pending={shopifyInventory.isPending}
+        error={shopifyInventory.isError ? shopifyInventory.error?.message : null}
+        onRefresh={() => shopifyInventory.mutate({ operation: 'preview_shopify_inventory_link', item: shopifyItem })}
+        onLink={(candidate, variant, level) => shopifyInventory.mutate({
+          operation: 'link_shopify_inventory_item', item: shopifyItem,
+          shopify_product_id: candidate.product_id,
+          shopify_variant_id: variant.variant_id,
+          shopify_inventory_item_id: variant.inventory_item_id,
+          shopify_location_id: level.location_id,
+        })}
+        onCreate={(locationId, publicationId) => shopifyInventory.mutate({
+          operation: 'create_shopify_bag_product', item: shopifyItem,
+          shopify_location_id: locationId,
+          shopify_publication_id: publicationId,
+          confirmation: 'CREATE SHOPIFY POS BAG',
+        })}
+        onSync={quantity => shopifyInventory.mutate({
+          operation: 'sync_shopify_inventory_quantity', item: shopifyItem,
+          quantity,
+          expected_shopify_quantity: Number(shopifyItem.shopify_available_quantity ?? shopifyItem.stock),
+        })}
       />
     </div>
   );

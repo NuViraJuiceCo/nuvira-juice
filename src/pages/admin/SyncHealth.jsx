@@ -90,7 +90,7 @@ export default function SyncHealth() {
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['admin-sync-health-summary'],
-    queryFn: async () => unwrapFunctionData(await base44.functions.invoke('getAdminSyncHealthSummary', {})),
+    queryFn: async () => unwrapFunctionData(await base44.functions.invoke('getAdminNativeSystemHealth', {})),
     enabled: isAdminUser(user) && isPageVisible,
     refetchInterval: isPageVisible ? 60000 : false,
     refetchIntervalInBackground: false,
@@ -104,13 +104,13 @@ export default function SyncHealth() {
   const summary = data?.summary || {};
   const directions = data?.directions && typeof data.directions === 'object' ? data.directions : {};
   const errorCategories = Array.isArray(data?.error_categories) ? data.error_categories : [];
-  const healthy = data?.hub_available === true && Number(summary.failed_count || 0) === 0 && Number(summary.pending_count || 0) === 0 && Number(summary.stale_count || 0) === 0;
+  const healthy = data?.native_available === true && Number(summary.failed_count || 0) === 0 && Number(summary.pending_count || 0) === 0 && Number(summary.stale_count || 0) === 0;
 
   return (
     <div className="min-h-screen bg-background">
       <AdminOpsHeader
-        title="Sync Health"
-        subtitle="Current integration health and event flow"
+        title="System Health"
+        subtitle="Customer App native order and operations health"
         badge={healthy ? 'Healthy' : 'Review'}
         onBack={() => navigate('/admin/operations')}
         actions={(
@@ -144,9 +144,9 @@ export default function SyncHealth() {
                 <div className="flex items-start gap-3">
                   {healthy ? <CheckCircle2 className="mt-0.5 h-6 w-6 text-emerald-300" /> : <AlertTriangle className="mt-0.5 h-6 w-6 text-amber-200" />}
                   <div>
-                    <h2 className="text-base font-black text-foreground">{healthy ? 'Current sync flow is healthy' : 'Current sync flow needs review'}</h2>
+                    <h2 className="text-base font-black text-foreground">{healthy ? 'Current native workflow is healthy' : 'Current native workflow needs review'}</h2>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Hub {data?.hub_available ? 'available' : 'unavailable'} · Window {data?.date_from || '—'} through {data?.date_to || '—'}
+                      Customer App authoritative · Window {data?.date_from || '—'} through {data?.date_to || '—'}
                     </p>
                   </div>
                 </div>
@@ -155,7 +155,7 @@ export default function SyncHealth() {
             </section>
 
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <MetricCard label="Events" value={summary.total_events} detail="Observed sync events" icon={Activity} />
+              <MetricCard label="Events" value={summary.total_events} detail="Observed native events" icon={Activity} />
               <MetricCard label="Successful" value={summary.success_count} detail="Completed normally" icon={CheckCircle2} tone="success" />
               <MetricCard label="Failed" value={summary.failed_count} detail="Require correction" icon={XCircle} tone={Number(summary.failed_count || 0) > 0 ? 'danger' : 'default'} />
               <MetricCard label="Pending" value={summary.pending_count} detail="Still processing" icon={Clock3} tone={Number(summary.pending_count || 0) > 0 ? 'warning' : 'default'} />
@@ -164,8 +164,8 @@ export default function SyncHealth() {
 
             <section className="space-y-3">
               <div>
-                <h2 className="text-sm font-black text-foreground">Flow by direction</h2>
-                <p className="mt-1 text-xs text-muted-foreground">Current event movement between the Customer App and operations Hub.</p>
+                <h2 className="text-sm font-black text-foreground">Workflow health</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Current native processing and operational review activity.</p>
               </div>
               <div className="grid gap-3 lg:grid-cols-2">
                 {Object.entries(directions).map(([name, direction]) => <DirectionCard key={name} name={name} data={direction} />)}
