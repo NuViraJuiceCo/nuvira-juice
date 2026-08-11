@@ -3,6 +3,10 @@ import { handleElevatedTransactionalAction } from './elevatedTransactionalCommun
 import { buildOrderCommunicationCopy } from './orderCommunicationPolicy.js';
 import { buildOrderEmailHtml } from './orderEmailTemplate.js';
 
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
+const TRANSACTIONAL_FROM = Deno.env.get('TRANSACTIONAL_EMAIL_FROM') || 'NuVira Juice Co <orders@nuvirajuice.com>';
+const TRANSACTIONAL_REPLY_TO = Deno.env.get('TRANSACTIONAL_EMAIL_REPLY_TO') || 'support@nuvirajuice.com';
+
 /**
  * sendOrderStatusNotification — triggered by order status changes to send in-app notifications.
  * 
@@ -194,6 +198,7 @@ async function recordDeliveredEmailLog(base44: any, {
   customerEmail,
   status,
   errorMessage = '',
+  providerMessageId = null,
 }: Record<string, any>) {
   if (!idempotencyKey) return;
   try {
@@ -205,6 +210,7 @@ async function recordDeliveredEmailLog(base44: any, {
       order_number: orderNumber || null,
       customer_email: customerEmail || null,
       provider: 'resend',
+      provider_message_id: providerMessageId,
       status,
       error_message: errorMessage || null,
       sent_at: status === 'sent' ? new Date().toISOString() : null,
@@ -217,6 +223,39 @@ async function recordDeliveredEmailLog(base44: any, {
     const message = error instanceof Error ? error.message : String(error || 'unknown');
     console.warn(`[sendOrderStatusNotification] Delivered email log write failed: ${message}`);
   }
+}
+
+async function sendDeliveredEmailViaResend({
+  to,
+  subject,
+  html,
+  idempotencyKey,
+}: Record<string, string>) {
+  if (!RESEND_API_KEY) throw new Error('resend_api_key_missing');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey.slice(0, 256),
+    },
+    body: JSON.stringify({
+      from: TRANSACTIONAL_FROM,
+      to: [to],
+      reply_to: TRANSACTIONAL_REPLY_TO,
+      subject,
+      html,
+      tags: [
+        { name: 'category', value: 'transactional_order' },
+        { name: 'event', value: 'delivered' },
+      ],
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.id) {
+    throw new Error(`resend_${response.status}_${String(payload?.message || 'send_failed').slice(0, 200)}`);
+  }
+  return payload;
 }
 
 Deno.serve(async (req) => {
@@ -456,11 +495,11 @@ Deno.serve(async (req) => {
             actionUrl,
           });
 
-          await base44.asServiceRole.integrations.Core.SendEmail({
+          const provider = await sendDeliveredEmailViaResend({
             to: email,
             subject: copy.subject,
-            body: html,
-            from_name: 'NuVira Juice Co.',
+            html,
+            idempotencyKey: deliveredEmailIdempotencyKey,
           });
           await recordDeliveredEmailLog(base44, {
             idempotencyKey: deliveredEmailIdempotencyKey,
@@ -468,6 +507,7 @@ Deno.serve(async (req) => {
             orderNumber: orderNum,
             customerEmail: email,
             status: 'sent',
+            providerMessageId: provider.id,
           });
           console.log(`[sendOrderStatusNotification] ✅ Delivery confirmation email sent to ${maskEmail(email)} for order ${orderNum}`);
         }

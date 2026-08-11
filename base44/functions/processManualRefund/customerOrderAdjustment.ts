@@ -9,6 +9,10 @@ const TIME_ZONE = 'America/Chicago';
 const REFUND_CURRENCY = 'usd';
 const TASK_OPEN_STATUS = 'pending';
 
+function runtimeEnv(name) {
+  return typeof Deno !== 'undefined' ? Deno.env.get(name) : '';
+}
+
 export const CUSTOMER_ORDER_ADJUSTMENT_ACTIONS = new Set([
   'prepare_customer_order_adjustment',
   'get_customer_order_adjustment',
@@ -635,7 +639,7 @@ async function sendChoiceEmail({ base44, review, order, token, fetchImpl, envGet
       'Idempotency-Key': idempotencyKey,
     },
     body: JSON.stringify({
-      from: 'NuVira Juice Co <info@nuvirajuice.com>',
+      from: runtimeEnv('TRANSACTIONAL_EMAIL_FROM') || 'NuVira Juice Co <orders@nuvirajuice.com>',
       to: order.customer_email,
       reply_to: 'support@nuvirajuice.com',
       subject: communications.email.subject,

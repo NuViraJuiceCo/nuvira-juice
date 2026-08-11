@@ -1,4 +1,9 @@
 import { handleMarketingLaunchAction, releaseCompletedMarketingHold } from './marketingLaunch.ts';
+import {
+  DEFAULT_MARKETING_CADENCE_RULES,
+  marketingCadenceDecision,
+  testOrder,
+} from './marketingCadencePolicy.js';
 
 type JourneyMode = 'disabled' | 'test' | 'production';
 type ConsentResult = {
@@ -7,7 +12,7 @@ type ConsentResult = {
   reason: string;
 };
 
-const POLICY_VERSION = 'g66-2026-08-04';
+const POLICY_VERSION = 'g111-2026-08-11';
 const APP_URL = 'https://www.nuvirajuice.com';
 const DEFAULT_GOOGLE_REVIEW_URL = 'https://www.google.com/search?q=nuvirajuiceco#lrd=0x6ba31dd76fc40465:0x251d9ffa6e774456,3,,,,';
 const MAILING_ADDRESS = normalizeSingleLine(Deno.env.get('NUVIRA_MAILING_ADDRESS'), 300)
@@ -25,6 +30,53 @@ const DEFAULT_REORDER_DAYS = 21;
 const DEFAULT_WINBACK_DAYS = 60;
 const DEFAULT_SUNSET_DAYS = 180;
 const DEFAULT_SUNSET_GRACE_DAYS = 14;
+
+function marketingCadenceRules() {
+  return {
+    recipient_cooldown_hours: boundedInteger(
+      'CUSTOMER_JOURNEY_RECIPIENT_COOLDOWN_HOURS',
+      DEFAULT_MARKETING_CADENCE_RULES.recipient_cooldown_hours,
+      24,
+      168,
+    ),
+    recipient_weekly_cap: boundedInteger(
+      'CUSTOMER_JOURNEY_RECIPIENT_WEEKLY_CAP',
+      DEFAULT_MARKETING_CADENCE_RULES.recipient_weekly_cap,
+      1,
+      7,
+    ),
+    transactional_quiet_hours: boundedInteger(
+      'CUSTOMER_JOURNEY_TRANSACTIONAL_QUIET_HOURS',
+      DEFAULT_MARKETING_CADENCE_RULES.transactional_quiet_hours,
+      12,
+      72,
+    ),
+    review_request_cooldown_days: boundedInteger(
+      'CUSTOMER_JOURNEY_REVIEW_COOLDOWN_DAYS',
+      DEFAULT_MARKETING_CADENCE_RULES.review_request_cooldown_days,
+      14,
+      180,
+    ),
+    abandoned_cart_cooldown_days: boundedInteger(
+      'CUSTOMER_JOURNEY_ABANDONED_CART_COOLDOWN_DAYS',
+      DEFAULT_MARKETING_CADENCE_RULES.abandoned_cart_cooldown_days,
+      3,
+      30,
+    ),
+    delivery_followup_delay_hours: boundedInteger(
+      'CUSTOMER_JOURNEY_DELIVERY_FOLLOWUP_DELAY_HOURS',
+      DEFAULT_MARKETING_CADENCE_RULES.delivery_followup_delay_hours,
+      24,
+      168,
+    ),
+    delivery_followup_lookback_days: boundedInteger(
+      'CUSTOMER_JOURNEY_DELIVERY_FOLLOWUP_LOOKBACK_DAYS',
+      DEFAULT_MARKETING_CADENCE_RULES.delivery_followup_lookback_days,
+      3,
+      30,
+    ),
+  };
+}
 
 const EVENT_PROVIDER_NAMES: Record<string, string> = {
   cart_abandoned: 'nuvira.cart.abandoned',
@@ -295,6 +347,15 @@ function orderIsDelivered(order: any): boolean {
     || normalizeSingleLine(order?.delivery_status, 40).toLowerCase() === 'delivered';
 }
 
+function deliveredAt(order: any): Date | null {
+  return dateOrNull(
+    order?.delivered_at
+      || order?.delivery_completed_at
+      || order?.fulfilled_at
+      || order?.updated_date,
+  );
+}
+
 async function resolveConsent(base44: any, email: string, eventName: string): Promise<ConsentResult> {
   const normalized = normalizeEmail(email);
   if (!normalized) return { eligible: false, status: 'unknown', reason: 'email_missing' };
@@ -346,6 +407,26 @@ async function profileFor(base44: any, email: string): Promise<any | null> {
 async function existingJourneyEvent(base44: any, eventId: string): Promise<any | null> {
   const rows = await base44.asServiceRole.entities.CustomerJourneyEvent.filter({ event_id: eventId }, '-created_date', 3);
   return rows[0] || null;
+}
+
+async function recentMarketingEvents(base44: any, email: string): Promise<any[]> {
+  if (!email) return [];
+  const rows = await base44.asServiceRole.entities.CustomerJourneyEvent.filter(
+    { customer_email: email },
+    '-event_at',
+    100,
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function recentTransactionalMessages(base44: any, email: string): Promise<any[]> {
+  if (!email) return [];
+  const rows = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter(
+    { customer_email: email, channel: 'email' },
+    '-created_date',
+    50,
+  ).catch(() => []);
+  return Array.isArray(rows) ? rows : [];
 }
 
 async function recordLocalJourneyOutcome(base44: any, input: Record<string, any>) {
@@ -503,6 +584,31 @@ async function createAndForwardEvent(base44: any, input: Record<string, any>) {
   } else if (currentPolicy.mode === 'test' && email !== currentPolicy.test_recipient) {
     resendStatus = 'disabled';
     skipReason = 'outside_test_recipient';
+  }
+
+  if (resendStatus === 'prepared') {
+    const [recentEvents, recentTransactional] = await Promise.all([
+      recentMarketingEvents(base44, email),
+      recentTransactionalMessages(base44, email),
+    ]);
+    const cadence = marketingCadenceDecision({
+      email,
+      eventName,
+      order: input.order || {
+        order_number: input.order_number,
+        is_test_order: input.is_test_order,
+        source: input.source,
+      },
+      recentEvents,
+      recentTransactionalMessages: recentTransactional,
+      nowMs: Date.now(),
+      allowInternalProof: input.allow_internal_proof === true,
+      rules: marketingCadenceRules(),
+    });
+    if (!cadence.allowed) {
+      resendStatus = 'disabled';
+      skipReason = cadence.reason;
+    }
   }
 
   const providerName = EVENT_PROVIDER_NAMES[eventName];
@@ -675,7 +781,7 @@ async function processOrderChange(base44: any, body: Record<string, any>) {
   }));
 
   const nowPaid = paidOrder(order);
-  const nowDelivered = orderIsDelivered(order);
+  const nowDelivered = orderIsDelivered(order) && !testOrder(order);
   const shouldProcessPurchase = nowPaid;
   const shouldProcessDelivery = nowDelivered;
   if (!shouldProcessPurchase && !shouldProcessDelivery) {
@@ -704,30 +810,34 @@ async function processOrderChange(base44: any, body: Record<string, any>) {
       source: sourceName(order?.source === 'pos' ? 'pos' : 'backend'),
       order_id: orderId,
       order_number: order?.order_number,
+      order,
       item_count: itemCount(safeItems(order?.items)),
       cart_total: finiteNumber(order?.total, 0),
       payload: basePayload,
     }));
   }
-  if (shouldProcessDelivery) {
-    results.push(await createAndForwardEvent(base44, {
-      event_id: `delivered:${orderId}`,
-      event_name: 'order_delivered',
-      event_at: order?.delivered_at || isoNow(),
-      customer_email: email,
-      source: 'backend',
-      order_id: orderId,
-      order_number: order?.order_number,
-      payload: await orderPayload(base44, order),
-    }));
-  }
-  return Response.json({ success: true, converted_states: convertedStates, marketing_hold_release: marketingHoldRelease, events: results.map((result) => ({
+  const deliveryAt = shouldProcessDelivery ? deliveredAt(order) : null;
+  const deliveryFollowupAt = deliveryAt
+    ? new Date(deliveryAt.getTime() + marketingCadenceRules().delivery_followup_delay_hours * 60 * 60 * 1000)
+    : null;
+  return Response.json({
+    success: true,
+    converted_states: convertedStates,
+    marketing_hold_release: marketingHoldRelease,
+    delivery_followup: {
+      scheduled: Boolean(deliveryFollowupAt),
+      due_at: deliveryFollowupAt?.toISOString() || null,
+      reason: deliveryFollowupAt ? 'deferred_to_scheduled_evaluator' : 'not_due_or_delivery_time_missing',
+    },
+    events: results.map((result) => ({
     event_id: result?.event?.event_id,
     resend_status: result?.event?.resend_status,
     duplicate: result?.duplicate === true,
     forwarded: result?.forwarded === true,
     error: result?.error || null,
-  })) });
+    reason: result?.reason || result?.event?.error_message || null,
+    })),
+  });
 }
 
 function favoriteProduct(orders: any[]): string {
@@ -876,6 +986,7 @@ async function evaluateJourneys(base44: any) {
       duplicate: result?.duplicate === true,
       forwarded: result?.forwarded === true,
       error: result?.error || null,
+      reason: result?.reason || result?.event?.error_message || null,
     });
     return true;
   };
@@ -957,6 +1068,35 @@ async function evaluateJourneys(base44: any) {
       rows.push(order);
       ordersByEmail.set(email, rows);
     }
+
+    // Delivery confirmations remain immediate transactional messages. The
+    // promotional thank-you/review request is evaluated separately after a
+    // 48-hour cooling period and is subject to recipient-level cadence.
+    const cadenceRules = marketingCadenceRules();
+    const deliveryLookbackStart = now.getTime() - cadenceRules.delivery_followup_lookback_days * 24 * 60 * 60 * 1000;
+    for (const order of paidOrders) {
+      if (results.length >= maxEvents) break;
+      if (!order?.id || !orderIsDelivered(order) || testOrder(order)) continue;
+      const deliveryAt = deliveredAt(order);
+      const email = normalizeEmail(order?.customer_email);
+      if (!deliveryAt || !email || deliveryAt.getTime() < deliveryLookbackStart) continue;
+      const followupAt = new Date(deliveryAt.getTime() + cadenceRules.delivery_followup_delay_hours * 60 * 60 * 1000);
+      if (followupAt.getTime() > now.getTime()) continue;
+      await emit(async () => emitMilestone(
+        base44,
+        'order_delivered',
+        `delivered:${order.id}`,
+        email,
+        followupAt,
+        await orderPayload(base44, order),
+        {
+          order_id: order.id,
+          order_number: order.order_number,
+          order,
+        },
+      ));
+    }
+
     const activeSubscriptionEmails = new Set(subscriptions.map((row: any) => normalizeEmail(row?.customer_email)).filter(Boolean));
     const pointEntries: Array<[string, any]> = userPoints
       .map((row: any): [string, any] => [normalizeEmail(row?.customer_email), row])
@@ -1110,6 +1250,12 @@ async function preview(base44: any) {
     base44.asServiceRole.entities.CustomerJourneyState.list('-last_activity_at', MAX_STATE_SCAN),
     base44.asServiceRole.entities.ProgramJourney.list('-updated_date', 100).catch(() => []),
   ]);
+  const suppressedEvents = events.filter((row: any) => ['disabled', 'not_eligible'].includes(row?.resend_status));
+  const suppressedReasons = suppressedEvents.reduce((summary: Record<string, number>, row: any) => {
+    const reason = normalizeSingleLine(row?.error_message, 160) || 'unspecified';
+    summary[reason] = (summary[reason] || 0) + 1;
+    return summary;
+  }, {});
   return Response.json({
     success: true,
     policy: policy(),
@@ -1120,6 +1266,8 @@ async function preview(base44: any) {
       converted_carts: states.filter((row: any) => row?.status === 'converted').length,
       accepted_events: events.filter((row: any) => row?.resend_status === 'accepted').length,
       failed_events: events.filter((row: any) => row?.resend_status === 'failed').length,
+      suppressed_events: suppressedEvents.length,
+      suppressed_reasons: suppressedReasons,
       marketing_sunset_suppressed: events.filter((row: any) => row?.event_name === 'marketing_sunset_suppressed').length,
       marketing_sunset_retained: events.filter((row: any) => row?.event_name === 'marketing_sunset_retained').length,
       active_program_journeys: programJourneys.filter((row: any) => row?.status === 'in_progress').length,
@@ -1132,6 +1280,10 @@ async function preview(base44: any) {
       marketing_sunset_auto_pause: true,
       program_journey_reminders_enabled: envEnabled('ENABLE_PROGRAM_JOURNEY_REMINDERS'),
       program_journey_reminders_per_day: 1,
+      marketing_cadence: marketingCadenceRules(),
+      internal_and_test_identities_excluded: true,
+      purchase_completion_email_suppressed: true,
+      delivery_followup_scheduled: true,
     },
     provider: {
       events: Object.values(EVENT_PROVIDER_NAMES),
@@ -1194,6 +1346,7 @@ async function sandboxEvent(base44: any, caller: any, body: Record<string, any>)
     event_at: isoNow(),
     customer_email: email,
     source: 'backend',
+    allow_internal_proof: true,
     payload: { ...payloads[eventName], ...(body.payload || {}) },
   });
   return Response.json({ success: result.forwarded === true, event_id: result?.event?.event_id, resend_status: result?.event?.resend_status, forwarded: result.forwarded === true, error: result.error || result?.event?.error_message || null });
@@ -1221,6 +1374,7 @@ async function internalProofEvent(base44: any, body: Record<string, any>) {
     event_at: isoNow(),
     customer_email: email,
     source: 'backend',
+    allow_internal_proof: true,
     payload: payloads[eventName],
   });
   return Response.json({

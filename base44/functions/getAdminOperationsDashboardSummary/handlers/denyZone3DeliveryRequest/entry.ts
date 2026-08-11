@@ -2,6 +2,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
+const TRANSACTIONAL_FROM = Deno.env.get('TRANSACTIONAL_EMAIL_FROM') || 'NuVira Juice Co <orders@nuvirajuice.com>';
+const TRANSACTIONAL_REPLY_TO = Deno.env.get('TRANSACTIONAL_EMAIL_REPLY_TO') || 'support@nuvirajuice.com';
 
 function escapeHtml(value) {
   return String(value ?? '').trim().replace(/\s+/g, ' ')
@@ -191,20 +194,38 @@ export default async (req: Request) => {
       console.log('[Zone3 Deny] Zone 3 denial email already sent; skipping duplicate');
     } else {
       try {
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          to: dar.customer_email,
-          subject: 'NuVira Route Review Update',
-          body: denialEmailHtml,
-          from_name: 'NuVira Juice Co.',
+        if (!RESEND_API_KEY) throw new Error('resend_api_key_missing');
+        const emailResponse = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+            'Idempotency-Key': denialEmailKey.slice(0, 256),
+          },
+          body: JSON.stringify({
+            from: TRANSACTIONAL_FROM,
+            to: [dar.customer_email],
+            reply_to: TRANSACTIONAL_REPLY_TO,
+            subject: 'NuVira Route Review Update',
+            html: denialEmailHtml,
+            tags: [
+              { name: 'category', value: 'transactional_order' },
+              { name: 'event', value: 'zone3_denial' },
+            ],
+          }),
         });
+        const emailResult = await emailResponse.json().catch(() => ({}));
+        if (!emailResponse.ok || !emailResult?.id) {
+          throw new Error(`resend_${emailResponse.status}_${String(emailResult?.message || 'send_failed').slice(0, 200)}`);
+        }
         console.log(`[Zone3 Deny] Denial email sent to ${dar.customer_email}`);
         await createDeliveryLog(base44, {
           idempotency_key: denialEmailKey,
           channel: 'email',
           message_type: 'zone3_denial',
           customer_email: dar.customer_email,
-          provider: 'internal',
-          provider_message_id: null,
+          provider: 'resend',
+          provider_message_id: emailResult.id,
           status: 'sent',
           sent_at: new Date().toISOString(),
           metadata: {

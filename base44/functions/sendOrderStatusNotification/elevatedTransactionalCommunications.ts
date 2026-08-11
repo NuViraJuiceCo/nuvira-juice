@@ -11,7 +11,7 @@ import { buildOrderEmailHtml } from './orderEmailTemplate.js';
 const APP_ORIGIN = 'https://www.nuvirajuice.com';
 const TIME_ZONE = 'America/Chicago';
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
-const TRANSACTIONAL_FROM = Deno.env.get('TRANSACTIONAL_EMAIL_FROM') || 'NuVira Juice Co <info@nuvirajuice.com>';
+const TRANSACTIONAL_FROM = Deno.env.get('TRANSACTIONAL_EMAIL_FROM') || 'NuVira Juice Co <orders@nuvirajuice.com>';
 const TRANSACTIONAL_REPLY_TO = Deno.env.get('TRANSACTIONAL_EMAIL_REPLY_TO') || 'support@nuvirajuice.com';
 const INTERNAL_TOKEN = Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN') || '';
 const TEST_RECIPIENT = 'info@nuvirajuice.com';
