@@ -20,7 +20,7 @@ import {
   Truck,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'framer-motion';
 import { toast } from 'sonner';
 
 const subtypeIcons = {
@@ -65,6 +65,18 @@ const typeColors = {
   general: 'bg-secondary text-muted-foreground',
 };
 
+const SWIPE_DISMISS_MIN_DISTANCE = 84;
+const SWIPE_DISMISS_MAX_DISTANCE = 144;
+const SWIPE_DISMISS_VELOCITY = -700;
+
+function shouldDismissFromSwipe(offsetX, velocityX, rowWidth) {
+  const distanceThreshold = Math.min(
+    SWIPE_DISMISS_MAX_DISTANCE,
+    Math.max(SWIPE_DISMISS_MIN_DISTANCE, rowWidth * 0.34)
+  );
+  return offsetX <= -distanceThreshold || velocityX <= SWIPE_DISMISS_VELOCITY;
+}
+
 function optimisticNotifications(current = [], request) {
   if (request.action === 'mark_read') {
     return current.map((notification) => (
@@ -86,6 +98,30 @@ function optimisticNotifications(current = [], request) {
 function NotificationRow({ notification, index, onOpen, onDismiss, isPending }) {
   const Icon = subtypeIcons[notification.notification_subtype] || typeIcons[notification.type] || Bell;
   const colorClass = subtypeColors[notification.notification_subtype] || typeColors[notification.type] || typeColors.general;
+  const rowX = useMotionValue(0);
+  const actionOpacity = useTransform(rowX, [-144, -56, 0], [1, 0.68, 0]);
+  const actionScale = useTransform(rowX, [-144, -56, 0], [1, 0.88, 0.72]);
+
+  const springRowBack = () => animate(rowX, 0, {
+    type: 'spring',
+    stiffness: 520,
+    damping: 38,
+    mass: 0.72,
+  });
+
+  const settleSwipe = async (event, info) => {
+    const rowWidth = event.currentTarget?.getBoundingClientRect?.().width || 360;
+    if (!isPending && shouldDismissFromSwipe(info.offset.x, info.velocity.x, rowWidth)) {
+      await animate(rowX, -rowWidth - 24, {
+        duration: 0.18,
+        ease: [0.32, 0, 0.67, 0],
+      }).finished;
+      if (onDismiss(notification) === false) springRowBack();
+      return;
+    }
+
+    springRowBack();
+  };
 
   return (
     <motion.div
@@ -96,25 +132,29 @@ function NotificationRow({ notification, index, onOpen, onDismiss, isPending }) 
       transition={{ delay: index * 0.025, duration: 0.2 }}
       className="relative overflow-hidden rounded-xl"
     >
-      <div className="absolute inset-y-0 right-0 flex w-24 items-center justify-end rounded-xl bg-destructive px-5 text-destructive-foreground" aria-hidden="true">
-        <Trash2 className="h-5 w-5" />
-      </div>
+      <motion.div
+        className="absolute inset-0 flex items-center justify-end gap-2 rounded-xl bg-destructive px-5 text-destructive-foreground"
+        style={{ opacity: actionOpacity }}
+        aria-hidden="true"
+      >
+        <motion.span className="flex items-center gap-2 text-xs font-bold" style={{ scale: actionScale }}>
+          <Trash2 className="h-5 w-5" />
+          Clear
+        </motion.span>
+      </motion.div>
 
       <motion.div
         drag="x"
-        dragConstraints={{ left: -96, right: 0 }}
-        dragElastic={0.08}
+        dragConstraints={{ right: 0 }}
+        dragElastic={{ left: 0.12, right: 0 }}
         dragMomentum={false}
-        dragSnapToOrigin
-        onDragEnd={(_, info) => {
-          if (info.offset.x <= -64 || info.velocity.x <= -500) onDismiss(notification);
-        }}
+        onDragEnd={settleSwipe}
         className={`relative flex min-h-[72px] items-stretch rounded-xl border transition-colors ${
           notification.is_read
             ? 'border-border/45 bg-card'
             : 'border-primary/25 bg-card shadow-[inset_3px_0_0_hsl(var(--primary)/0.75)]'
         }`}
-        style={{ touchAction: 'pan-y' }}
+        style={{ touchAction: 'pan-y', x: rowX }}
       >
         <button
           type="button"
@@ -212,8 +252,9 @@ export default function Notifications() {
   };
 
   const handleDismiss = (notification) => {
-    if (updateNotifications.isPending) return;
+    if (updateNotifications.isPending) return false;
     updateNotifications.mutate({ action: 'dismiss', notification_id: notification.id });
+    return true;
   };
 
   return (

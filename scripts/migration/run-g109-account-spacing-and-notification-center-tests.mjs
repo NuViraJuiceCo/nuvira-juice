@@ -201,7 +201,13 @@ await test('Updates center has persistent bulk actions, swipe dismissal, rollbac
   assert.match(notificationsSource, /action: 'dismiss_read'/);
   assert.match(notificationsSource, /action: 'dismiss', notification_id: notification\.id/);
   assert.match(notificationsSource, /drag="x"/);
-  assert.match(notificationsSource, /info\.offset\.x <= -64/);
+  assert.match(notificationsSource, /shouldDismissFromSwipe\(info\.offset\.x, info\.velocity\.x, rowWidth\)/);
+  assert.match(notificationsSource, /rowWidth \* 0\.34/);
+  assert.match(notificationsSource, /await animate\(rowX, -rowWidth - 24/);
+  assert.match(notificationsSource, /stiffness: 520/);
+  assert.match(notificationsSource, /if \(onDismiss\(notification\) === false\) springRowBack\(\)/);
+  assert.match(notificationsSource, /if \(updateNotifications\.isPending\) return false/);
+  assert.doesNotMatch(notificationsSource, /dragSnapToOrigin/);
   assert.match(notificationsSource, /border-primary\/25 bg-card shadow-/);
   assert.match(notificationsSource, /aria-label=\{`Clear \$\{notification\.title/);
   assert.match(notificationsSource, /queryClient\.setQueryData\(queryKey, context\?\.previous/);
