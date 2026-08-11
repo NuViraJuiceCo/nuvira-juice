@@ -7,8 +7,8 @@ function requestId(type) {
 }
 
 export async function submitCustomerInquiry(inquiryType, payload = {}) {
-  const response = await base44.functions.invoke('getCustomerAccountDashboardData', {
-    gateway_action: 'submitCustomerInquiry',
+  const response = await base44.functions.invoke('customerJourneyAutomation', {
+    action: 'submit_customer_inquiry',
     payload: {
       request_id: payload.request_id || requestId(inquiryType),
       inquiry_type: inquiryType,

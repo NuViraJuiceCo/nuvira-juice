@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleCustomerJourneyRequest } from './customerJourneyAutomation.ts';
+import submitCustomerInquiry from '../getCustomerAccountDashboardData/handlers/submitCustomerInquiry/entry.ts';
 
 /**
  * Dedicated recurring customer-journey evaluator.
@@ -38,6 +39,16 @@ Deno.serve(async (req) => {
 
     const flattened = body.args && typeof body.args === 'object' ? { ...body, ...body.args } : body;
     const action = String(flattened.action || '').trim();
+
+    if (action === 'submit_customer_inquiry') {
+      const forwarded = new Request(req.url, {
+        method: 'POST',
+        headers: req.headers,
+        body: JSON.stringify(flattened.payload || {}),
+      });
+      return await submitCustomerInquiry(forwarded);
+    }
+
     const supportedAction = [
       'record_activity',
       'preview',

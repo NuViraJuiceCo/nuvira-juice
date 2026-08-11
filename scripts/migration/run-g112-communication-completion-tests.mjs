@@ -10,6 +10,7 @@ const inquirySchema = JSON.parse(read('base44/entities/CustomerInquiry.jsonc'));
 const deliverySchema = JSON.parse(read('base44/entities/CustomerMessageDeliveryLog.jsonc'));
 const inquiryClient = read('src/lib/customerCommunications.js');
 const resendWebhook = read('base44/functions/resendWebhook/entry.ts');
+const journeyEntry = read('base44/functions/customerJourneyAutomation/entry.ts');
 const journey = read('base44/functions/customerJourneyAutomation/customerJourneyAutomation.ts');
 const sitemap = read('base44/functions/generateSitemap/entry.ts');
 const localSeo = read('src/pages/LocalSeoLanding.jsx');
@@ -46,9 +47,11 @@ for (const file of customerFormFiles) {
   assert.match(source, /submitCustomerInquiry/);
 }
 
-assert.match(inquiryClient, /functions\.invoke\('getCustomerAccountDashboardData'/);
-assert.match(inquiryClient, /gateway_action: 'submitCustomerInquiry'/);
+assert.match(inquiryClient, /functions\.invoke\('customerJourneyAutomation'/);
+assert.match(inquiryClient, /action: 'submit_customer_inquiry'/);
 assert.match(customerGateway, /"submitCustomerInquiry": handler22/);
+assert.match(journeyEntry, /action === 'submit_customer_inquiry'/);
+assert.match(journeyEntry, /submitCustomerInquiry\(forwarded\)/);
 assert.match(inquiryGateway, /NuVira Juice Co <operations@nuvirajuice\.com>/);
 assert.match(inquiryGateway, /NuVira Support <support@nuvirajuice\.com>/);
 assert.match(inquiryGateway, /NuVira Juice Co <hello@nuvirajuice\.com>/);
