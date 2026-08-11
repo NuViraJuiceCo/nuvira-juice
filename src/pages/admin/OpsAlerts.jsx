@@ -285,7 +285,7 @@ export default function OpsAlerts() {
       };
       if (action === 'resolve' && resolutionNote) payload.resolution_note = resolutionNote;
 
-      const res = await base44.functions.invoke('updateAdminOpsAlertStatus', payload);
+      const res = await base44.functions.invoke('maintainAdminOperationalNotices', payload);
       const result = res?.data || res;
       if (!result?.success) throw new Error('Alert update failed');
 
@@ -322,7 +322,7 @@ export default function OpsAlerts() {
     <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
         title="Ops Alerts"
-        subtitle="Sanitized operations inbox"
+        subtitle="Native operations inbox"
         badge="Limited actions"
         badgeTone="warning"
       />
