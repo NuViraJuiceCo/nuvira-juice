@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g110-native-inventory-shopify-pos-and-health-20260810.
 // Bundle revision: g105-public-event-publishing-20260810.
 // Bundle revision: g98-native-compliance-document-management-20260808.
 // Bundle revision: g97-customer-app-native-monitoring-20260808 (prior).
@@ -96,6 +97,7 @@ const HANDLERS = {
   "getAdminResourcesSummary": handler22,
   "getAdminShopifyOpsSummary": handler23,
   "getAdminSyncHealthSummary": handler24,
+  "getAdminNativeSystemHealth": handler24,
   "manageAdminDiscountCode": handler25,
   "markAdminFulfillmentTaskOutForDelivery": handler26,
   "optimizeDeliveryRoute": handler27,
@@ -118,6 +120,7 @@ const HANDLERS = {
   "startAdminProductionBatch": handler44,
   "updateAdminFulfillmentTaskAssignment": handler45,
   "updateAdminOpsAlertStatus": handler46,
+  "maintainAdminOperationalNotices": handler46,
   "updateAdminProductCatalogItem": handler47,
   "verifyAdminProductionBatch": handler48,
   "monitorLiveCheckoutTest": handler49,

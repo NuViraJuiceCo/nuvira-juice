@@ -21,6 +21,7 @@ const harnesses = [
   'scripts/migration/run-g49a-checkout-processing-error-boundary-tests.mjs',
   'scripts/migration/run-g51c-delivery-status-sync-freshness-guard-tests.mjs',
   'scripts/migration/run-g51b-admin-compliance-batch-linkage-tests.mjs',
+  'scripts/migration/run-g55-backend-live-use-readiness-tests.mjs',
   'scripts/migration/run-g59-google-play-mobile-readiness-tests.mjs',
   'scripts/migration/run-g60-android-play-store-readiness-tests.mjs',
   'scripts/migration/run-brclub-discount-tests.mjs',
@@ -71,6 +72,7 @@ const harnesses = [
   'scripts/migration/run-g107-mobile-operator-workspace-tests.mjs',
   'scripts/migration/run-g108-account-program-membership-tests.mjs',
   'scripts/migration/run-g109-account-spacing-and-notification-center-tests.mjs',
+  'scripts/migration/run-g110-inventory-shopify-pos-and-native-health-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

@@ -2,8 +2,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const readinessPath = 'base44/functions/getAdminOperationsDashboardSummary/entry.ts';
-const campaignPath = 'base44/functions/sendNotificationCampaign/entry.ts';
+const readinessPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminOperationsDashboardSummary/entry.ts';
+const campaignPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/sendNotificationCampaign/entry.ts';
 const campaignPagePath = 'src/pages/admin/NotificationCampaigns.jsx';
 const criticalPath = 'scripts/ci/run-critical-regressions.mjs';
 

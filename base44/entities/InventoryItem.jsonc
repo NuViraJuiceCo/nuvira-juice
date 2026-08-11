@@ -84,6 +84,104 @@
     "notes": {
       "type": "string",
       "description": "Additional notes"
+    },
+    "inventory_kind": {
+      "type": "string",
+      "enum": [
+        "ingredient",
+        "label",
+        "bag",
+        "packaging",
+        "supply",
+        "other"
+      ],
+      "default": "other",
+      "description": "Operational inventory classification"
+    },
+    "count_status": {
+      "type": "string",
+      "enum": [
+        "pending_count",
+        "verified"
+      ],
+      "default": "pending_count",
+      "description": "Whether the opening physical count has been verified"
+    },
+    "counted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the last verified physical count"
+    },
+    "counted_by": {
+      "type": "string",
+      "description": "Admin who recorded the last verified physical count"
+    },
+    "linked_product_id": {
+      "type": "string",
+      "description": "Customer App Product record represented by this label or sellable bag"
+    },
+    "linked_product_title": {
+      "type": "string",
+      "description": "Stable display title for the linked Customer App Product"
+    },
+    "shopify_sync_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this sellable bag is connected to Shopify POS location inventory"
+    },
+    "shopify_inventory_authority": {
+      "type": "string",
+      "enum": [
+        "native",
+        "shopify_pos"
+      ],
+      "default": "native",
+      "description": "System of record for the displayed available quantity"
+    },
+    "shopify_product_id": {
+      "type": "string",
+      "description": "Linked Shopify product GID or numeric ID"
+    },
+    "shopify_variant_id": {
+      "type": "string",
+      "description": "Linked Shopify variant GID"
+    },
+    "shopify_inventory_item_id": {
+      "type": "string",
+      "description": "Linked Shopify inventory item GID"
+    },
+    "shopify_location_id": {
+      "type": "string",
+      "description": "Shopify location GID used by POS inventory"
+    },
+    "shopify_location_name": {
+      "type": "string",
+      "description": "Shopify location display name"
+    },
+    "shopify_available_quantity": {
+      "type": "number",
+      "description": "Last observed Shopify available quantity"
+    },
+    "shopify_synced_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the last successful Shopify inventory read or write"
+    },
+    "shopify_sync_status": {
+      "type": "string",
+      "enum": [
+        "not_linked",
+        "ready",
+        "in_sync",
+        "pending",
+        "error"
+      ],
+      "default": "not_linked",
+      "description": "Current Shopify POS inventory connection state"
+    },
+    "shopify_sync_error": {
+      "type": "string",
+      "description": "Sanitized Shopify inventory sync error"
     }
   },
   "required": [

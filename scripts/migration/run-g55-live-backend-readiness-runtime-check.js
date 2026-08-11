@@ -18,10 +18,20 @@ function payload(res) {
   return res?.data || res || {};
 }
 
+const ADMIN_GATEWAY = 'getAdminOperationsDashboardSummary';
+
+async function invokeAdmin(name, args) {
+  if (name === ADMIN_GATEWAY) return base44.functions.invoke(name, args);
+  return base44.functions.invoke(ADMIN_GATEWAY, {
+    gateway_action: name,
+    payload: args,
+  });
+}
+
 async function timed(name, args = {}) {
   const started = Date.now();
   try {
-    const res = await base44.functions.invoke(name, args);
+    const res = await invokeAdmin(name, args);
     return {
       ok: true,
       name,
