@@ -59,6 +59,8 @@ assert.match(uiSource, /Create and publish to Shopify POS/);
 assert.match(uiSource, /preview\.publication_warning/);
 assert.match(uiSource, /Activate with \$\{Number\(item\.stock\)\} bags/);
 assert.match(uiSource, /operation: 'activate_shopify_inventory_item'/);
+assert.doesNotMatch(uiSource, /stock_authoritative === false \|\| item\?\.status === 'demand_based'/);
+assert.match(uiSource, /item\?\.stock_tracking_policy === 'food_make_to_order' \|\| item\?\.status === 'demand_based'/);
 
 assert.match(gatewaySource, /g110d-existing-shopify-bag-inventory-activation-20260810/);
 assert.match(gatewaySource, /"getAdminNativeSystemHealth": handler24/);
