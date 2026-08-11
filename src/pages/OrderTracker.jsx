@@ -249,7 +249,7 @@ export default function OrderTracker() {
           <button onClick={() => navigate('/account/orders')} className="w-full px-6 py-2.5 bg-secondary text-foreground rounded-xl font-medium text-sm active:scale-95 transition-transform">
             Back to Orders
           </button>
-          <a href="mailto:info@nuvirajuice.com" className="block w-full px-6 py-2.5 border border-border rounded-xl font-medium text-sm text-center active:scale-95 transition-transform">
+          <a href="mailto:support@nuvirajuice.com" className="block w-full px-6 py-2.5 border border-border rounded-xl font-medium text-sm text-center active:scale-95 transition-transform">
             Contact Support
           </a>
         </div>
@@ -292,7 +292,7 @@ export default function OrderTracker() {
             <button onClick={() => navigate('/account/orders')} className="w-full px-6 py-2.5 bg-secondary text-foreground rounded-xl font-medium text-sm">
               Back to Orders
             </button>
-            <a href="mailto:info@nuvirajuice.com" className="block w-full px-6 py-2.5 border border-border rounded-xl font-medium text-sm text-center">
+            <a href="mailto:support@nuvirajuice.com" className="block w-full px-6 py-2.5 border border-border rounded-xl font-medium text-sm text-center">
               Contact Support
             </a>
           </div>
@@ -617,7 +617,7 @@ export default function OrderTracker() {
       )}
 
       <p className="mx-4 mt-6 text-center text-[11px] text-muted-foreground">
-        Need help? <a href="mailto:info@nuvirajuice.com" className="font-semibold text-primary">Contact NuVira Support</a>
+        Need help? <a href="mailto:support@nuvirajuice.com" className="font-semibold text-primary">Contact NuVira Support</a>
       </p>
     </div>
   );

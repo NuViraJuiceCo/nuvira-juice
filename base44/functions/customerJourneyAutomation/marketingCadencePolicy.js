@@ -84,13 +84,15 @@ export function marketingCadenceDecision({
   if (internalOrPrivateEmail(email)) return { allowed: false, reason: 'internal_or_private_identity_excluded' };
   if (testOrder(order)) return { allowed: false, reason: 'test_order_excluded' };
 
-  // The transactional order confirmation is the authoritative purchase email.
-  // Keep purchase completion as analytics without forwarding another email event.
+  // Purchase completion is a silent provider control event, never a marketing
+  // send. Exclude it from customer-facing cadence counts and decisions.
   if (eventName === 'purchase_completed') {
-    return { allowed: false, reason: 'transactional_order_confirmation_authoritative' };
+    return { allowed: true, reason: 'provider_control_event' };
   }
 
-  const accepted = recentEvents.filter((event) => event?.resend_status === 'accepted');
+  const accepted = recentEvents.filter((event) => (
+    event?.resend_status === 'accepted' && event?.event_name !== 'purchase_completed'
+  ));
   const hourMs = 60 * 60 * 1000;
   const dayMs = 24 * hourMs;
   const transactionalQuietMs = Number(rules.transactional_quiet_hours) * hourMs;

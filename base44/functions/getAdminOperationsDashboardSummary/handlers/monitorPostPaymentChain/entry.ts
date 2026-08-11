@@ -9,7 +9,7 @@ function runtimeEnv(name: string) {
 }
 
 const RESEND_API_KEY = runtimeEnv('RESEND_API_KEY') || '';
-const INTERNAL_FROM = runtimeEnv('INTERNAL_EMAIL_FROM') || 'NuVira Juice Co <system@nuvirajuice.com>';
+const INTERNAL_FROM = runtimeEnv('INTERNAL_EMAIL_FROM') || 'NuVira Juice Co <operations@nuvirajuice.com>';
 const INTERNAL_REPLY_TO = runtimeEnv('INTERNAL_EMAIL_REPLY_TO') || 'operations@nuvirajuice.com';
 const VALID_ORDER_STATUSES = new Set([
   'order_received',

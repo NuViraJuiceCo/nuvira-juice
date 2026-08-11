@@ -43,7 +43,14 @@ assert.deepEqual(marketingCadenceDecision({
   email: 'customer@gmail.com',
   eventName: 'purchase_completed',
   nowMs: now,
-}), { allowed: false, reason: 'transactional_order_confirmation_authoritative' });
+}), { allowed: true, reason: 'provider_control_event' });
+
+assert.deepEqual(marketingCadenceDecision({
+  email: 'customer@gmail.com',
+  eventName: 'reorder_due',
+  recentEvents: [acceptedEvent(1, 'purchase_completed')],
+  nowMs: now,
+}), { allowed: true, reason: 'eligible_within_cadence' });
 
 assert.deepEqual(marketingCadenceDecision({
   email: 'customer@gmail.com',
@@ -115,7 +122,7 @@ assert.match(journey, /recentTransactionalMessages/);
 assert.match(journey, /delivery_followup_delay_hours/);
 assert.match(journey, /deferred_to_scheduled_evaluator/);
 assert.match(journey, /testOrder\(order\)/);
-assert.match(journey, /transactional_order_confirmation_authoritative|purchase_completion_email_suppressed/);
+assert.match(journey, /purchase_completion_control_event_forwarded/);
 assert.match(marketingLaunch, /NuVira Juice Co <hello@nuvirajuice\.com>/);
 assert.match(marketingLaunch, /MARKETING_REPLY_TO/);
 
@@ -132,7 +139,7 @@ for (const source of [orderStatus, zone3Approval, zone3Denial, compliance]) {
 
 assert.match(operations, /internal_order_processed_/);
 assert.match(operations, /Idempotency-Key/);
-assert.match(operations, /NuVira Juice Co <system@nuvirajuice\.com>/);
+assert.match(operations, /NuVira Juice Co <operations@nuvirajuice\.com>/);
 assert.match(compliance, /internal:compliance_review:/);
 
 console.log(JSON.stringify({

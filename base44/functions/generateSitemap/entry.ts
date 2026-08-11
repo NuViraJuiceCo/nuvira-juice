@@ -5,7 +5,6 @@ const SITE_URL = 'https://www.nuvirajuice.com';
 const STATIC_PAGES = [
   { path: '/', priority: '1.0', changefreq: 'daily' },
   { path: '/shop', priority: '0.9', changefreq: 'daily' },
-  { path: '/subscribe', priority: '0.8', changefreq: 'weekly' },
   { path: '/our-story', priority: '0.7', changefreq: 'monthly' },
   { path: '/contact', priority: '0.7', changefreq: 'monthly' },
   { path: '/support', priority: '0.6', changefreq: 'monthly' },

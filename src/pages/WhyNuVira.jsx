@@ -69,7 +69,7 @@ const processSteps = [
   {
     icon: CalendarClock,
     title: 'Planned around demand',
-    body: 'Orders, programs, subscriptions, and event inventory inform what needs to be made and when.',
+    body: 'Orders, programs, and event inventory inform what needs to be made and when.',
   },
   {
     icon: BadgeCheck,
@@ -249,7 +249,7 @@ export default function WhyNuVira() {
               Built for fresh local service, not distant shelf life.
             </h2>
             <p className="mt-5 text-base leading-8 text-white/68">
-              The same standards apply whether a customer orders online, joins a program, subscribes, or meets us at an event.
+              The same standards apply whether a customer orders online, joins a program, or meets us at an event.
             </p>
             <div className="mt-7 overflow-hidden rounded-lg">
               <img
@@ -293,7 +293,7 @@ export default function WhyNuVira() {
             </div>
             <h2 className="font-heading text-3xl font-bold leading-tight md:text-4xl">Taste the difference fresh makes.</h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
-              Browse cold-pressed juices, structured programs, subscriptions, and event options from NuVira.
+              Browse cold-pressed juices, structured programs, and event options from NuVira.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row md:flex-col lg:flex-row">

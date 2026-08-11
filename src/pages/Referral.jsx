@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
-import { base44 } from '@/api/base44Client';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -28,7 +27,7 @@ export default function Referral() {
   const [sending, setSending] = useState(false);
 
   const code = generateCode(user);
-  const shareMessage = `Hey! I've been loving NuVira cold-pressed juice — it's fresh, real, and actually good for you. Use my code ${code} for $5 off your first order. Order at nuvirajuice.com 🌿`;
+  const shareMessage = `Hey! I've been loving NuVira cold-pressed juice — it's fresh, produce-forward, and easy to keep in my routine. Use my code ${code} for $5 off your first order. Order at nuvirajuice.com 🌿`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -46,17 +45,15 @@ export default function Referral() {
     }
   };
 
-  const handleInvite = async () => {
+  const handleInvite = () => {
     if (!email) return;
     setSending(true);
-    await base44.integrations.Core.SendEmail({
-      to: 'nuvirajuiceco@gmail.com',
-      subject: `Referral Invite from ${user?.full_name || user?.email}`,
-      body: `${user?.full_name || user?.email} (${user?.email}) referred ${email} to NuVira using code ${code}. Please send them a welcome email with their $5 discount.`,
-    });
+    const subject = encodeURIComponent(`${user?.full_name || 'A friend'} invited you to try NuVira`);
+    const body = encodeURIComponent(shareMessage);
+    window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
     setSending(false);
     setEmail('');
-    toast.success(`Invite sent to ${email}!`);
+    toast.success('Your email app is ready with the invitation.');
   };
 
   return (
@@ -121,7 +118,7 @@ export default function Referral() {
         className="nuvira-premium-card mx-4 mt-3 rounded-2xl p-4"
       >
         <p className="text-sm font-semibold mb-1">Invite by email</p>
-        <p className="text-xs text-muted-foreground mb-3">We'll send them a personal invite from you.</p>
+        <p className="text-xs text-muted-foreground mb-3">Open your email app with a personal invitation ready to send.</p>
         <div className="flex gap-2">
           <Input
             value={email}

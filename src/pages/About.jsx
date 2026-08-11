@@ -35,7 +35,7 @@ const aboutContent = {
     { value: 'Real produce', label: 'No fillers, shortcuts, or added sugar' },
   ],
   intro:
-    'We started NuVira with a simple standard: if juice is meant to support the body, it should be made with real produce, handled carefully, and served close to when it is pressed. Every bottle is part of that standard, from our daily juices to structured wellness programs, event service, subscriptions, and local pop-ups.',
+    'We started NuVira with a simple standard: if juice is meant to support the body, it should be made with real produce, handled carefully, and served close to when it is pressed. Every bottle is part of that standard, from our daily juices to structured wellness programs, event service, and local pop-ups.',
 };
 
 const values = [
@@ -66,7 +66,7 @@ const storyBlocks = [
     kicker: 'Our standard',
     title: 'Made close to the moment it is needed.',
     body:
-      'NuVira is not built around long warehouse cycles. We make fresh juice in focused batches so orders, programs, subscriptions, and event inventory stay connected to real production.',
+      'NuVira is not built around long warehouse cycles. We make fresh juice in focused batches so orders, programs, and event inventory stay connected to real production.',
     icon: BadgeCheck,
   },
   {
@@ -80,7 +80,7 @@ const storyBlocks = [
     kicker: 'Our service',
     title: 'Built for delivery, events, and everyday routines.',
     body:
-      'Customers can order for home delivery, choose programs, join a subscription, or find us at events. The goal is simple: make fresh juice easier to keep in your real life.',
+      'Customers can order for home delivery, choose a 2- or 3-day program, or find us at events. Subscriptions will be introduced only when the recurring fulfillment experience is ready.',
     icon: Truck,
   },
 ];
@@ -311,7 +311,7 @@ export default function About() {
             </div>
             <h2 className="font-heading text-3xl font-bold leading-tight md:text-4xl">Ready for your next fresh order?</h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
-              Browse fresh cold-pressed juices, structured programs, subscriptions, and event options from one place.
+              Browse fresh cold-pressed juices, structured programs, and event options from one place.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row md:flex-col lg:flex-row">

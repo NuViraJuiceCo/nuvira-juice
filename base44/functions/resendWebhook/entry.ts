@@ -37,6 +37,26 @@ function recordMetadata(value: unknown): AnyRecord {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnyRecord : {};
 }
 
+function recipientEmail(event: AnyRecord): string {
+  const recipients = Array.isArray(event?.data?.to) ? event.data.to : [event?.data?.to];
+  return recipients.map((value: unknown) => text(value, 320).toLowerCase())
+    .find((value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) || '';
+}
+
+function safeTags(value: unknown): AnyRecord {
+  if (Array.isArray(value)) {
+    return Object.fromEntries(value.slice(0, 20).map((row: AnyRecord) => [
+      text(row?.name, 80),
+      text(row?.value, 160),
+    ]).filter(([key]) => Boolean(key)));
+  }
+  const metadata = recordMetadata(value);
+  return Object.fromEntries(Object.entries(metadata).slice(0, 20).map(([key, raw]) => [
+    text(key, 80),
+    text(raw, 160),
+  ]).filter(([key]) => Boolean(key)));
+}
+
 function nextDeliveryStatus(current: unknown, eventType: string): string {
   const status = text(current, 40) || 'sent';
   const terminal = new Set(['bounced', 'failed', 'suppressed', 'complained']);
@@ -106,17 +126,45 @@ Deno.serve(async (req) => {
   }
 
   const base44 = createClientFromRequest(req);
-  const deliveryLogs = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
+  let deliveryLogs = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({
     provider: 'resend',
     provider_message_id: providerMessageId,
   }, '-created_date', 20);
 
   if (deliveryLogs.length === 0) {
-    const category = text(event?.data?.tags?.category, 80).toLowerCase();
+    const webhookTags = safeTags(event?.data?.tags);
+    const category = text(webhookTags.category, 80).toLowerCase();
     if (category === 'transactional_order') {
       return Response.json({ error: 'transactional_delivery_log_not_ready' }, { status: 503 });
     }
-    return Response.json({ success: true, ignored: true, reason: 'delivery_log_not_managed' });
+    const customerEmail = recipientEmail(event);
+    if (!customerEmail) {
+      return Response.json({ success: true, ignored: true, reason: 'delivery_log_identity_missing' });
+    }
+    const eventAt = timestamp(event?.created_at || event?.data?.created_at);
+    const created = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.create({
+      idempotency_key: `resend_provider:${providerMessageId}`,
+      channel: 'email',
+      message_type: category === 'customer_inquiry' ? 'customer_inquiry' : 'marketing_lifecycle',
+      customer_email: customerEmail,
+      provider: 'resend',
+      provider_message_id: providerMessageId,
+      status: nextDeliveryStatus('sent', eventType),
+      sent_at: eventAt,
+      last_provider_event: eventType,
+      last_provider_event_at: eventAt,
+      last_webhook_id: svixId,
+      metadata: {
+        source: 'resend_webhook_auto_managed',
+        resend_last_event: eventType,
+        resend_last_event_at: eventAt,
+        resend_webhook_event_ids: [svixId],
+        resend_event_timestamps: { [eventType]: eventAt },
+        resend_tags: webhookTags,
+      },
+      ...eventTimestampPatch(eventType, eventAt),
+    });
+    deliveryLogs = [created];
   }
 
   const eventAt = timestamp(event?.created_at || event?.data?.created_at);

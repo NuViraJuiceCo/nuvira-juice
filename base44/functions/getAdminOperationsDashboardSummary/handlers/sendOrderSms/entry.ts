@@ -125,7 +125,7 @@ export default async (req: Request) => {
       } catch { /* omit if invalid */ }
     }
 
-    const message = `🌿 NuVira Order Confirmed!\n\nOrder #${order_number}\n\n${itemList}${totalLine}${deliveryLine}\n\nWe'll keep you updated as your juice is freshly pressed. Questions? Reply here or email info@nuvirajuice.com 💚`;
+    const message = `🌿 NuVira Order Confirmed!\n\nOrder #${order_number}\n\n${itemList}${totalLine}${deliveryLine}\n\nWe'll keep you updated as your juice is freshly pressed. Questions? Reply here or email support@nuvirajuice.com 💚`;
 
     const response = await fetch('https://api.sendblue.com/api/send-message', {
       method: 'POST',

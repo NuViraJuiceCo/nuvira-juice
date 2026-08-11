@@ -74,6 +74,7 @@ const harnesses = [
   'scripts/migration/run-g109-account-spacing-and-notification-center-tests.mjs',
   'scripts/migration/run-g110-inventory-shopify-pos-and-native-health-tests.mjs',
   'scripts/migration/run-g111-unified-email-communications-tests.mjs',
+  'scripts/migration/run-g112-communication-completion-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

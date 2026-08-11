@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-const INTERNAL_FROM = Deno.env.get('INTERNAL_EMAIL_FROM') || 'NuVira Juice Co <system@nuvirajuice.com>';
+const INTERNAL_FROM = Deno.env.get('INTERNAL_EMAIL_FROM') || 'NuVira Juice Co <operations@nuvirajuice.com>';
 const INTERNAL_REPLY_TO = Deno.env.get('INTERNAL_EMAIL_REPLY_TO') || 'operations@nuvirajuice.com';
 const OPERATIONS_EMAIL = 'operations@nuvirajuice.com';
 const ADMIN_PUSH_INTERNAL_SECRET = Deno.env.get('ADMIN_PUSH_INTERNAL_SECRET')

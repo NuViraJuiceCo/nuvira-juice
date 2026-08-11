@@ -23,6 +23,7 @@ import handler18 from './handlers/validateDeliveryEligibility/entry.ts';
 import handler19 from './handlers/createZone3SubscriptionReviewRequest/entry.ts';
 import handler20 from './handlers/createSubscriptionPaymentElementIntent/entry.ts';
 import handler21 from './handlers/manageProgramJourney/entry.ts';
+import handler22 from './handlers/submitCustomerInquiry/entry.ts';
 
 const HANDLERS = {
   "addressSuggest": handler0,
@@ -46,6 +47,7 @@ const HANDLERS = {
   "createZone3SubscriptionReviewRequest": handler19,
   "createSubscriptionPaymentElementIntent": handler20,
   "manageProgramJourney": handler21,
+  "submitCustomerInquiry": handler22,
 };
 
 const DEFAULT_ACTION = 'getCustomerAccountDashboardData';

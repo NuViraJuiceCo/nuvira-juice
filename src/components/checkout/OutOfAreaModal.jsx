@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import { submitCustomerInquiry } from '@/lib/customerCommunications';
 
 export default function OutOfAreaModal({ address, zip, onClose }) {
   const [email, setEmail] = useState('');
@@ -18,20 +19,27 @@ export default function OutOfAreaModal({ address, zip, onClose }) {
     }
     setLoading(true);
 
-    await base44.entities.DeliveryWaitlist.create({
-      email: email.trim(),
-      address: address || '',
-      zip: zip || '',
-    });
-
-    await base44.integrations.Core.SendEmail({
-      to: 'info@nuvirajuice.com',
-      subject: `New Out-of-Area Waitlist Signup — ${email.trim()}`,
-      body: `A customer outside the delivery area signed up for region expansion updates.\n\nEmail: ${email.trim()}\nAddress: ${address || 'Not provided'}\nZIP: ${zip || 'Not provided'}`,
-    });
-
-    setLoading(false);
-    setSubmitted(true);
+    try {
+      await base44.entities.DeliveryWaitlist.create({
+        customer_email: email.trim().toLowerCase(),
+        delivery_address: address || zip || 'Area not provided',
+        postal_code: zip || '',
+        reason: 'outside_zone',
+        source: 'checkout',
+        status: 'new',
+      });
+      await submitCustomerInquiry('delivery_waitlist', {
+        customer_email: email,
+        subject: 'Delivery-area request',
+        source: 'checkout_out_of_area',
+        metadata: { delivery_address: address, postal_code: zip, requested_area: zip },
+      });
+      setSubmitted(true);
+    } catch {
+      toast.error('We could not save your request. Please email support@nuvirajuice.com.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
