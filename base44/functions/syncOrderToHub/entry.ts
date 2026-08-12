@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
-import getAdminProductionPlanningSummaryHandler from '../getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts';
 
+// Bundle revision: g115g-bundle-safe-signed-production-materializer-20260812.
 // Bundle revision: g115f-direct-production-materializer-composition-20260812.
 // Bundle revision: g115e-automatic-production-before-native-projection-20260812.
 // Bundle revision: g115d-automatic-production-authenticated-fetch-20260812.
@@ -64,25 +64,53 @@ function isRetriableMaterializationPreflight(error) {
   return code === 'materialization_preflight_blocked';
 }
 
-async function invokeProductionMaterialization(req, payload, secret) {
-  // Compose the existing planning handler inside this invocation so automatic
-  // checkout processing and admin execution share the exact same code and data
-  // snapshot. This also avoids Base44's distinct /functions and /apps routes.
-  const headers = new Headers(req.headers);
-  headers.set('content-type', 'application/json');
-  headers.set('x-internal-secret', secret);
-  const response = await getAdminProductionPlanningSummaryHandler(new Request(req.url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  }));
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error: any = new Error(result?.error || result?.error_code || `production_materialization_http_${response.status}`);
-    error.response = { status: response.status, data: result };
-    throw error;
-  }
-  return result;
+function productionMaterializationSignatureMessage(payload) {
+  return [
+    'g115g-production-materialization',
+    payload?.operation,
+    payload?.preset,
+    payload?.date_from,
+    payload?.date_to,
+    payload?.confirmation,
+    payload?.request_id,
+    payload?.automation_source,
+    payload?.automation_order_number,
+    payload?.automation_timestamp,
+  ].map(value => String(value || '')).join('\n');
+}
+
+async function signProductionMaterializationPayload(payload, secret) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(productionMaterializationSignatureMessage(payload)),
+  );
+  return Array.from(new Uint8Array(signature))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function invokeProductionMaterialization(base44, payload, secret) {
+  // Base44 bundles functions independently, so a relative import cannot cross
+  // the function boundary. Authenticate the normal gateway invocation with a
+  // short-lived HMAC instead; the raw shared secret never leaves this runtime.
+  const timestampedPayload = {
+    ...payload.payload,
+    automation_timestamp: String(Date.now()),
+  };
+  timestampedPayload.automation_signature = await signProductionMaterializationPayload(timestampedPayload, secret);
+  const response = await base44.asServiceRole.functions.invoke('getAdminOperationsDashboardSummary', {
+    ...payload,
+    payload: timestampedPayload,
+  });
+  return response?.data || response || {};
 }
 
 async function materializePaidOrderProduction({ base44, req, order, eventType, source, requestId }) {
@@ -123,7 +151,7 @@ async function materializePaidOrderProduction({ base44, req, order, eventType, s
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const result = await invokeProductionMaterialization(req, invokePayload, secret);
+      const result = await invokeProductionMaterialization(base44, invokePayload, secret);
       if (result?.success !== true || Number(result?.blocked_count || 0) > 0) {
         const errorCode = result?.error || 'automatic_production_materialization_blocked';
         await recordProductionMaterializationFailure(base44, order, errorCode);
