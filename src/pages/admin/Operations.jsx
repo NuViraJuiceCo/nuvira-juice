@@ -48,6 +48,13 @@ const sections = [
         badges: ['Live source', 'Internal notes'],
       },
       {
+        title: 'Training & Test Orders',
+        route: '/admin/orders?internal_test_validation=1',
+        description: 'Admin-only isolated recording orders using the real production and delivery workflow without entering live totals or customer communications.',
+        icon: ShieldCheck,
+        badges: ['Test-only', 'In-app workflow'],
+      },
+      {
         title: 'POS / Event Orders',
         route: '/admin/pos-orders',
         description: 'POS sales list with fulfillment, production, location, and item context.',

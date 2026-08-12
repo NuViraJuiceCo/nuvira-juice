@@ -1395,13 +1395,45 @@ export default function AdminOrders() {
         onBack={() => navigate('/admin/operations')}
       />
 
+      {!showInternalTestValidation && (
+        <section className="px-4 mt-4">
+          <Link
+            to="/admin/orders?internal_test_validation=1"
+            data-testid="open-internal-test-orders"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-amber-950 transition-colors hover:border-amber-500 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100"
+          >
+            <span className="flex min-w-0 items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="min-w-0">
+                <span className="block text-xs font-black">Training &amp; Test Orders</span>
+                <span className="mt-0.5 block text-[11px] leading-relaxed opacity-80">
+                  Open the isolated workflow inside this app. Test records remain excluded from live totals and customer communications.
+                </span>
+              </span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0" />
+          </Link>
+        </section>
+      )}
+
       {showInternalTestValidation && (
         <section className="px-4 mt-4">
           <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
-            <p className="text-[10px] font-black uppercase tracking-wider">Internal recording lane</p>
-            <p className="mt-1 text-xs font-semibold">
-              These formally marked test orders use the real operational cards but are excluded from normal orders, revenue, loyalty, marketing, inventory, and customer communications.
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-wider">Internal recording lane</p>
+                <p className="mt-1 text-xs font-semibold">
+                  These formally marked test orders use the real operational cards but are excluded from normal orders, revenue, loyalty, marketing, inventory, and customer communications.
+                </p>
+              </div>
+              <Link
+                to="/admin/orders"
+                data-testid="return-to-live-orders"
+                className="shrink-0 rounded-full border border-amber-400 bg-card/80 px-3 py-1.5 text-[10px] font-black text-foreground"
+              >
+                Live Orders
+              </Link>
+            </div>
           </div>
         </section>
       )}
