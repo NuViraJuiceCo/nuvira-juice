@@ -1176,19 +1176,25 @@ function OrderCard({ order, customerName, forceExpanded = false, onCollapseFocus
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <Link
-                    to="/admin/production-queue"
+                    to={order.is_test_order
+                      ? '/admin/production-queue?internal_test_validation=1&test_batch_mode=only'
+                      : '/admin/production-queue'}
                     className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground hover:border-primary/60"
                   >
                     Production Queue
                   </Link>
                   <Link
-                    to={order.fulfillment_type === 'pickup' ? '/admin/pos-orders' : '/admin/delivery-queue'}
+                    to={order.is_test_order
+                      ? `/admin/delivery-queue?internal_test_validation=1&test_task_mode=only&date=${encodeURIComponent(order.assigned_delivery_date || order.estimated_delivery_date || '')}`
+                      : order.fulfillment_type === 'pickup' ? '/admin/pos-orders' : '/admin/delivery-queue'}
                     className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground hover:border-primary/60"
                   >
                     {order.fulfillment_type === 'pickup' ? 'POS / Pickup Orders' : 'Delivery Queue'}
                   </Link>
                   <Link
-                    to={order.fulfillment_type === 'pickup' ? '/admin/orders' : '/admin/route-ops'}
+                    to={order.is_test_order
+                      ? `/admin/orders?internal_test_validation=1&order=${encodeURIComponent(order.order_number || order.id || '')}`
+                      : order.fulfillment_type === 'pickup' ? '/admin/orders' : '/admin/route-ops'}
                     className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground hover:border-primary/60"
                   >
                     {order.fulfillment_type === 'pickup' ? 'Order Review' : 'Route Ops'}
@@ -1214,6 +1220,7 @@ export default function AdminOrders() {
   const [filter, setFilter] = useState('active');
   const [focusedOrderKey, setFocusedOrderKey] = useState(null);
   const showLifecycleDiagnostics = searchParams.get('diagnostics') === '1';
+  const showInternalTestValidation = searchParams.get('internal_test_validation') === '1';
 
   const [search, setSearch] = useState('');
 
@@ -1287,13 +1294,19 @@ export default function AdminOrders() {
     return map;
   }, [orders]);
 
+  // Internal validation orders are opt-in and stay excluded from every default
+  // operational view. The test lane renders the same cards and detail panels so
+  // an owner can record the real workflow without contaminating live totals.
+  const scopedOrders = showInternalTestValidation
+    ? orders.filter(order => order.is_test_order === true)
+    : orders.filter(order => order.is_test_order !== true);
+
   // Split: pending/abandoned vs operational
-  const pendingOrders = orders.filter(o => isAbandonedOrUnpaid(o));
+  const pendingOrders = scopedOrders.filter(o => isAbandonedOrUnpaid(o));
 
   // Operational = paid, non-cancelled, non-test, non-refunded, non-abandoned
-  const operationalOrders = orders.filter(o =>
+  const operationalOrders = scopedOrders.filter(o =>
     !isAbandonedOrUnpaid(o) &&
-    !o.is_test_order &&
     !o.do_not_recover &&
     o.payment_status !== 'refunded' &&
     o.financial_status !== 'refunded' &&
@@ -1375,11 +1388,23 @@ export default function AdminOrders() {
   return (
     <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
-        title="Order Management"
-        subtitle={headerSubtitle}
-        badge="Customer App"
+        title={showInternalTestValidation ? 'Order Management · Internal Test' : 'Order Management'}
+        subtitle={showInternalTestValidation ? `${operationalOrders.length} isolated recording order${operationalOrders.length === 1 ? '' : 's'}` : headerSubtitle}
+        badge={showInternalTestValidation ? 'Test-only' : 'Customer App'}
+        badgeTone={showInternalTestValidation ? 'warning' : undefined}
         onBack={() => navigate('/admin/operations')}
       />
+
+      {showInternalTestValidation && (
+        <section className="px-4 mt-4">
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+            <p className="text-[10px] font-black uppercase tracking-wider">Internal recording lane</p>
+            <p className="mt-1 text-xs font-semibold">
+              These formally marked test orders use the real operational cards but are excluded from normal orders, revenue, loyalty, marketing, inventory, and customer communications.
+            </p>
+          </div>
+        </section>
+      )}
 
       <AdminOrdersLoadStatus
         ordersData={ordersData}
