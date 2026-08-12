@@ -91,9 +91,9 @@ let failureLogs = 0;
 const base44 = {
   asServiceRole: {
     functions: {
-      invoke: async (...args) => {
+      fetch: async (...args) => {
         invokeCall = args;
-        return { data: {
+        return new Response(JSON.stringify({
           success: true,
           created_count: 2,
           updated_count: 2,
@@ -101,7 +101,7 @@ const base44 = {
           blocked_count: 0,
           writes_performed: true,
           results: [{ source_order_numbers: ['NV-G115'] }],
-        } };
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
       },
     },
     entities: {
@@ -127,10 +127,12 @@ assert.equal(result.success, true);
 assert.equal(result.created_count, 2);
 assert.equal(result.updated_count, 2);
 assert.equal(failureLogs, 0);
-assert.equal(invokeCall[0], 'getAdminOperationsDashboardSummary');
-assert.equal(invokeCall[1].gateway_action, 'getAdminProductionPlanningSummary');
-assert.equal(JSON.stringify(invokeCall[1].payload), JSON.stringify(internalBody));
-assert.equal(invokeCall[2].headers['x-internal-secret'], 'synthetic-internal-secret');
+assert.equal(invokeCall[0], '/getAdminOperationsDashboardSummary');
+assert.equal(invokeCall[1].method, 'POST');
+assert.equal(invokeCall[1].headers['x-internal-secret'], 'synthetic-internal-secret');
+const invokedBody = JSON.parse(invokeCall[1].body);
+assert.equal(invokedBody.gateway_action, 'getAdminProductionPlanningSummary');
+assert.equal(JSON.stringify(invokedBody.payload), JSON.stringify(internalBody));
 
 invokeCall = null;
 const refundResult = await sync.materializePaidOrderProduction({
@@ -168,7 +170,7 @@ assert.equal(failureLogs, 1);
 const missingCoverageBase44 = {
   asServiceRole: {
     functions: {
-      invoke: async () => ({ data: {
+      fetch: async () => new Response(JSON.stringify({
         success: true,
         created_count: 0,
         updated_count: 0,
@@ -176,7 +178,7 @@ const missingCoverageBase44 = {
         blocked_count: 0,
         writes_performed: false,
         results: [{ source_order_numbers: ['NV-SOMEONE-ELSE'] }],
-      } }),
+      }), { status: 200, headers: { 'content-type': 'application/json' } }),
     },
     entities: {
       OrderSyncLog: { create: async () => { failureLogs += 1; } },
@@ -199,17 +201,15 @@ let retryInvokeCount = 0;
 const transientPreflightBase44 = {
   asServiceRole: {
     functions: {
-      invoke: async () => {
+      fetch: async () => {
         retryInvokeCount += 1;
         if (retryInvokeCount === 1) {
-          const error = new Error('Request failed with status code 409');
-          error.response = { data: {
+          return new Response(JSON.stringify({
             error: 'materialization_preflight_blocked',
             results: [{ blockers: ['materialized_demand_exceeds_current_paid_order_demand'] }],
-          } };
-          throw error;
+          }), { status: 409, headers: { 'content-type': 'application/json' } });
         }
-        return { data: {
+        return new Response(JSON.stringify({
           success: true,
           created_count: 0,
           updated_count: 0,
@@ -217,7 +217,7 @@ const transientPreflightBase44 = {
           blocked_count: 0,
           writes_performed: false,
           results: [{ source_order_numbers: ['NV-G115'] }],
-        } };
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
       },
     },
     entities: {
@@ -242,14 +242,12 @@ let persistentInvokeCount = 0;
 const persistentPreflightBase44 = {
   asServiceRole: {
     functions: {
-      invoke: async () => {
+      fetch: async () => {
         persistentInvokeCount += 1;
-        const error = new Error('Request failed with status code 409');
-        error.response = { data: {
+        return new Response(JSON.stringify({
           error: 'materialization_preflight_blocked',
           results: [{ blockers: ['multiple_mutable_native_batches_require_review'] }],
-        } };
-        throw error;
+        }), { status: 409, headers: { 'content-type': 'application/json' } });
       },
     },
     entities: {
@@ -274,6 +272,7 @@ assert.equal(failureLogs, 3, 'A persistent conflict remains retry eligible and a
 const planningSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts'), 'utf8');
 const gatewaySource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/entry.ts'), 'utf8');
 const syncSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/entry.ts'), 'utf8');
+const materializationSource = syncSource.slice(0, syncSource.indexOf('function isNativeOrderOpsEnabled'));
 assert.doesNotMatch(planningSource, /automatic_order_demand_not_found/);
 assert.match(planningSource, /startsWith\('auto_native_production:'\)/);
 assert.match(gatewaySource, /g115-automatic-paid-order-production-batches/);
@@ -285,12 +284,15 @@ assert.match(syncSource, /productionBatchMaterialization\?\.success === false \?
 assert.match(syncSource, /retry_eligible: true/);
 assert.match(syncSource, /x-internal-secret/);
 assert.match(syncSource, /g115c-automatic-production-consistency-retry/);
+assert.match(syncSource, /g115d-automatic-production-authenticated-fetch/);
 assert.match(syncSource, /isRetriableMaterializationPreflight/);
+assert.match(materializationSource, /asServiceRole\.functions\.fetch\('\/getAdminOperationsDashboardSummary'/);
+assert.doesNotMatch(materializationSource, /asServiceRole\.functions\.invoke\('getAdminOperationsDashboardSummary'/);
 
 console.log(JSON.stringify({
   ok: true,
   suite: 'g115-automatic-paid-order-production',
-  cases: 38,
+  cases: 44,
   live_writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));
