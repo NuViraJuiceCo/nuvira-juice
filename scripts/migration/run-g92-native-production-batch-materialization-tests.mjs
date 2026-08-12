@@ -360,7 +360,7 @@ const uiSource = fs.readFileSync(path.join(repoRoot, uiPath), 'utf8');
 const gatewaySource = fs.readFileSync(path.join(repoRoot, gatewayPath), 'utf8');
 assert.match(planningSource, /if \(user\.role !== 'admin'\)/, 'Interactive materialization remains server-side admin only.');
 assert.match(planningSource, /isInternalProductionMaterializationRequest/);
-assert.match(planningSource, /automatic_order_demand_not_found/);
+assert.match(planningSource, /automation_order_number/);
 assert.match(planningSource, /customer_app_native_mixed_demand/);
 assert.match(planningSource, /confirmation !== MATERIALIZATION_CONFIRMATION/);
 assert.match(planningSource, /inventory_mutation: false/);
