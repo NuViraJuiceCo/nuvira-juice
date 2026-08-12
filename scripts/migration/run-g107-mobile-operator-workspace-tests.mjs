@@ -11,6 +11,7 @@ const monitor = read('src/components/compliance/ComplianceMonitor.jsx');
 const production = read('src/pages/admin/ProductionQueueSummary.jsx');
 const delivery = read('src/pages/admin/DeliveryQueue.jsx');
 const compliance = read('src/pages/admin/ComplianceOps.jsx');
+const indexCss = read('src/index.css');
 const critical = read('scripts/ci/run-critical-regressions.mjs');
 const cases = [];
 
@@ -22,8 +23,20 @@ function check(name, condition) {
 check('shared_admin_header_supports_opt_in_mobile_copy', header.includes('mobileTitle,')
   && header.includes('mobileSubtitle,')
   && header.includes('compactMobile = false'));
-check('shared_header_defaults_remain_compatible', header.includes("compactMobile ? 'py-2.5 md:py-3' : 'py-3'")
+check('shared_header_defaults_remain_compatible', header.includes('compactMobile = false')
   && header.includes("backTo = '/admin/operations'"));
+check('shared_mobile_header_uses_stable_three_column_alignment', header.includes('grid-cols-[2.75rem_minmax(0,1fr)_auto]')
+  && header.includes('items-center gap-x-3')
+  && header.includes('md:flex md:justify-between'));
+check('shared_mobile_header_uses_accessible_back_target', header.includes('h-11 w-11')
+  && header.includes('md:h-9 md:w-9'));
+check('shared_mobile_header_keeps_copy_compact_without_clipping', header.includes('line-clamp-2 min-w-0 text-[17px]')
+  && header.includes('line-clamp-2 text-[11px]')
+  && !header.includes('mt-0.5 truncate text-[11px]'));
+check('shared_mobile_header_keeps_actions_in_the_header_row', header.includes('flex min-h-11 shrink-0 items-center justify-end gap-2')
+  && !header.includes('w-full shrink-0 text-emerald-300 sm:w-auto'));
+check('shared_mobile_header_uses_real_safe_area_instead_of_forced_spacer', indexCss.includes('padding-top: max(0.75rem, calc(env(safe-area-inset-top) + 0.5rem))')
+  && !indexCss.includes('padding-top: max(3.75rem, calc(env(safe-area-inset-top) + 0.75rem))'));
 
 check('production_mobile_header_is_operator_focused', production.includes('mobileTitle="Produce"')
   && production.includes('mobileSubtitle="Today\'s batches and next actions"'));
