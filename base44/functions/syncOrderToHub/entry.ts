@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
 
+// Bundle revision: g115-automatic-paid-order-production-batches-20260812.
+
 function getHubApiUrl() {
   const hubBaseUrl = (Deno.env.get('HUB_API_URL') || '').replace(/\/$/, '');
   return hubBaseUrl ? `${hubBaseUrl}/api/functions/receiveCustomerAppEvent` : '';
@@ -19,6 +21,90 @@ function getNativeSafeSyncPreviewInvokeOptions() {
         '',
     },
   };
+}
+
+function productionMaterializationSkipReason({ order, eventType, source }) {
+  if (eventType === 'order.refunded') return 'refund_event';
+  if (order?.order_type === 'subscription' || order?.stripe_subscription_id) return 'subscription_order';
+  if (source === 'shopify_pos' || order?.source_channel === 'pos' || order?.fulfillment_method === 'pos') return 'pos_order';
+  return null;
+}
+
+async function recordProductionMaterializationFailure(base44, order, errorCode) {
+  const now = new Date().toISOString();
+  await base44.asServiceRole.entities.OrderSyncLog.create({
+    order_number: order?.order_number || order?.shopify_order_number || 'unknown',
+    status: 'error',
+    hub_action: 'automatic_production_batch_materialization_failed',
+    description: `Automatic production batch materialization failed safely: ${errorCode}. Retry eligible.`,
+    started_at: now,
+    completed_at: now,
+    triggered_by: 'syncOrderToHub',
+  }).catch(() => {});
+}
+
+async function materializePaidOrderProduction({ base44, order, eventType, source, requestId }) {
+  const skippedReason = productionMaterializationSkipReason({ order, eventType, source });
+  if (skippedReason) {
+    return { success: true, skipped: true, reason: skippedReason, writes_performed: false };
+  }
+
+  const productionDate = order?.production_date || order?.assigned_production_day || order?.assigned_production_date || null;
+  const orderNumber = String(order?.order_number || order?.shopify_order_number || '').replace(/^#/, '').trim();
+  if (!productionDate || !orderNumber) {
+    const errorCode = !productionDate ? 'automatic_production_date_missing' : 'automatic_order_number_missing';
+    await recordProductionMaterializationFailure(base44, order, errorCode);
+    return { success: false, error_code: errorCode, writes_performed: false };
+  }
+
+  const secret = getCustomerAppSyncSecret();
+  if (!secret) {
+    const errorCode = 'automatic_production_materialization_secret_missing';
+    await recordProductionMaterializationFailure(base44, order, errorCode);
+    return { success: false, error_code: errorCode, writes_performed: false };
+  }
+
+  try {
+    const response = await base44.asServiceRole.functions.invoke('getAdminOperationsDashboardSummary', {
+      gateway_action: 'getAdminProductionPlanningSummary',
+      payload: {
+        preset: 'custom',
+        date_from: productionDate,
+        date_to: productionDate,
+        operation: 'execute_batch_materialization',
+        confirmation: 'materialize_native_production_batches',
+        request_id: `auto_native_production:${requestId || orderNumber}`,
+        automation_source: 'syncOrderToHub',
+        automation_order_number: orderNumber,
+      },
+    }, {
+      headers: { 'x-internal-secret': secret },
+    });
+    const result = response?.data || response;
+    if (result?.success !== true || Number(result?.blocked_count || 0) > 0) {
+      const errorCode = result?.error || 'automatic_production_materialization_blocked';
+      await recordProductionMaterializationFailure(base44, order, errorCode);
+      return {
+        success: false,
+        error_code: errorCode,
+        blocked_count: Number(result?.blocked_count || 0),
+        writes_performed: result?.writes_performed === true,
+      };
+    }
+    return {
+      success: true,
+      skipped: false,
+      created_count: Number(result?.created_count || 0),
+      updated_count: Number(result?.updated_count || 0),
+      deduped_count: Number(result?.deduped_count || 0),
+      blocked_count: 0,
+      writes_performed: result?.writes_performed === true,
+    };
+  } catch (error) {
+    const errorCode = `automatic_production_materialization_invoke_failed:${error?.message || 'unknown'}`;
+    await recordProductionMaterializationFailure(base44, order, errorCode);
+    return { success: false, error_code: errorCode, writes_performed: false };
+  }
 }
 
 function isNativeOrderOpsEnabled() {
@@ -599,16 +685,33 @@ Deno.serve(async (req) => {
       payload: { event: nativeEventType, order },
       body: { ...body, native_order: body?.native_order || order },
     });
-    const success = nativeResult?.success === true;
+    const source = ['customer_app_one_time', 'website_one_time', 'shopify_pos'].includes(body?.native_source)
+      ? body.native_source
+      : 'customer_app_one_time';
+    const productionBatchMaterialization = nativeResult?.success === true
+      ? await materializePaidOrderProduction({
+          base44,
+          order,
+          eventType: nativeEventType,
+          source,
+          requestId: body?.request_id || order?.order_number || order?.id,
+        })
+      : null;
+    const success = nativeResult?.success === true && productionBatchMaterialization?.success !== false;
     return Response.json({
       success,
       native_only: true,
       hub_sync_skipped: true,
-      action: nativeResult?.action || (nativeResult ? 'not_accepted' : 'disabled'),
-      error_code: nativeResult?.error_code || (nativeResult ? null : 'native_order_ops_disabled'),
+      action: productionBatchMaterialization?.success === false
+        ? 'production_materialization_failed'
+        : (nativeResult?.action || (nativeResult ? 'not_accepted' : 'disabled')),
+      error_code: productionBatchMaterialization?.success === false
+        ? productionBatchMaterialization.error_code
+        : (nativeResult?.error_code || (nativeResult ? null : 'native_order_ops_disabled')),
       order_number: nativeResult?.order_number || order?.shopify_order_number || order?.order_number || null,
       native_order_ops: nativeResult?.result || nativeResult,
-    }, { status: success ? 200 : (nativeResult?.status || 503) });
+      production_batch_materialization: productionBatchMaterialization,
+    }, { status: success ? 200 : (productionBatchMaterialization?.success === false ? 503 : (nativeResult?.status || 503)) });
   }
 
   const hubApiUrl = getHubApiUrl();
@@ -857,6 +960,30 @@ Deno.serve(async (req) => {
       }
     }
 
+    const productionBatchMaterialization = nativeOrderOps?.success === true
+      ? await materializePaidOrderProduction({
+          base44,
+          order,
+          eventType,
+          source: 'customer_app_one_time',
+          requestId: body?.request_id || `syncOrderToHub:${order?.id || order?.order_number || Date.now()}`,
+        })
+      : null;
+    if (productionBatchMaterialization?.success === false) {
+      return Response.json({
+        success: false,
+        error: 'Native order was recorded, but production batch materialization did not complete',
+        error_code: productionBatchMaterialization.error_code || 'automatic_production_materialization_failed',
+        native_authoritative: true,
+        native_order_ops: nativeOrderOps?.result || nativeOrderOps,
+        production_batch_materialization: productionBatchMaterialization,
+        retry_eligible: true,
+        hub_bridge_retired: true,
+        hub_operational_dependency: false,
+        external_calls_performed: false,
+      }, { status: 503 });
+    }
+
     if (!isLegacyHubOrderBridgeEnabled()) {
       return Response.json({
         success: true,
@@ -865,6 +992,7 @@ Deno.serve(async (req) => {
         hub_response: null,
         native_authoritative: true,
         native_order_ops: nativeOrderOps?.result || nativeOrderOps,
+        production_batch_materialization: productionBatchMaterialization,
         hub_bridge_retired: true,
         hub_sync_skipped: true,
         hub_operational_dependency: false,

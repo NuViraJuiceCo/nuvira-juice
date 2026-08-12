@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g115-automatic-paid-order-production-batches-20260812.
 // Bundle revision: g114b-recording-order-detail-accuracy-20260812.
 // Bundle revision: g114a-internal-recording-order-read-model-20260812.
 // Bundle revision: g110d-existing-shopify-bag-inventory-activation-20260810.

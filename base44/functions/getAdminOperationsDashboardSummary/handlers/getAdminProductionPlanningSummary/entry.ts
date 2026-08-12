@@ -64,6 +64,31 @@ function normalizeLower(value) {
   return normalizeText(value).toLowerCase();
 }
 
+function secretsMatch(left, right) {
+  const a = normalizeText(left);
+  const b = normalizeText(right);
+  if (!a || !b || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    mismatch |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  }
+  return mismatch === 0;
+}
+
+function isInternalProductionMaterializationRequest(req, body, operation) {
+  const expectedSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
+  const suppliedSecret = req?.headers?.get?.('x-internal-secret') || '';
+  return operation === MATERIALIZATION_EXECUTE &&
+    normalizeLower(body?.automation_source) === 'syncordertohub' &&
+    normalizeLower(body?.preset) === 'custom' &&
+    normalizeText(body?.date_from) !== '' &&
+    normalizeText(body?.date_from) === normalizeText(body?.date_to) &&
+    normalizeText(body?.confirmation) === MATERIALIZATION_CONFIRMATION &&
+    normalizeText(body?.request_id).startsWith('auto_native_production:') &&
+    normalizeText(body?.automation_order_number) !== '' &&
+    secretsMatch(suppliedSecret, expectedSecret);
+}
+
 function normalizeMatchKey(value) {
   return normalizeLower(value)
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -227,8 +252,22 @@ function safeOrderSource(source) {
 }
 
 function isNativeMaterializedBatch(batch) {
-  return normalizeLower(batch?.source_system) === 'customer_app_native' &&
-    normalizeLower(batch?.native_owner_status) === 'native_owned_order_demand';
+  const owner = normalizeLower(batch?.native_owner_status);
+  return ['native_owned_order_demand', 'native_owned_mixed_demand'].includes(owner) &&
+    ['customer_app_native', 'customer_app_native_mixed_demand'].includes(normalizeLower(batch?.source_system));
+}
+
+function isNativeEventStockBatch(batch) {
+  return normalizeLower(batch?.source_system) === 'customer_app_native_event_stock' &&
+    normalizeLower(batch?.native_owner_status) === 'native_owned_event_stock';
+}
+
+function isCompatibleNativeDemandBatch(batch) {
+  return isNativeMaterializedBatch(batch) || isNativeEventStockBatch(batch);
+}
+
+function isEventStockOrderSource(source) {
+  return normalizeLower(source?.source_type) === 'event_stock';
 }
 
 function materializationDraftReady(draft) {
@@ -1663,11 +1702,17 @@ function materializationDrafts(nativePlanning, existingBatches) {
         ...demandedOrderSources.map(source => source.order_id),
       ]).slice(0, 500);
       const ownedProductBatches = batches.filter(batch => (
-        isNativeMaterializedBatch(batch) &&
+        isCompatibleNativeDemandBatch(batch) &&
+        normalizeLower(batch?.status) !== 'archived' &&
         normalizeText(batch?.production_date) === productionDate &&
         normalizeLower(batch?.product_name) === normalizeLower(product?.product_name)
       ));
-      const materializedOrderSources = ownedProductBatches.flatMap(batch => batch?.order_sources || []);
+      const retainedEventSources = mergeOrderSources(
+        ownedProductBatches.flatMap(batch => batch?.order_sources || []).filter(isEventStockOrderSource),
+      );
+      const materializedOrderSources = ownedProductBatches
+        .flatMap(batch => batch?.order_sources || [])
+        .filter(source => !isEventStockOrderSource(source));
       const { remaining, overages } = subtractOrderSources(demandedOrderSources, materializedOrderSources);
       const mutableOwnedBatches = ownedProductBatches.filter(batch => (
         ['planned', 'ready_for_production'].includes(normalizeLower(batch?.status)) && batch?.is_locked !== true
@@ -1687,8 +1732,9 @@ function materializationDrafts(nativePlanning, existingBatches) {
       if (!Array.isArray(product?.order_sources) || product.order_sources.length === 0) blockers.push('exact_order_sources_required');
       if (demandedOrderSources.length > 500) blockers.push('order_source_limit_requires_review');
       if (baseMatches.length > 1) blockers.push('duplicate_batch_id_requires_review');
-      if (existing && !isNativeMaterializedBatch(existing)) blockers.push('existing_batch_not_native_materialization_owned');
+      if (existing && !isCompatibleNativeDemandBatch(existing)) blockers.push('existing_batch_not_native_materialization_owned');
 
+      let supplementalDemandBatch = false;
       if (blockers.length === 0 && ownedProductBatches.length > 0) {
         if (lifecycleStartedBatches.length === 0 && mutableOwnedBatches.length === 1) {
           existing = mutableOwnedBatches[0];
@@ -1696,6 +1742,7 @@ function materializationDrafts(nativePlanning, existingBatches) {
         } else if (overages.length > 0) {
           blockers.push('materialized_demand_exceeds_current_paid_order_demand');
         } else if (lifecycleStartedBatches.length > 0 && remaining.length > 0) {
+          supplementalDemandBatch = true;
           writeOrderSources = remaining;
           writeRelatedOrders = uniqueStrings(remaining.map(source => source.order_id)).slice(0, 500);
           writePlannedUnits = remaining.reduce((sum, source) => sum + numberOrZero(source.quantity), 0);
@@ -1703,10 +1750,20 @@ function materializationDrafts(nativePlanning, existingBatches) {
           const supplementalMatches = batches.filter(batch => normalizeLower(batch?.batch_id) === normalizeLower(batchId));
           if (supplementalMatches.length > 1) blockers.push('duplicate_batch_id_requires_review');
           existing = supplementalMatches.length === 1 ? supplementalMatches[0] : null;
-          if (existing && !isNativeMaterializedBatch(existing)) blockers.push('existing_batch_not_native_materialization_owned');
+          if (existing && !isCompatibleNativeDemandBatch(existing)) blockers.push('existing_batch_not_native_materialization_owned');
         } else if (lifecycleStartedBatches.length === 0 && mutableOwnedBatches.length > 1) {
           blockers.push('multiple_mutable_native_batches_require_review');
         }
+      }
+
+      if (!supplementalDemandBatch && retainedEventSources.length > 0) {
+        writeOrderSources = mergeOrderSources([...retainedEventSources, ...demandedOrderSources]);
+        writeRelatedOrders = uniqueStrings([
+          ...(existing?.related_orders || []),
+          ...demandedRelatedOrders,
+        ]).slice(0, 500);
+        writePlannedUnits = retainedEventSources.reduce((sum, source) => sum + numberOrZero(source.quantity), 0) +
+          numberOrZero(product?.planned_units);
       }
 
       const existingStatus = normalizeLower(existing?.status);
@@ -1717,9 +1774,9 @@ function materializationDrafts(nativePlanning, existingBatches) {
       const mutableExisting = Boolean(existing) &&
         ['planned', 'ready_for_production'].includes(existingStatus) &&
         existing?.is_locked !== true &&
-        isNativeMaterializedBatch(existing);
+        isCompatibleNativeDemandBatch(existing);
       const demandFullyMaterialized = ownedProductBatches.length > 0 && remaining.length === 0 && overages.length === 0;
-      if (existing && isNativeMaterializedBatch(existing) && !mutableExisting && !unchanged && !demandFullyMaterialized) {
+      if (existing && isCompatibleNativeDemandBatch(existing) && !mutableExisting && !unchanged && !demandFullyMaterialized) {
         blockers.push(existing?.is_locked === true
           ? 'existing_batch_locked'
           : 'demand_changed_after_batch_start_requires_supplemental_batch');
@@ -1749,6 +1806,12 @@ function materializationDrafts(nativePlanning, existingBatches) {
           order_sources: writeOrderSources,
           related_orders: writeRelatedOrders,
           existing,
+          source_system: !supplementalDemandBatch && retainedEventSources.length > 0
+            ? 'customer_app_native_mixed_demand'
+            : 'customer_app_native',
+          native_owner_status: !supplementalDemandBatch && retainedEventSources.length > 0
+            ? 'native_owned_mixed_demand'
+            : 'native_owned_order_demand',
         },
       };
     });
@@ -1775,16 +1838,17 @@ function sameOrderSources(left, right) {
 
 async function createMaterializationCommandLog({ base44, user, requestId, draft, action, status, result }) {
   const now = new Date().toISOString();
+  const systemActor = user?.actor_type === 'system';
   return base44.asServiceRole.entities.CommandLog.create({
     command_type: MATERIALIZATION_COMMAND_TYPE,
-    command_source: 'customer_app_admin_production_planning',
+    command_source: systemActor ? 'sync_order_to_hub' : 'customer_app_admin_production_planning',
     status,
     target_entity: 'ProductionBatch',
     target_id: result?.production_batch_id || draft?.existing_production_batch_id || null,
     target_display_id: draft?.batch_id || null,
     actor_email: user?.email || 'admin',
     actor_role: user?.role || 'admin',
-    actor_type: 'admin',
+    actor_type: systemActor ? 'system' : 'admin',
     payload: {
       batch_id: draft?.batch_id || null,
       production_date: draft?.production_date || null,
@@ -1804,7 +1868,7 @@ async function createMaterializationCommandLog({ base44, user, requestId, draft,
     started_at: status === 'running' ? now : null,
     function_name: 'getAdminProductionPlanningSummary',
     completed_at: status === 'running' ? null : now,
-    notes: 'Admin-only native production demand materialization. No inventory, purchase order, customer order, fulfillment, notification, provider, or Hub mutation.',
+    notes: `${systemActor ? 'System-authorized paid-order' : 'Admin-only'} native production demand materialization. No inventory, purchase order, customer order, fulfillment, notification, provider, or Hub mutation.`,
   });
 }
 
@@ -1870,7 +1934,7 @@ async function executeBatchMaterialization({ base44, user, requestId, drafts }) 
       const unchanged = numberOrZero(existing.planned_units) === numberOrZero(draft.planned_units) &&
         sameOrderSources(existing.order_sources, draft._write.order_sources) &&
         sameStringSet(existing.related_orders, draft._write.related_orders);
-      if (!isNativeMaterializedBatch(existing)) {
+      if (!isCompatibleNativeDemandBatch(existing)) {
         const result = {
           ...safeMaterializationDraft(draft),
           existing_production_batch_id: existing.id,
@@ -1912,8 +1976,8 @@ async function executeBatchMaterialization({ base44, user, requestId, drafts }) 
           planned_units: draft.planned_units,
           order_sources: draft._write.order_sources,
           related_orders: draft._write.related_orders,
-          source_system: 'customer_app_native',
-          native_owner_status: 'native_owned_order_demand',
+          source_system: draft._write.source_system,
+          native_owner_status: draft._write.native_owner_status,
           audit_trail: [...auditTrail, {
             timestamp: now,
             action: 'native_demand_materialized',
@@ -1944,8 +2008,8 @@ async function executeBatchMaterialization({ base44, user, requestId, drafts }) 
         is_locked: false,
         order_sources: draft._write.order_sources,
         related_orders: draft._write.related_orders,
-        source_system: 'customer_app_native',
-        native_owner_status: 'native_owned_order_demand',
+        source_system: draft._write.source_system,
+        native_owner_status: draft._write.native_owner_status,
         notes: 'Created from native Customer App paid-order demand. Complete Batch Setup before Start.',
         audit_trail: [{
           timestamp: now,
@@ -2065,21 +2129,6 @@ export default async function handler(req: Request) {
   try {
     const base44 = createClientFromRequest(req);
 
-    let user = null;
-    try {
-      user = await base44.auth.me();
-    } catch {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (user.role !== 'admin') {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     const body = await readJsonBody(req);
     if (body === null) {
       return Response.json({ success: false, error: 'malformed_json' }, { status: 400 });
@@ -2087,6 +2136,30 @@ export default async function handler(req: Request) {
     const operation = normalizeLower(body.operation);
     if (operation && ![MATERIALIZATION_PREVIEW, MATERIALIZATION_EXECUTE].includes(operation)) {
       return Response.json({ success: false, error: 'unsupported_production_planning_operation' }, { status: 400 });
+    }
+    const internalMaterialization = isInternalProductionMaterializationRequest(req, body, operation);
+
+    let user = null;
+    try {
+      user = await base44.auth.me();
+    } catch {
+      // Service-to-service batch materialization is authorized separately below.
+    }
+
+    if (!user && !internalMaterialization) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (user) {
+      if (user.role !== 'admin') {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    } else {
+      user = {
+        email: 'syncOrderToHub@system',
+        role: 'service',
+        actor_type: 'system',
+      };
     }
     const productionComplianceReadModelRequested = normalizeText(body.read_model_mode).toUpperCase() === PRODUCTION_COMPLIANCE_READ_MODEL_MODE;
     const productionComplianceReadModelEnabled = readModelGateOpen();
@@ -2183,6 +2256,27 @@ export default async function handler(req: Request) {
             error: 'materialization_request_id_required',
             writes_performed: false,
           }, { status: 400 });
+        }
+
+        if (internalMaterialization) {
+          const expectedOrderNumber = normalizeLower(body.automation_order_number).replace(/^#/, '');
+          const orderIncluded = drafts.some(draft => (
+            Array.isArray(draft?.source_order_numbers) &&
+            draft.source_order_numbers.some(orderNumber => normalizeLower(orderNumber).replace(/^#/, '') === expectedOrderNumber)
+          ));
+          if (!orderIncluded) {
+            return Response.json({
+              success: false,
+              operation,
+              request_id: requestId,
+              error: 'automatic_order_demand_not_found',
+              blockers: ['automatic_order_demand_not_found'],
+              writes_performed: false,
+              notifications_sent: false,
+              provider_calls_performed: false,
+              hub_calls_performed: false,
+            }, { status: 409 });
+          }
         }
 
         const blockedDrafts = drafts.filter(draft => draft.blockers.length > 0);
