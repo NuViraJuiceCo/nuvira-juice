@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
+import getAdminProductionPlanningSummaryHandler from '../getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts';
 
+// Bundle revision: g115f-direct-production-materializer-composition-20260812.
 // Bundle revision: g115e-automatic-production-before-native-projection-20260812.
 // Bundle revision: g115d-automatic-production-authenticated-fetch-20260812.
 // Bundle revision: g115c-automatic-production-consistency-retry-20260812.
@@ -62,28 +64,28 @@ function isRetriableMaterializationPreflight(error) {
   return code === 'materialization_preflight_blocked';
 }
 
-async function invokeProductionMaterialization(base44, payload, secret) {
-  // functions.invoke accepts only (name, data); a third options argument is
-  // ignored by the Base44 SDK and therefore cannot forward the internal
-  // credential. The fetch transport is the supported authenticated path.
-  const response = await base44.asServiceRole.functions.fetch('/getAdminOperationsDashboardSummary', {
+async function invokeProductionMaterialization(req, payload, secret) {
+  // Compose the existing planning handler inside this invocation so automatic
+  // checkout processing and admin execution share the exact same code and data
+  // snapshot. This also avoids Base44's distinct /functions and /apps routes.
+  const headers = new Headers(req.headers);
+  headers.set('content-type', 'application/json');
+  headers.set('x-internal-secret', secret);
+  const response = await getAdminProductionPlanningSummaryHandler(new Request(req.url, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-internal-secret': secret,
-    },
+    headers,
     body: JSON.stringify(payload),
-  });
+  }));
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(result?.error || result?.error_code || `production_materialization_http_${response.status}`);
+    const error: any = new Error(result?.error || result?.error_code || `production_materialization_http_${response.status}`);
     error.response = { status: response.status, data: result };
     throw error;
   }
   return result;
 }
 
-async function materializePaidOrderProduction({ base44, order, eventType, source, requestId }) {
+async function materializePaidOrderProduction({ base44, req, order, eventType, source, requestId }) {
   const skippedReason = productionMaterializationSkipReason({ order, eventType, source });
   if (skippedReason) {
     return { success: true, skipped: true, reason: skippedReason, writes_performed: false };
@@ -121,7 +123,7 @@ async function materializePaidOrderProduction({ base44, order, eventType, source
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const result = await invokeProductionMaterialization(base44, invokePayload, secret);
+      const result = await invokeProductionMaterialization(req, invokePayload, secret);
       if (result?.success !== true || Number(result?.blocked_count || 0) > 0) {
         const errorCode = result?.error || 'automatic_production_materialization_blocked';
         await recordProductionMaterializationFailure(base44, order, errorCode);
@@ -759,6 +761,7 @@ Deno.serve(async (req) => {
       : 'customer_app_one_time';
     const productionBatchMaterialization = await materializePaidOrderProduction({
       base44,
+      req,
       order,
       eventType: nativeEventType,
       source,
@@ -1021,6 +1024,7 @@ Deno.serve(async (req) => {
     // mixed pre/post-write snapshot to the separate planning function.
     const productionBatchMaterialization = await materializePaidOrderProduction({
       base44,
+      req,
       order,
       eventType,
       source: 'customer_app_one_time',
