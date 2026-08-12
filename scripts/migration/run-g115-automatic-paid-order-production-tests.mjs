@@ -92,7 +92,15 @@ const base44 = {
     functions: {
       invoke: async (...args) => {
         invokeCall = args;
-        return { data: { success: true, created_count: 2, updated_count: 2, deduped_count: 0, blocked_count: 0, writes_performed: true } };
+        return { data: {
+          success: true,
+          created_count: 2,
+          updated_count: 2,
+          deduped_count: 0,
+          blocked_count: 0,
+          writes_performed: true,
+          results: [{ source_order_numbers: ['NV-G115'] }],
+        } };
       },
     },
     entities: {
@@ -156,13 +164,45 @@ assert.equal(missingDate.success, false);
 assert.equal(missingDate.error_code, 'automatic_production_date_missing');
 assert.equal(failureLogs, 1);
 
+const missingCoverageBase44 = {
+  asServiceRole: {
+    functions: {
+      invoke: async () => ({ data: {
+        success: true,
+        created_count: 0,
+        updated_count: 0,
+        deduped_count: 1,
+        blocked_count: 0,
+        writes_performed: false,
+        results: [{ source_order_numbers: ['NV-SOMEONE-ELSE'] }],
+      } }),
+    },
+    entities: {
+      OrderSyncLog: { create: async () => { failureLogs += 1; } },
+    },
+  },
+};
+const missingCoverage = await sync.materializePaidOrderProduction({
+  base44: missingCoverageBase44,
+  order: paidOrder,
+  eventType: 'order.created',
+  source: 'customer_app_one_time',
+  requestId: 'g115-missing-coverage',
+});
+assert.equal(missingCoverage.success, false);
+assert.equal(missingCoverage.error_code, 'automatic_order_demand_not_found');
+assert.equal(missingCoverage.writes_performed, false);
+assert.equal(failureLogs, 2);
+
 const planningSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts'), 'utf8');
 const gatewaySource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/entry.ts'), 'utf8');
 const syncSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/entry.ts'), 'utf8');
-assert.match(planningSource, /automatic_order_demand_not_found/);
+assert.doesNotMatch(planningSource, /automatic_order_demand_not_found/);
 assert.match(planningSource, /startsWith\('auto_native_production:'\)/);
 assert.match(gatewaySource, /g115-automatic-paid-order-production-batches/);
 assert.match(syncSource, /production_batch_materialization: productionBatchMaterialization/);
+assert.match(syncSource, /automatic_order_demand_not_found/);
+assert.match(syncSource, /error\?\.response\?\.data\?\.error/);
 assert.match(syncSource, /production_materialization_failed/);
 assert.match(syncSource, /productionBatchMaterialization\?\.success === false \? 503/);
 assert.match(syncSource, /retry_eligible: true/);
@@ -171,7 +211,7 @@ assert.match(syncSource, /x-internal-secret/);
 console.log(JSON.stringify({
   ok: true,
   suite: 'g115-automatic-paid-order-production',
-  cases: 22,
+  cases: 28,
   live_writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));

@@ -2258,27 +2258,6 @@ export default async function handler(req: Request) {
           }, { status: 400 });
         }
 
-        if (internalMaterialization) {
-          const expectedOrderNumber = normalizeLower(body.automation_order_number).replace(/^#/, '');
-          const orderIncluded = drafts.some(draft => (
-            Array.isArray(draft?.source_order_numbers) &&
-            draft.source_order_numbers.some(orderNumber => normalizeLower(orderNumber).replace(/^#/, '') === expectedOrderNumber)
-          ));
-          if (!orderIncluded) {
-            return Response.json({
-              success: false,
-              operation,
-              request_id: requestId,
-              error: 'automatic_order_demand_not_found',
-              blockers: ['automatic_order_demand_not_found'],
-              writes_performed: false,
-              notifications_sent: false,
-              provider_calls_performed: false,
-              hub_calls_performed: false,
-            }, { status: 409 });
-          }
-        }
-
         const blockedDrafts = drafts.filter(draft => draft.blockers.length > 0);
         if (blockedDrafts.length > 0) {
           return Response.json({

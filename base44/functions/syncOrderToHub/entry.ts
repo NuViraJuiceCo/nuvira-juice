@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
 
+// Bundle revision: g115b-automatic-order-result-coverage-20260812.
 // Bundle revision: g115-automatic-paid-order-production-batches-20260812.
 
 function getHubApiUrl() {
@@ -91,6 +92,21 @@ async function materializePaidOrderProduction({ base44, order, eventType, source
         writes_performed: result?.writes_performed === true,
       };
     }
+    const expectedOrderNumber = orderNumber.toLowerCase();
+    const orderIncluded = Array.isArray(result?.results) && result.results.some(row => (
+      Array.isArray(row?.source_order_numbers) &&
+      row.source_order_numbers.some(value => String(value || '').replace(/^#/, '').trim().toLowerCase() === expectedOrderNumber)
+    ));
+    if (!orderIncluded) {
+      const errorCode = 'automatic_order_demand_not_found';
+      await recordProductionMaterializationFailure(base44, order, errorCode);
+      return {
+        success: false,
+        error_code: errorCode,
+        blocked_count: 0,
+        writes_performed: result?.writes_performed === true,
+      };
+    }
     return {
       success: true,
       skipped: false,
@@ -101,7 +117,8 @@ async function materializePaidOrderProduction({ base44, order, eventType, source
       writes_performed: result?.writes_performed === true,
     };
   } catch (error) {
-    const errorCode = `automatic_production_materialization_invoke_failed:${error?.message || 'unknown'}`;
+    const nestedCode = error?.response?.data?.error || error?.response?.data?.error_code || error?.message || 'unknown';
+    const errorCode = `automatic_production_materialization_invoke_failed:${String(nestedCode).slice(0, 160)}`;
     await recordProductionMaterializationFailure(base44, order, errorCode);
     return { success: false, error_code: errorCode, writes_performed: false };
   }
