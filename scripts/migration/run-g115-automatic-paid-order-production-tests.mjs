@@ -43,7 +43,7 @@ async function loadFunctions(relativePath, exportNames) {
     URL,
     URLSearchParams,
     fetch: async () => { throw new Error('Unexpected network request'); },
-    getAdminProductionPlanningSummaryHandler: (...args) => productionPlanningHandler(...args),
+    productionMaterializationHandler: (...args) => productionPlanningHandler(...args),
     createClientFromRequest: req => req.__base44,
     buildProductionComplianceLifecycleReadModel: () => ({}),
     PRODUCTION_COMPLIANCE_READ_MODEL_VERSION: 'test',
@@ -60,7 +60,6 @@ async function loadFunctions(relativePath, exportNames) {
 const sync = await loadFunctions('base44/functions/syncOrderToHub/entry.ts', [
   'productionMaterializationSkipReason',
   'materializePaidOrderProduction',
-  'signProductionMaterializationPayload',
 ]);
 const planning = await loadFunctions(
   'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts',
@@ -95,21 +94,8 @@ assert.equal(await planning.isInternalProductionMaterializationRequest(
 
 let invokeCall = null;
 let failureLogs = 0;
-async function invokePlanningGateway(name, payload) {
-  invokeCall = { name, payload };
-  const response = await productionPlanningHandler(payload);
-  if (!(response instanceof Response)) return response;
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(data?.error || data?.error_code || `http_${response.status}`);
-    error.response = { status: response.status, data };
-    throw error;
-  }
-  return { data };
-}
 const base44 = {
   asServiceRole: {
-    functions: { invoke: invokePlanningGateway },
     entities: {
       OrderSyncLog: { create: async () => { failureLogs += 1; } },
     },
@@ -127,7 +113,8 @@ const materializationRequest = new Request('https://example.test/syncOrderToHub'
   headers: { 'x-base44-test-context': 'preserved' },
   body: '{}',
 });
-productionPlanningHandler = async () => {
+productionPlanningHandler = async request => {
+  invokeCall = request;
   return new Response(JSON.stringify({
     success: true,
     created_count: 2,
@@ -150,31 +137,57 @@ assert.equal(result.success, true);
 assert.equal(result.created_count, 2);
 assert.equal(result.updated_count, 2);
 assert.equal(failureLogs, 0);
-assert.equal(invokeCall.name, 'getAdminOperationsDashboardSummary');
-const invokedBody = invokeCall.payload;
-assert.equal(invokedBody.gateway_action, 'getAdminProductionPlanningSummary');
-assert.equal(invokedBody.payload.automation_source, internalBody.automation_source);
-assert.equal(invokedBody.payload.automation_order_number, internalBody.automation_order_number);
-assert.equal(invokedBody.payload.automation_timestamp.length, 13);
-assert.match(invokedBody.payload.automation_signature, /^[a-f0-9]{64}$/);
+assert.equal(invokeCall.method, 'POST');
+assert.equal(invokeCall.headers.get('x-internal-secret'), 'synthetic-internal-secret');
+assert.equal(invokeCall.headers.get('x-base44-test-context'), 'preserved');
+const invokedBody = await invokeCall.json();
+assert.equal(JSON.stringify(invokedBody), JSON.stringify(internalBody));
+
+function signatureMessage(payload) {
+  return [
+    'g115g-production-materialization',
+    payload?.operation,
+    payload?.preset,
+    payload?.date_from,
+    payload?.date_to,
+    payload?.confirmation,
+    payload?.request_id,
+    payload?.automation_source,
+    payload?.automation_order_number,
+    payload?.automation_timestamp,
+  ].map(value => String(value || '')).join('\n');
+}
+async function signPayload(payload) {
+  const key = await webcrypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode('synthetic-internal-secret'),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await webcrypto.subtle.sign('HMAC', key, new TextEncoder().encode(signatureMessage(payload)));
+  return Array.from(new Uint8Array(signature)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+const signedPayload = {
+  ...internalBody,
+  automation_timestamp: String(Date.now()),
+};
+signedPayload.automation_signature = await signPayload(signedPayload);
 assert.equal(await planning.isInternalProductionMaterializationRequest(
   new Request('https://example.test', { headers: { 'x-internal-secret': 'wrong-secret' } }),
-  invokedBody.payload,
-  invokedBody.payload.operation,
-), true, 'A current signed gateway payload must authorize without forwarding the raw secret.');
+  signedPayload,
+  signedPayload.operation,
+), true, 'The compatibility gateway accepts a current valid signature.');
 assert.equal(await planning.isInternalProductionMaterializationRequest(
   new Request('https://example.test', { headers: { 'x-internal-secret': 'wrong-secret' } }),
-  { ...invokedBody.payload, automation_order_number: 'NV-TAMPERED' },
-  invokedBody.payload.operation,
-), false, 'The signature must bind the triggering order number.');
+  { ...signedPayload, automation_order_number: 'NV-TAMPERED' },
+  signedPayload.operation,
+), false, 'The compatibility signature binds the triggering order number.');
 const expiredPayload = {
   ...internalBody,
   automation_timestamp: String(Date.now() - 6 * 60 * 1000),
 };
-expiredPayload.automation_signature = await sync.signProductionMaterializationPayload(
-  expiredPayload,
-  'synthetic-internal-secret',
-);
+expiredPayload.automation_signature = await signPayload(expiredPayload);
 assert.equal(await planning.isInternalProductionMaterializationRequest(
   new Request('https://example.test', { headers: { 'x-internal-secret': 'wrong-secret' } }),
   expiredPayload,
@@ -218,7 +231,6 @@ assert.equal(failureLogs, 1);
 
 const missingCoverageBase44 = {
   asServiceRole: {
-    functions: { invoke: invokePlanningGateway },
     entities: {
       OrderSyncLog: { create: async () => { failureLogs += 1; } },
     },
@@ -249,7 +261,6 @@ assert.equal(failureLogs, 2);
 let retryInvokeCount = 0;
 const transientPreflightBase44 = {
   asServiceRole: {
-    functions: { invoke: invokePlanningGateway },
     entities: {
       OrderSyncLog: { create: async () => { failureLogs += 1; } },
     },
@@ -290,7 +301,6 @@ assert.equal(failureLogs, 2, 'A recovered consistency conflict must not write a 
 let persistentInvokeCount = 0;
 const persistentPreflightBase44 = {
   asServiceRole: {
-    functions: { invoke: invokePlanningGateway },
     entities: {
       OrderSyncLog: { create: async () => { failureLogs += 1; } },
     },
@@ -319,6 +329,9 @@ assert.equal(persistentInvokeCount, 3);
 assert.equal(failureLogs, 3, 'A persistent conflict remains retry eligible and auditable.');
 
 const planningSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts'), 'utf8');
+const bundledPlanningSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/productionMaterializer/entry.ts'), 'utf8');
+const planningReadModelSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/productionComplianceReadModel.js'), 'utf8');
+const bundledPlanningReadModelSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/productionMaterializer/productionComplianceReadModel.js'), 'utf8');
 const gatewaySource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/entry.ts'), 'utf8');
 const syncSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/entry.ts'), 'utf8');
 const materializationSource = syncSource.slice(0, syncSource.indexOf('function isNativeOrderOpsEnabled'));
@@ -342,17 +355,20 @@ assert.match(syncSource, /g115d-automatic-production-authenticated-fetch/);
 assert.match(syncSource, /g115e-automatic-production-before-native-projection/);
 assert.match(syncSource, /g115f-direct-production-materializer-composition/);
 assert.match(syncSource, /g115g-bundle-safe-signed-production-materializer/);
+assert.match(syncSource, /g115h-local-production-materializer/);
 assert.match(syncSource, /isRetriableMaterializationPreflight/);
-assert.match(materializationSource, /signProductionMaterializationPayload/);
-assert.match(materializationSource, /asServiceRole\.functions\.invoke\('getAdminOperationsDashboardSummary'/);
-assert.doesNotMatch(materializationInvokeSource, /x-internal-secret/);
+assert.match(syncSource, /\.\/productionMaterializer\/entry\.ts/);
+assert.match(materializationInvokeSource, /productionMaterializationHandler\(new Request/);
+assert.doesNotMatch(materializationInvokeSource, /asServiceRole\.functions\.(fetch|invoke)/);
+assert.equal(bundledPlanningSource, planningSource, 'Bundled automatic materializer must exactly match the canonical admin handler.');
+assert.equal(bundledPlanningReadModelSource, planningReadModelSource, 'Bundled materializer read model must exactly match the canonical admin read model.');
 assert.ok(nativeOnlySource.indexOf('materializePaidOrderProduction') < nativeOnlySource.indexOf('maybeRunNativeOrderOps'));
 assert.ok(primaryOperationalSource.indexOf('materializePaidOrderProduction') < primaryOperationalSource.indexOf('maybeRunNativeOrderOps'));
 
 console.log(JSON.stringify({
   ok: true,
   suite: 'g115-automatic-paid-order-production',
-  cases: 60,
+  cases: 64,
   live_writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));
