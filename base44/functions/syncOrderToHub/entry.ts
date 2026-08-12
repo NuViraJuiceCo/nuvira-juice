@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
 
+// Bundle revision: g115e-automatic-production-before-native-projection-20260812.
 // Bundle revision: g115d-automatic-production-authenticated-fetch-20260812.
 // Bundle revision: g115c-automatic-production-consistency-retry-20260812.
 // Bundle revision: g115b-automatic-order-result-coverage-20260812.
@@ -117,7 +118,7 @@ async function materializePaidOrderProduction({ base44, order, eventType, source
     },
   };
 
-  const maxAttempts = 2;
+  const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       const result = await invokeProductionMaterialization(base44, invokePayload, secret);
@@ -161,7 +162,7 @@ async function materializePaidOrderProduction({ base44, order, eventType, source
         // Native order/task projection and the planning read model are separate
         // writes. Give the second isolated read a brief chance to observe the
         // just-committed order before treating a preflight conflict as real.
-        await new Promise(resolve => setTimeout(resolve, 750));
+        await new Promise(resolve => setTimeout(resolve, 750 * attempt));
         continue;
       }
       const nested = materializationInvokeError(error);
@@ -753,23 +754,21 @@ Deno.serve(async (req) => {
 
   if (body?.native_only === true) {
     const nativeEventType = body?.event_type || body?.event || 'order.created';
+    const source = ['customer_app_one_time', 'website_one_time', 'shopify_pos'].includes(body?.native_source)
+      ? body.native_source
+      : 'customer_app_one_time';
+    const productionBatchMaterialization = await materializePaidOrderProduction({
+      base44,
+      order,
+      eventType: nativeEventType,
+      source,
+      requestId: body?.request_id || order?.order_number || order?.id,
+    });
     const nativeResult = await maybeRunNativeOrderOps({
       req,
       payload: { event: nativeEventType, order },
       body: { ...body, native_order: body?.native_order || order },
     });
-    const source = ['customer_app_one_time', 'website_one_time', 'shopify_pos'].includes(body?.native_source)
-      ? body.native_source
-      : 'customer_app_one_time';
-    const productionBatchMaterialization = nativeResult?.success === true
-      ? await materializePaidOrderProduction({
-          base44,
-          order,
-          eventType: nativeEventType,
-          source,
-          requestId: body?.request_id || order?.order_number || order?.id,
-        })
-      : null;
     const success = nativeResult?.success === true && productionBatchMaterialization?.success !== false;
     return Response.json({
       success,
@@ -1017,6 +1016,16 @@ Deno.serve(async (req) => {
     // Keep the deployed function name and caller contract, but make the
     // Customer App entities the operational writer. The external Hub bridge
     // is retained only as a default-off rollback path for older clients.
+    // Materialize from the committed paid-order read model before refreshing
+    // its native projections; otherwise that refresh can briefly expose a
+    // mixed pre/post-write snapshot to the separate planning function.
+    const productionBatchMaterialization = await materializePaidOrderProduction({
+      base44,
+      order,
+      eventType,
+      source: 'customer_app_one_time',
+      requestId: body?.request_id || `syncOrderToHub:${order?.id || order?.order_number || Date.now()}`,
+    });
     const nativeOrderOps = await maybeRunNativeOrderOps({ req, payload, body });
     if (nativeOrderOps?.success !== true) {
       if (!isLegacyHubOrderBridgeEnabled()) {
@@ -1033,15 +1042,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    const productionBatchMaterialization = nativeOrderOps?.success === true
-      ? await materializePaidOrderProduction({
-          base44,
-          order,
-          eventType,
-          source: 'customer_app_one_time',
-          requestId: body?.request_id || `syncOrderToHub:${order?.id || order?.order_number || Date.now()}`,
-        })
-      : null;
     if (productionBatchMaterialization?.success === false) {
       return Response.json({
         success: false,

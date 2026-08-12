@@ -264,15 +264,17 @@ const persistentlyBlocked = await sync.materializePaidOrderProduction({
 });
 assert.equal(persistentlyBlocked.success, false);
 assert.equal(persistentlyBlocked.error_code, 'automatic_production_materialization_invoke_failed:materialization_preflight_blocked');
-assert.equal(persistentlyBlocked.consistency_retry_count, 1);
+assert.equal(persistentlyBlocked.consistency_retry_count, 2);
 assert.equal(JSON.stringify(persistentlyBlocked.blockers), JSON.stringify(['multiple_mutable_native_batches_require_review']));
-assert.equal(persistentInvokeCount, 2);
+assert.equal(persistentInvokeCount, 3);
 assert.equal(failureLogs, 3, 'A persistent conflict remains retry eligible and auditable.');
 
 const planningSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts'), 'utf8');
 const gatewaySource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/entry.ts'), 'utf8');
 const syncSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/entry.ts'), 'utf8');
 const materializationSource = syncSource.slice(0, syncSource.indexOf('function isNativeOrderOpsEnabled'));
+const nativeOnlySource = syncSource.slice(syncSource.indexOf('if (body?.native_only === true)'), syncSource.indexOf('const hubApiUrl'));
+const primaryOperationalSource = syncSource.slice(syncSource.indexOf('try {\n    // Keep the deployed function name'), syncSource.indexOf('if (!isLegacyHubOrderBridgeEnabled())', syncSource.indexOf('try {\n    // Keep the deployed function name')));
 assert.doesNotMatch(planningSource, /automatic_order_demand_not_found/);
 assert.match(planningSource, /startsWith\('auto_native_production:'\)/);
 assert.match(gatewaySource, /g115-automatic-paid-order-production-batches/);
@@ -285,14 +287,17 @@ assert.match(syncSource, /retry_eligible: true/);
 assert.match(syncSource, /x-internal-secret/);
 assert.match(syncSource, /g115c-automatic-production-consistency-retry/);
 assert.match(syncSource, /g115d-automatic-production-authenticated-fetch/);
+assert.match(syncSource, /g115e-automatic-production-before-native-projection/);
 assert.match(syncSource, /isRetriableMaterializationPreflight/);
 assert.match(materializationSource, /asServiceRole\.functions\.fetch\('\/getAdminOperationsDashboardSummary'/);
 assert.doesNotMatch(materializationSource, /asServiceRole\.functions\.invoke\('getAdminOperationsDashboardSummary'/);
+assert.ok(nativeOnlySource.indexOf('materializePaidOrderProduction') < nativeOnlySource.indexOf('maybeRunNativeOrderOps'));
+assert.ok(primaryOperationalSource.indexOf('materializePaidOrderProduction') < primaryOperationalSource.indexOf('maybeRunNativeOrderOps'));
 
 console.log(JSON.stringify({
   ok: true,
   suite: 'g115-automatic-paid-order-production',
-  cases: 44,
+  cases: 50,
   live_writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));
