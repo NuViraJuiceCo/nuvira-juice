@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g114a-internal-recording-order-read-model-20260812.
 // Bundle revision: g110d-existing-shopify-bag-inventory-activation-20260810.
 // Bundle revision: g105-public-event-publishing-20260810.
 // Bundle revision: g98-native-compliance-document-management-20260808.

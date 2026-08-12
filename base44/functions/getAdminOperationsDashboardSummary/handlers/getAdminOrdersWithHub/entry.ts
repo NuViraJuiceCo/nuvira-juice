@@ -1477,6 +1477,9 @@ export default async function handler(req: Request) {
             customer_email: order.customer_email,
             customer_name: order.customer_name || '',
             status: order.status,
+            payment_status: order.payment_status || order.financial_status || null,
+            financial_status: order.financial_status || order.payment_status || null,
+            payment_captured: order.payment_captured === true,
             total: order.total ? order.total / tasksForOrder.length : 0,
             subtotal: order.subtotal === null || order.subtotal === undefined ? null : order.subtotal / tasksForOrder.length,
             delivery_fee: order.delivery_fee ?? null,
@@ -1495,6 +1498,12 @@ export default async function handler(req: Request) {
             created_date: order.created_date || null,
             items: task.items || order.items || [],
             notes: order.notes || '',
+            is_test_order: order.is_test_order === true,
+            do_not_recover: order.do_not_recover === true,
+            is_abandoned_checkout: order.is_abandoned_checkout === true,
+            customer_app_order_id: order.id,
+            has_customer_app_order: true,
+            has_native_task: true,
             is_local_fulfillment_expansion: true,
           });
         }
