@@ -38,6 +38,7 @@ const harnesses = [
   'scripts/migration/run-g69-production-prestart-modal-tests.mjs',
   'scripts/migration/run-g70-route-delivery-integrity-tests.mjs',
   'scripts/migration/run-g72-legacy-event-runtime-retirement-tests.mjs',
+  'scripts/migration/run-g113-legacy-native-order-status-cleanup-tests.mjs',
   'scripts/migration/run-g73-operations-trust-and-navigation-tests.mjs',
   'scripts/migration/run-g74-supported-function-contract-tests.mjs',
   'scripts/migration/run-g75-live-function-routing-integrity-tests.mjs',
