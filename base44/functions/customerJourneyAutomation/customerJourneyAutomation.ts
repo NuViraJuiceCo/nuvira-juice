@@ -30,6 +30,30 @@ const DEFAULT_REORDER_DAYS = 21;
 const DEFAULT_WINBACK_DAYS = 60;
 const DEFAULT_SUNSET_DAYS = 180;
 const DEFAULT_SUNSET_GRACE_DAYS = 14;
+const DEFAULT_PRODUCT_IMAGE = 'https://www.nuvirajuice.com/images/brand/nuvira-bottles-cooler-wide.jpg';
+const PRODUCT_CONTENT = Object.freeze({
+  aura: Object.freeze({
+    title: 'AURA',
+    description: 'Carrot, orange, pineapple, cucumber, ginger, sea salt, and coconut water.',
+    image_url: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/752475913_DSC02432-Edit-2.jpg',
+  }),
+  oasis: Object.freeze({
+    title: 'OASIS',
+    description: 'Watermelon, pineapple, orange, lemon, ginger, sea salt, black pepper, and coconut water.',
+    image_url: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/2d917cf5d_DSC02429-Edit-2.jpg',
+  }),
+  're-nu': Object.freeze({
+    title: 'RE-NU',
+    description: 'Cucumber, apple, celery, and kale.',
+    image_url: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/d56f2f197_DSC02435-Edit-2.jpg',
+  }),
+  trio: Object.freeze({
+    title: 'The NuVira Trio',
+    description: 'AURA, OASIS, and RE-NU together in one three-bottle bundle.',
+    image_url: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/45bc55f6f_DSC02489-Edit.jpg',
+  }),
+});
+const CURRENT_PROGRAM_SUMMARY = 'Hydration: 2 days/$104 or 3 days/$144 · Radiance: 2 days/$104 or 3 days/$144 · Reset: 3 days/$144';
 
 function marketingCadenceRules() {
   return {
@@ -91,20 +115,20 @@ const EVENT_PROVIDER_NAMES: Record<string, string> = {
 };
 
 const PROVIDER_REQUIRED_FIELDS: Record<string, string[]> = {
-  cart_abandoned: ['customer_name', 'cart_summary', 'item_count', 'cart_total', 'recovery_url', 'mailing_address'],
+  cart_abandoned: ['customer_name', 'cart_summary', 'item_count', 'cart_total', 'cart_image_url', 'recovery_url', 'mailing_address'],
   purchase_completed: ['customer_name', 'order_number', 'mailing_address'],
   order_delivered: ['customer_name', 'order_number', 'review_url', 'shop_url', 'mailing_address'],
-  loyalty_joined: ['customer_name', 'points', 'discount_code', 'review_url', 'rewards_url', 'mailing_address'],
-  reorder_due: ['customer_name', 'favorite_product', 'last_order_date', 'shop_url', 'mailing_address'],
+  loyalty_joined: ['customer_name', 'points', 'points_rate', 'discount_code', 'review_url', 'rewards_url', 'mailing_address'],
+  reorder_due: ['customer_name', 'favorite_product', 'favorite_product_description', 'favorite_product_image_url', 'last_order_date', 'shop_url', 'mailing_address'],
   loyalty_reward_unlocked: ['customer_name', 'points_balance', 'reward_title', 'points_required', 'rewards_url', 'mailing_address'],
   subscription_recommended: ['customer_name', 'favorite_product', 'order_count', 'subscribe_url', 'mailing_address'],
-  customer_winback_due: ['customer_name', 'favorite_product', 'last_order_date', 'shop_url', 'mailing_address'],
+  customer_winback_due: ['customer_name', 'favorite_product', 'favorite_product_description', 'favorite_product_image_url', 'last_order_date', 'program_summary', 'programs_url', 'shop_url', 'mailing_address'],
   marketing_sunset_due: ['customer_name', 'preferences_url', 'shop_url', 'mailing_address'],
 };
 
 const PROVIDER_NUMBER_FIELDS: Record<string, string[]> = {
   cart_abandoned: ['item_count', 'cart_total'],
-  loyalty_joined: ['points'],
+  loyalty_joined: ['points', 'points_rate'],
   loyalty_reward_unlocked: ['points_balance', 'points_required'],
   subscription_recommended: ['order_count'],
 };
@@ -322,6 +346,43 @@ function cartTotal(items: Array<{ quantity: number; price: number }>): number {
 function cartSummary(items: Array<{ title: string; quantity: number }>): string {
   if (!items.length) return 'Your NuVira cart';
   return items.slice(0, 4).map((item) => `${item.quantity}x ${item.title}`).join(', ');
+}
+
+function normalizedProductKey(item: { product_id?: string; title?: string } | null | undefined): string {
+  const value = normalizeSingleLine(item?.product_id || item?.title, 160).toLowerCase();
+  if (/\b(aura|radiance)\b/.test(value)) return 'aura';
+  if (/\b(oasis|hydration)\b/.test(value)) return 'oasis';
+  if (/\b(re[- ]?nu|reset)\b/.test(value)) return 're-nu';
+  if (/\b(trio|bundle)\b/.test(value)) return 'trio';
+  return '';
+}
+
+function productContent(item: { product_id?: string; title?: string } | null | undefined) {
+  return PRODUCT_CONTENT[normalizedProductKey(item) as keyof typeof PRODUCT_CONTENT] || null;
+}
+
+function cartImageUrl(items: Array<{ product_id: string; title: string }>): string {
+  if (!items.length) return DEFAULT_PRODUCT_IMAGE;
+  if (items.length > 1) return PRODUCT_CONTENT.trio.image_url;
+  return productContent(items[0])?.image_url || DEFAULT_PRODUCT_IMAGE;
+}
+
+function favoriteProductContext(orders: any[]) {
+  const counts = new Map<string, { item: any; quantity: number }>();
+  for (const order of orders) {
+    for (const item of safeItems(order?.items)) {
+      const key = normalizedProductKey(item) || item.title.toLowerCase();
+      const prior = counts.get(key);
+      counts.set(key, { item, quantity: (prior?.quantity || 0) + item.quantity });
+    }
+  }
+  const favorite = [...counts.values()].sort((a, b) => b.quantity - a.quantity)[0]?.item || null;
+  const content = productContent(favorite);
+  return {
+    title: content?.title || normalizeSingleLine(favorite?.title, 120) || 'your favorite NuVira juices',
+    description: content?.description || 'Cold-pressed in small batches and prepared around current availability.',
+    image_url: content?.image_url || DEFAULT_PRODUCT_IMAGE,
+  };
 }
 
 function customerName(profile: any, order?: any): string {
@@ -843,16 +904,6 @@ async function processOrderChange(base44: any, body: Record<string, any>) {
   });
 }
 
-function favoriteProduct(orders: any[]): string {
-  const counts = new Map<string, number>();
-  for (const order of orders) {
-    for (const item of safeItems(order?.items)) {
-      counts.set(item.title, (counts.get(item.title) || 0) + item.quantity);
-    }
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 'your favorite NuVira juices';
-}
-
 async function emitMilestone(base44: any, eventName: string, eventId: string, email: string, eventAt: Date, payload: Record<string, any>, extra: Record<string, any> = {}) {
   return await createAndForwardEvent(base44, {
     event_id: eventId,
@@ -1011,6 +1062,7 @@ async function evaluateJourneys(base44: any) {
     if (now.getTime() - lastActivity.getTime() < cartIdleMinutes * 60 * 1000) continue;
     const eventId = `abandoned:${state.state_key}:${state.cart_fingerprint}`;
     const profile = await profileFor(base44, state.customer_email);
+    const abandonedItems = safeItems(state.cart_items);
     const result = await createAndForwardEvent(base44, {
       event_id: eventId,
       event_name: 'cart_abandoned',
@@ -1025,9 +1077,10 @@ async function evaluateJourneys(base44: any) {
       cart_total: state.cart_total,
       payload: {
         CUSTOMER_NAME: customerName(profile),
-        CART_SUMMARY: cartSummary(safeItems(state.cart_items)),
+        CART_SUMMARY: cartSummary(abandonedItems),
         ITEM_COUNT: state.item_count,
         CART_TOTAL: Number(finiteNumber(state.cart_total, 0).toFixed(2)),
+        CART_IMAGE_URL: cartImageUrl(abandonedItems),
         RECOVERY_URL: `${APP_URL}/cart`,
         MAILING_ADDRESS,
       },
@@ -1116,6 +1169,7 @@ async function evaluateJourneys(base44: any) {
       await emit(() => emitMilestone(base44, 'loyalty_joined', `loyalty_joined:${member.id}`, email, joinedAt, {
         CUSTOMER_NAME: customerName(profile),
         POINTS: finiteNumber(pointsRecord?.total_points, 0),
+        POINTS_RATE: 10,
         DISCOUNT_CODE: 'NuViraSummer',
         REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000)
           || DEFAULT_GOOGLE_REVIEW_URL,
@@ -1153,9 +1207,12 @@ async function evaluateJourneys(base44: any) {
       const lastAt = orderDate(lastOrder);
       if (!lastAt) continue;
       const profile = await profileFor(base44, email);
+      const favorite = favoriteProductContext(customerOrders);
       const common = {
         CUSTOMER_NAME: customerName(profile, lastOrder),
-        FAVORITE_PRODUCT: favoriteProduct(customerOrders),
+        FAVORITE_PRODUCT: favorite.title,
+        FAVORITE_PRODUCT_DESCRIPTION: favorite.description,
+        FAVORITE_PRODUCT_IMAGE_URL: favorite.image_url,
         LAST_ORDER_DATE: lastAt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' }),
         SHOP_URL: `${APP_URL}/shop`,
       };
@@ -1178,7 +1235,11 @@ async function evaluateJourneys(base44: any) {
 
       const winbackAt = addDays(lastAt, winbackDays);
       if (!activeSubscriptionEmails.has(email) && winbackAt.getTime() <= now.getTime() && eventAfterLaunch(winbackAt)) {
-        await emit(() => emitMilestone(base44, 'customer_winback_due', `winback:${lastOrder.id}:${winbackDays}`, email, winbackAt, common, { order_id: lastOrder.id, order_number: lastOrder.order_number }));
+        await emit(() => emitMilestone(base44, 'customer_winback_due', `winback:${lastOrder.id}:${winbackDays}`, email, winbackAt, {
+          ...common,
+          PROGRAM_SUMMARY: CURRENT_PROGRAM_SUMMARY,
+          PROGRAMS_URL: `${APP_URL}/programs`,
+        }, { order_id: lastOrder.id, order_number: lastOrder.order_number }));
       }
       if (results.length >= maxEvents) break;
 
@@ -1320,14 +1381,14 @@ async function previewRewardsCampaign(base44: any) {
 
 function journeyProofPayloads(profile: any): Record<string, Record<string, any>> {
   return {
-    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, DISCOUNT_CODE: 'NuViraSummer', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, REWARDS_URL: protectedCustomerUrl('/rewards'), MAILING_ADDRESS },
-    cart_abandoned: { CUSTOMER_NAME: customerName(profile), CART_SUMMARY: '1x NuVira juice', ITEM_COUNT: 1, CART_TOTAL: 12, RECOVERY_URL: `${APP_URL}/cart`, MAILING_ADDRESS },
+    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, POINTS_RATE: 10, DISCOUNT_CODE: 'NuViraSummer', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, REWARDS_URL: protectedCustomerUrl('/rewards'), MAILING_ADDRESS },
+    cart_abandoned: { CUSTOMER_NAME: customerName(profile), CART_SUMMARY: '1x OASIS', ITEM_COUNT: 1, CART_TOTAL: 13, CART_IMAGE_URL: PRODUCT_CONTENT.oasis.image_url, RECOVERY_URL: `${APP_URL}/cart`, MAILING_ADDRESS },
     order_delivered: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     purchase_completed: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', MAILING_ADDRESS },
-    reorder_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', LAST_ORDER_DATE: 'July 14, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
+    reorder_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'OASIS', FAVORITE_PRODUCT_DESCRIPTION: PRODUCT_CONTENT.oasis.description, FAVORITE_PRODUCT_IMAGE_URL: PRODUCT_CONTENT.oasis.image_url, LAST_ORDER_DATE: 'July 14, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     loyalty_reward_unlocked: { CUSTOMER_NAME: customerName(profile), POINTS_BALANCE: 500, REWARD_TITLE: 'Free wellness shot', POINTS_REQUIRED: 500, REWARDS_URL: protectedCustomerUrl('/rewards'), MAILING_ADDRESS },
     subscription_recommended: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', ORDER_COUNT: 2, SUBSCRIBE_URL: `${APP_URL}/subscribe`, MAILING_ADDRESS },
-    customer_winback_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', LAST_ORDER_DATE: 'June 4, 2026', SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
+    customer_winback_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'OASIS', FAVORITE_PRODUCT_DESCRIPTION: PRODUCT_CONTENT.oasis.description, FAVORITE_PRODUCT_IMAGE_URL: PRODUCT_CONTENT.oasis.image_url, LAST_ORDER_DATE: 'June 4, 2026', PROGRAM_SUMMARY: CURRENT_PROGRAM_SUMMARY, PROGRAMS_URL: `${APP_URL}/programs`, SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     marketing_sunset_due: { CUSTOMER_NAME: customerName(profile), PREFERENCES_URL: protectedCustomerUrl('/account/settings'), SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
   };
 }
