@@ -1323,6 +1323,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
 
   function executionPayload(action) {
     const suppressCustomerProjection = customerProjectionSuppressed(batch);
+    const isInternalTestBatch = batch?.is_test_batch === true;
     return {
       mode: 'live',
       confirmation: 'execute_native_production_batch_lifecycle',
@@ -1334,6 +1335,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
       ...(action === 'start' ? {
         update_customer_order_status: !suppressCustomerProjection,
         notify_customer: !suppressCustomerProjection,
+        ...(isInternalTestBatch ? { allow_internal_test_customer_side_effects: true } : {}),
       } : {}),
       ...(action === 'complete' ? nativeCompletionFields() : {}),
       ...(action === 'verify' ? nativeVerificationFields() : {}),
@@ -2085,7 +2087,9 @@ export default function ProductionQueueSummary() {
   const [tab, setTab] = useState('today');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [testBatchMode, setTestBatchMode] = useState('exclude');
+  const [testBatchMode, setTestBatchMode] = useState(
+    () => searchParams.get('test_batch_mode') === 'only' ? 'only' : 'exclude'
+  );
   const showInternalTestValidation = searchParams.get('internal_test_validation') === '1';
 
   const rangeDays = dateFrom && dateTo ? daysInclusive(dateFrom, dateTo) : null;

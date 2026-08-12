@@ -1136,6 +1136,9 @@ function NativeDeliveryActionControls({ stop, onActionSuccess }) {
       if (action === 'out_for_delivery' || action === 'delivered_operational') {
         payload.update_customer_order_status = true;
         payload.notify_customer = true;
+        if (stop.is_test_task === true) {
+          payload.allow_internal_test_customer_side_effects = true;
+        }
       }
 
       const res = await base44.functions.invoke('executeNativeFulfillmentTaskLifecycle', payload);
