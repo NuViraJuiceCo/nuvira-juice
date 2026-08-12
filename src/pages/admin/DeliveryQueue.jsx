@@ -1212,7 +1212,7 @@ function NativeDeliveryActionControls({ stop, onActionSuccess }) {
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Native Delivery Controls</p>
           <p className="text-[10px] text-muted-foreground mt-1">
             {stop.is_test_task
-              ? 'Internal validation task. Customer order projection and notifications are server-forbidden.'
+              ? 'Internal validation task. Its isolated test-order status can advance; customer notifications remain suppressed.'
               : 'Exact task command with customer-status and notification projection for delivery milestones.'}
           </p>
         </div>

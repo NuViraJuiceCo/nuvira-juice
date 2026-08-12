@@ -1865,7 +1865,7 @@ function buildNativeOrderIndexes(nativeAdminOrders) {
 function summarizeCustomerAppOrder(order) {
   if (!order) return null;
   return {
-    id: order.id || null,
+    id: order.customer_app_order_id || order.id || null,
     order_number: order.order_number || null,
     status: order.status || null,
     payment_status: order.payment_status || order.financial_status || null,
@@ -1885,6 +1885,9 @@ function buildCustomerAppOrderIndexes(orders) {
     if (!summary) continue;
     addIndexValue(byOrderNumber, order.order_number, summary);
     if (order.id && !byId.has(order.id)) byId.set(order.id, summary);
+    if (order.customer_app_order_id && !byId.has(order.customer_app_order_id)) {
+      byId.set(order.customer_app_order_id, summary);
+    }
   }
 
   return { byOrderNumber, byId };
