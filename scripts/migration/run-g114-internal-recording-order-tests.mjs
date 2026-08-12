@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [orders, production, delivery, orderEntity, notification, adminOrdersHandler] = await Promise.all([
+const [orders, production, delivery, orderEntity, notification, adminOrdersHandler, adminGateway] = await Promise.all([
   readFile(new URL('../../src/pages/AdminOrders.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/pages/admin/ProductionQueueSummary.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../src/pages/admin/DeliveryQueue.jsx', import.meta.url), 'utf8'),
   readFile(new URL('../../base44/entities/Order.jsonc', import.meta.url), 'utf8'),
   readFile(new URL('../../base44/functions/sendOrderStatusNotification/entry.ts', import.meta.url), 'utf8'),
   readFile(new URL('../../base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminOrdersWithHub/entry.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../../base44/functions/getAdminOperationsDashboardSummary/entry.ts', import.meta.url), 'utf8'),
 ]);
 
 assert.match(orders, /internal_test_validation/);
@@ -27,9 +28,10 @@ assert.match(notification, /authoritativeOrder\?\.is_test_order === true/);
 assert.match(notification, /reason: 'test_order_customer_communications_suppressed'/);
 assert.match(adminOrdersHandler, /is_test_order: order\.is_test_order === true/);
 assert.match(adminOrdersHandler, /payment_captured: order\.payment_captured === true/);
+assert.match(adminGateway, /g114a-internal-recording-order-read-model-20260812/);
 
 console.log(JSON.stringify({
   success: true,
-  checks: 15,
+  checks: 16,
   classification: 'g114_internal_recording_order_ui_and_safety_contracts_passed',
 }, null, 2));
