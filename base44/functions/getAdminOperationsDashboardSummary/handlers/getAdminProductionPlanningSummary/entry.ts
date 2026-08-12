@@ -75,18 +75,60 @@ function secretsMatch(left, right) {
   return mismatch === 0;
 }
 
-function isInternalProductionMaterializationRequest(req, body, operation) {
+function productionMaterializationSignatureMessage(body, operation) {
+  return [
+    'g115g-production-materialization',
+    operation,
+    body?.preset,
+    body?.date_from,
+    body?.date_to,
+    body?.confirmation,
+    body?.request_id,
+    body?.automation_source,
+    body?.automation_order_number,
+    body?.automation_timestamp,
+  ].map(value => String(value || '')).join('\n');
+}
+
+async function verifyProductionMaterializationSignature(body, operation, expectedSecret) {
+  try {
+    const timestamp = Number(body?.automation_timestamp);
+    const signature = normalizeText(body?.automation_signature).toLowerCase();
+    if (!Number.isInteger(timestamp) || Math.abs(Date.now() - timestamp) > 5 * 60 * 1000) return false;
+    if (!/^[a-f0-9]{64}$/.test(signature)) return false;
+    const signatureBytes = new Uint8Array(signature.match(/.{2}/g).map(byte => Number.parseInt(byte, 16)));
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(expectedSecret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify'],
+    );
+    return await crypto.subtle.verify(
+      'HMAC',
+      key,
+      signatureBytes,
+      new TextEncoder().encode(productionMaterializationSignatureMessage(body, operation)),
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function isInternalProductionMaterializationRequest(req, body, operation) {
   const expectedSecret = Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '';
   const suppliedSecret = req?.headers?.get?.('x-internal-secret') || '';
-  return operation === MATERIALIZATION_EXECUTE &&
+  const requestShapeAllowed = operation === MATERIALIZATION_EXECUTE &&
     normalizeLower(body?.automation_source) === 'syncordertohub' &&
     normalizeLower(body?.preset) === 'custom' &&
     normalizeText(body?.date_from) !== '' &&
     normalizeText(body?.date_from) === normalizeText(body?.date_to) &&
     normalizeText(body?.confirmation) === MATERIALIZATION_CONFIRMATION &&
     normalizeText(body?.request_id).startsWith('auto_native_production:') &&
-    normalizeText(body?.automation_order_number) !== '' &&
-    secretsMatch(suppliedSecret, expectedSecret);
+    normalizeText(body?.automation_order_number) !== '';
+  if (!requestShapeAllowed || !expectedSecret) return false;
+  if (secretsMatch(suppliedSecret, expectedSecret)) return true;
+  return await verifyProductionMaterializationSignature(body, operation, expectedSecret);
 }
 
 function normalizeMatchKey(value) {
@@ -2137,7 +2179,7 @@ export default async function handler(req: Request) {
     if (operation && ![MATERIALIZATION_PREVIEW, MATERIALIZATION_EXECUTE].includes(operation)) {
       return Response.json({ success: false, error: 'unsupported_production_planning_operation' }, { status: 400 });
     }
-    const internalMaterialization = isInternalProductionMaterializationRequest(req, body, operation);
+    const internalMaterialization = await isInternalProductionMaterializationRequest(req, body, operation);
 
     let user = null;
     try {
