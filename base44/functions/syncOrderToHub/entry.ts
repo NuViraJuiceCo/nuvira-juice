@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
 
+// Bundle revision: g115c-automatic-production-consistency-retry-20260812.
 // Bundle revision: g115b-automatic-order-result-coverage-20260812.
 // Bundle revision: g115-automatic-paid-order-production-batches-20260812.
 
@@ -44,6 +45,21 @@ async function recordProductionMaterializationFailure(base44, order, errorCode) 
   }).catch(() => {});
 }
 
+function materializationInvokeError(error) {
+  const response = error?.response?.data || {};
+  return {
+    code: response?.error || response?.error_code || error?.message || 'unknown',
+    blockers: Array.isArray(response?.results)
+      ? [...new Set(response.results.flatMap(row => Array.isArray(row?.blockers) ? row.blockers : []))]
+      : [],
+  };
+}
+
+function isRetriableMaterializationPreflight(error) {
+  const { code } = materializationInvokeError(error);
+  return code === 'materialization_preflight_blocked';
+}
+
 async function materializePaidOrderProduction({ base44, order, eventType, source, requestId }) {
   const skippedReason = productionMaterializationSkipReason({ order, eventType, source });
   if (skippedReason) {
@@ -65,63 +81,86 @@ async function materializePaidOrderProduction({ base44, order, eventType, source
     return { success: false, error_code: errorCode, writes_performed: false };
   }
 
-  try {
-    const response = await base44.asServiceRole.functions.invoke('getAdminOperationsDashboardSummary', {
-      gateway_action: 'getAdminProductionPlanningSummary',
-      payload: {
-        preset: 'custom',
-        date_from: productionDate,
-        date_to: productionDate,
-        operation: 'execute_batch_materialization',
-        confirmation: 'materialize_native_production_batches',
-        request_id: `auto_native_production:${requestId || orderNumber}`,
-        automation_source: 'syncOrderToHub',
-        automation_order_number: orderNumber,
-      },
-    }, {
-      headers: { 'x-internal-secret': secret },
-    });
-    const result = response?.data || response;
-    if (result?.success !== true || Number(result?.blocked_count || 0) > 0) {
-      const errorCode = result?.error || 'automatic_production_materialization_blocked';
-      await recordProductionMaterializationFailure(base44, order, errorCode);
+  const invokePayload = {
+    gateway_action: 'getAdminProductionPlanningSummary',
+    payload: {
+      preset: 'custom',
+      date_from: productionDate,
+      date_to: productionDate,
+      operation: 'execute_batch_materialization',
+      confirmation: 'materialize_native_production_batches',
+      request_id: `auto_native_production:${requestId || orderNumber}`,
+      automation_source: 'syncOrderToHub',
+      automation_order_number: orderNumber,
+    },
+  };
+
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await base44.asServiceRole.functions.invoke(
+        'getAdminOperationsDashboardSummary',
+        invokePayload,
+        { headers: { 'x-internal-secret': secret } },
+      );
+      const result = response?.data || response;
+      if (result?.success !== true || Number(result?.blocked_count || 0) > 0) {
+        const errorCode = result?.error || 'automatic_production_materialization_blocked';
+        await recordProductionMaterializationFailure(base44, order, errorCode);
+        return {
+          success: false,
+          error_code: errorCode,
+          blocked_count: Number(result?.blocked_count || 0),
+          writes_performed: result?.writes_performed === true,
+        };
+      }
+      const expectedOrderNumber = orderNumber.toLowerCase();
+      const orderIncluded = Array.isArray(result?.results) && result.results.some(row => (
+        Array.isArray(row?.source_order_numbers) &&
+        row.source_order_numbers.some(value => String(value || '').replace(/^#/, '').trim().toLowerCase() === expectedOrderNumber)
+      ));
+      if (!orderIncluded) {
+        const errorCode = 'automatic_order_demand_not_found';
+        await recordProductionMaterializationFailure(base44, order, errorCode);
+        return {
+          success: false,
+          error_code: errorCode,
+          blocked_count: 0,
+          writes_performed: result?.writes_performed === true,
+        };
+      }
       return {
-        success: false,
-        error_code: errorCode,
-        blocked_count: Number(result?.blocked_count || 0),
-        writes_performed: result?.writes_performed === true,
-      };
-    }
-    const expectedOrderNumber = orderNumber.toLowerCase();
-    const orderIncluded = Array.isArray(result?.results) && result.results.some(row => (
-      Array.isArray(row?.source_order_numbers) &&
-      row.source_order_numbers.some(value => String(value || '').replace(/^#/, '').trim().toLowerCase() === expectedOrderNumber)
-    ));
-    if (!orderIncluded) {
-      const errorCode = 'automatic_order_demand_not_found';
-      await recordProductionMaterializationFailure(base44, order, errorCode);
-      return {
-        success: false,
-        error_code: errorCode,
+        success: true,
+        skipped: false,
+        created_count: Number(result?.created_count || 0),
+        updated_count: Number(result?.updated_count || 0),
+        deduped_count: Number(result?.deduped_count || 0),
         blocked_count: 0,
         writes_performed: result?.writes_performed === true,
+        consistency_retry_count: attempt - 1,
+      };
+    } catch (error) {
+      if (attempt < maxAttempts && isRetriableMaterializationPreflight(error)) {
+        // Native order/task projection and the planning read model are separate
+        // writes. Give the second isolated read a brief chance to observe the
+        // just-committed order before treating a preflight conflict as real.
+        await new Promise(resolve => setTimeout(resolve, 750));
+        continue;
+      }
+      const nested = materializationInvokeError(error);
+      const errorCode = `automatic_production_materialization_invoke_failed:${String(nested.code).slice(0, 160)}`;
+      await recordProductionMaterializationFailure(base44, order, errorCode);
+      return {
+        success: false,
+        error_code: errorCode,
+        blockers: nested.blockers.slice(0, 20),
+        consistency_retry_count: attempt - 1,
+        writes_performed: false,
       };
     }
-    return {
-      success: true,
-      skipped: false,
-      created_count: Number(result?.created_count || 0),
-      updated_count: Number(result?.updated_count || 0),
-      deduped_count: Number(result?.deduped_count || 0),
-      blocked_count: 0,
-      writes_performed: result?.writes_performed === true,
-    };
-  } catch (error) {
-    const nestedCode = error?.response?.data?.error || error?.response?.data?.error_code || error?.message || 'unknown';
-    const errorCode = `automatic_production_materialization_invoke_failed:${String(nestedCode).slice(0, 160)}`;
-    await recordProductionMaterializationFailure(base44, order, errorCode);
-    return { success: false, error_code: errorCode, writes_performed: false };
   }
+
+  return { success: false, error_code: 'automatic_production_materialization_unreachable', writes_performed: false };
 }
 
 function isNativeOrderOpsEnabled() {

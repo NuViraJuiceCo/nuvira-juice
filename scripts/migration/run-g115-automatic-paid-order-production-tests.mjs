@@ -34,6 +34,7 @@ async function loadFunctions(relativePath, exportNames) {
     Request,
     Headers,
     Promise,
+    setTimeout: callback => { callback(); return 0; },
     URL,
     URLSearchParams,
     fetch: async () => { throw new Error('Unexpected network request'); },
@@ -194,6 +195,82 @@ assert.equal(missingCoverage.error_code, 'automatic_order_demand_not_found');
 assert.equal(missingCoverage.writes_performed, false);
 assert.equal(failureLogs, 2);
 
+let retryInvokeCount = 0;
+const transientPreflightBase44 = {
+  asServiceRole: {
+    functions: {
+      invoke: async () => {
+        retryInvokeCount += 1;
+        if (retryInvokeCount === 1) {
+          const error = new Error('Request failed with status code 409');
+          error.response = { data: {
+            error: 'materialization_preflight_blocked',
+            results: [{ blockers: ['materialized_demand_exceeds_current_paid_order_demand'] }],
+          } };
+          throw error;
+        }
+        return { data: {
+          success: true,
+          created_count: 0,
+          updated_count: 0,
+          deduped_count: 4,
+          blocked_count: 0,
+          writes_performed: false,
+          results: [{ source_order_numbers: ['NV-G115'] }],
+        } };
+      },
+    },
+    entities: {
+      OrderSyncLog: { create: async () => { failureLogs += 1; } },
+    },
+  },
+};
+const retried = await sync.materializePaidOrderProduction({
+  base44: transientPreflightBase44,
+  order: paidOrder,
+  eventType: 'order.created',
+  source: 'customer_app_one_time',
+  requestId: 'g115-transient-preflight',
+});
+assert.equal(retried.success, true);
+assert.equal(retried.deduped_count, 4);
+assert.equal(retried.consistency_retry_count, 1);
+assert.equal(retryInvokeCount, 2);
+assert.equal(failureLogs, 2, 'A recovered consistency conflict must not write a failure log.');
+
+let persistentInvokeCount = 0;
+const persistentPreflightBase44 = {
+  asServiceRole: {
+    functions: {
+      invoke: async () => {
+        persistentInvokeCount += 1;
+        const error = new Error('Request failed with status code 409');
+        error.response = { data: {
+          error: 'materialization_preflight_blocked',
+          results: [{ blockers: ['multiple_mutable_native_batches_require_review'] }],
+        } };
+        throw error;
+      },
+    },
+    entities: {
+      OrderSyncLog: { create: async () => { failureLogs += 1; } },
+    },
+  },
+};
+const persistentlyBlocked = await sync.materializePaidOrderProduction({
+  base44: persistentPreflightBase44,
+  order: paidOrder,
+  eventType: 'order.created',
+  source: 'customer_app_one_time',
+  requestId: 'g115-persistent-preflight',
+});
+assert.equal(persistentlyBlocked.success, false);
+assert.equal(persistentlyBlocked.error_code, 'automatic_production_materialization_invoke_failed:materialization_preflight_blocked');
+assert.equal(persistentlyBlocked.consistency_retry_count, 1);
+assert.equal(JSON.stringify(persistentlyBlocked.blockers), JSON.stringify(['multiple_mutable_native_batches_require_review']));
+assert.equal(persistentInvokeCount, 2);
+assert.equal(failureLogs, 3, 'A persistent conflict remains retry eligible and auditable.');
+
 const planningSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts'), 'utf8');
 const gatewaySource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/entry.ts'), 'utf8');
 const syncSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/entry.ts'), 'utf8');
@@ -202,16 +279,18 @@ assert.match(planningSource, /startsWith\('auto_native_production:'\)/);
 assert.match(gatewaySource, /g115-automatic-paid-order-production-batches/);
 assert.match(syncSource, /production_batch_materialization: productionBatchMaterialization/);
 assert.match(syncSource, /automatic_order_demand_not_found/);
-assert.match(syncSource, /error\?\.response\?\.data\?\.error/);
+assert.match(syncSource, /response\?\.error \|\| response\?\.error_code/);
 assert.match(syncSource, /production_materialization_failed/);
 assert.match(syncSource, /productionBatchMaterialization\?\.success === false \? 503/);
 assert.match(syncSource, /retry_eligible: true/);
 assert.match(syncSource, /x-internal-secret/);
+assert.match(syncSource, /g115c-automatic-production-consistency-retry/);
+assert.match(syncSource, /isRetriableMaterializationPreflight/);
 
 console.log(JSON.stringify({
   ok: true,
   suite: 'g115-automatic-paid-order-production',
-  cases: 28,
+  cases: 38,
   live_writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));
