@@ -51,6 +51,7 @@ const harnesses = [
   'scripts/migration/run-g89-customer-app-native-production-cutover-tests.mjs',
   'scripts/migration/run-g90-terminal-hub-fallback-suppression-tests.mjs',
   'scripts/migration/run-g92-native-production-batch-materialization-tests.mjs',
+  'scripts/migration/run-g115-automatic-paid-order-production-tests.mjs',
   'scripts/migration/run-g39f-admin-production-planning-native-first-tests.mjs',
   'scripts/migration/run-g39d-admin-delivery-route-native-first-tests.mjs',
   'scripts/migration/run-g39h-admin-calendar-events-native-first-tests.mjs',

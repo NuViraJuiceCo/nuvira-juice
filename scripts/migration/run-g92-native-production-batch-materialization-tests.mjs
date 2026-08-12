@@ -122,6 +122,48 @@ assert.equal(planning.materializationDraftReady(exactExisting), false);
 const exactStarted = planning.materializationDrafts(nativePlanning, [{ ...nativeBatch, status: 'in_production' }])[0];
 assert.equal(exactStarted.action, 'already_materialized', 'A started exact batch is not resized and does not block the queue.');
 
+const eventStockBatch = {
+  ...nativeBatch,
+  id: 'event_stock_batch_1',
+  batch_id: 'EVENT-20260810-COMMUNITY-AURA',
+  planned_units: 5,
+  order_sources: [{
+    order_id: 'event_1',
+    order_number: 'EVENT-COMMUNITY-20260811',
+    customer_name: 'Community Event',
+    quantity: 5,
+    source_type: 'event_stock',
+    source_item: 'Aura',
+  }],
+  related_orders: [],
+  source_system: 'customer_app_native_event_stock',
+  native_owner_status: 'native_owned_event_stock',
+};
+const mixedDemandDraft = planning.materializationDrafts(nativePlanning, [eventStockBatch])[0];
+assert.equal(mixedDemandDraft.action, 'update_existing_planned_batch');
+assert.equal(mixedDemandDraft.batch_id, eventStockBatch.batch_id, 'Same-day event stock and paid-order demand share one physical batch.');
+assert.equal(mixedDemandDraft.planned_units, 7);
+assert.equal(mixedDemandDraft._write.order_sources.length, 2);
+assert.equal(mixedDemandDraft._write.source_system, 'customer_app_native_mixed_demand');
+assert.equal(mixedDemandDraft._write.native_owner_status, 'native_owned_mixed_demand');
+
+const mixedDemandBatch = {
+  ...eventStockBatch,
+  planned_units: 7,
+  order_sources: mixedDemandDraft._write.order_sources,
+  related_orders: mixedDemandDraft._write.related_orders,
+  source_system: mixedDemandDraft._write.source_system,
+  native_owner_status: mixedDemandDraft._write.native_owner_status,
+};
+const mixedReplay = planning.materializationDrafts(nativePlanning, [mixedDemandBatch])[0];
+assert.equal(mixedReplay.action, 'already_materialized');
+assert.equal(mixedReplay.planned_units, 7);
+const mixedWithArchivedDuplicate = planning.materializationDrafts(nativePlanning, [
+  mixedDemandBatch,
+  { ...nativeBatch, id: 'archived_duplicate', status: 'archived', order_sources: [], related_orders: [] },
+])[0];
+assert.equal(mixedWithArchivedDuplicate.action, 'already_materialized', 'Archived consolidation remnants never split later demand into another batch.');
+
 const increasedPlanning = structuredClone(nativePlanning);
 increasedPlanning.dates[0].product_groups[0].planned_units = 3;
 increasedPlanning.dates[0].product_groups[0].order_sources[0].quantity = 3;
@@ -215,6 +257,35 @@ assert.equal(createdBatch.source_system, 'customer_app_native');
 assert.equal(createdBatch.native_owner_status, 'native_owned_order_demand');
 assert.deepEqual(callOrder, ['batch_filter', 'command_create', 'batch_create', 'batch_filter', 'command_update']);
 
+let updatedMixedBatch = null;
+const mixedUpdateResults = await planning.executeBatchMaterialization({
+  base44: {
+    asServiceRole: {
+      entities: {
+        ProductionBatch: {
+          filter: async () => updatedMixedBatch ? [updatedMixedBatch] : [eventStockBatch],
+          create: async () => { throw new Error('Unexpected mixed batch create'); },
+          update: async (id, payload) => {
+            updatedMixedBatch = { ...eventStockBatch, id, ...payload };
+            return updatedMixedBatch;
+          },
+        },
+        CommandLog: {
+          create: async payload => ({ id: 'mixed_command', ...payload }),
+          update: async (id, payload) => ({ id, ...payload }),
+        },
+      },
+    },
+  },
+  user: { email: 'system@example.test', role: 'service', actor_type: 'system' },
+  requestId: 'g92-mixed-update',
+  drafts: [mixedDemandDraft],
+});
+assert.equal(mixedUpdateResults[0].action, 'updated');
+assert.equal(updatedMixedBatch.planned_units, 7);
+assert.equal(updatedMixedBatch.source_system, 'customer_app_native_mixed_demand');
+assert.equal(updatedMixedBatch.native_owner_status, 'native_owned_mixed_demand');
+
 let writesAfterAuditFailure = 0;
 await assert.rejects(() => planning.executeBatchMaterialization({
   base44: {
@@ -287,7 +358,10 @@ const planningSource = fs.readFileSync(path.join(repoRoot, planningPath), 'utf8'
 const previewSource = fs.readFileSync(path.join(repoRoot, previewPath), 'utf8');
 const uiSource = fs.readFileSync(path.join(repoRoot, uiPath), 'utf8');
 const gatewaySource = fs.readFileSync(path.join(repoRoot, gatewayPath), 'utf8');
-assert.match(planningSource, /if \(user\.role !== 'admin'\)/, 'Materialization remains server-side admin only.');
+assert.match(planningSource, /if \(user\.role !== 'admin'\)/, 'Interactive materialization remains server-side admin only.');
+assert.match(planningSource, /isInternalProductionMaterializationRequest/);
+assert.match(planningSource, /automatic_order_demand_not_found/);
+assert.match(planningSource, /customer_app_native_mixed_demand/);
 assert.match(planningSource, /confirmation !== MATERIALIZATION_CONFIRMATION/);
 assert.match(planningSource, /inventory_mutation: false/);
 assert.match(planningSource, /notifications_sent: false/);
@@ -305,7 +379,7 @@ assert.match(gatewaySource, /Bundle revision: g95-customer-app-operational-autho
 console.log(JSON.stringify({
   ok: true,
   suite: 'g92-native-production-batch-materialization',
-  cases: 24,
+  cases: 33,
   writes_performed: false,
   provider_calls_performed: false,
 }, null, 2));
