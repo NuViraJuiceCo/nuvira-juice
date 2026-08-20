@@ -38,6 +38,7 @@ const ADMIN_GATEWAY_ACTIONS = new Set([
   'getAdminShopifyOpsSummary',
   'getAdminSyncHealthSummary',
   'manageAdminDiscountCode',
+  'manageEventPosInventory',
   'maintainAdminOperationalNotices',
   'monitorLiveCheckoutTest',
   'monitorPostPaymentChain',

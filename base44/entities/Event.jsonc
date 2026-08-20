@@ -48,6 +48,26 @@
     "tickets_link": {
       "type": "string",
       "description": "Direct URL to purchase tickets"
+    },
+    "shopify_pos_inventory_sync_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allows verified event-only production to initialize stock at this event's dedicated Shopify POS location"
+    },
+    "shopify_pos_location_id": {
+      "type": "string",
+      "description": "Dedicated Shopify POS location GID for this event"
+    },
+    "shopify_pos_location_name": {
+      "type": "string",
+      "description": "Verified display name of the dedicated Shopify POS location"
+    },
+    "shopify_pos_inventory_mode": {
+      "type": "string",
+      "enum": [
+        "verified_event_production"
+      ],
+      "description": "Inventory source-of-truth mode for this event"
     }
   },
   "required": [

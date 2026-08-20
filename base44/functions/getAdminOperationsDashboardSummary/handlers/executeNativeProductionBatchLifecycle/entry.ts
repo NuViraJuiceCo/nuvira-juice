@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { syncVerifiedEventBatchToShopifyPos } from './eventPosInventory.ts';
 
 const COMMAND_TYPE = 'native_production_batch_lifecycle';
 const SOURCE = 'customer_app_native_admin';
@@ -367,6 +368,13 @@ function customerProjectionSuppressed(batch) {
   return normalizeLower(batch?.native_owner_status) === 'native_owned_retroactive_delivered_no_customer_projection';
 }
 
+function isEventOnlyBatch(batch) {
+  const sources = Array.isArray(batch?.order_sources) ? batch.order_sources : [];
+  return normalizeLower(batch?.source_system) === 'customer_app_native_event_stock' &&
+    normalizeLower(batch?.native_owner_status) === 'native_owned_event_stock' &&
+    sources.length > 0 && sources.every(source => normalizeLower(source?.source_type) === 'event_stock');
+}
+
 function appendCommonGuards(batch, blockers, warnings) {
   if (!sanitizeId(batch.id) && !sanitizeId(batch.batch_id)) blockers.push('missing_batch_identity');
   if (!sanitizeText(batch.product_name, 120)) blockers.push('missing_product_name');
@@ -543,6 +551,9 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
     : batch.labels_applied === true;
   const staffOnDuty = Array.isArray(body.staff_on_duty) ? body.staff_on_duty : (Array.isArray(batch.staff_on_duty) ? batch.staff_on_duty : []);
   const quantityProduced = safeNumber(batch.actual_units) ?? safeNumber(batch.final_usable_quantity);
+  if (isEventOnlyBatch(batch) && !isPositiveNumber(batch.final_usable_quantity)) {
+    blockers.push('event_final_usable_quantity_required_for_pos');
+  }
 
   if (!isPositiveNumber(pHResult)) blockers.push('missing_ph_result');
   if (!pHStatus) blockers.push('missing_ph_pass_fail');
@@ -800,7 +811,7 @@ async function createCommandLog({ base44, batch, action, status, idempotencyKey,
     submitted_at: now,
     completed_at: status === 'running' ? null : now,
     function_name: 'executeNativeProductionBatchLifecycle',
-    notes: 'Native ProductionBatch lifecycle command for start/complete/verify. Verify may create one BatchComplianceLog. Start may project exact linked paid Customer App Orders to in_production when explicitly requested and not suppressed by batch migration policy; the active Order status automation owns messaging. No inventory, PO, ShopifyOrder, FulfillmentTask, direct provider, sync, or repair writes.',
+    notes: 'Native ProductionBatch lifecycle command for start/complete/verify. Verify may create one BatchComplianceLog and initialize dedicated Shopify POS stock only for explicitly configured event-only production. Start may project exact linked paid Customer App Orders to in_production when explicitly requested and not suppressed by batch migration policy; the active Order status automation owns messaging. No ingredient inventory, PO, ShopifyOrder, FulfillmentTask, repair, or customer-notification writes.',
   });
 }
 
@@ -944,6 +955,9 @@ export default async function handler(req: Request) {
     const existingLogs = await findExistingCommandLog(base44, idempotencyKey);
     const existingLog = Array.isArray(existingLogs) && existingLogs.length > 0 ? existingLogs[0] : null;
     if (existingLog && ['success', 'skipped'].includes(normalizeLower(existingLog.status))) {
+      const eventPosInventory = action === 'verify'
+        ? await syncVerifiedEventBatchToShopifyPos({ base44, batch, requestId, user })
+        : null;
       return Response.json({
         success: true,
         skipped: true,
@@ -954,6 +968,8 @@ export default async function handler(req: Request) {
         native_writer_enabled: true,
         writes_performed: false,
         reason: 'idempotency_log_present',
+        event_pos_inventory: eventPosInventory,
+        external_service_calls: eventPosInventory?.provider_calls_performed === true,
       });
     }
     if (existingLog && normalizeLower(existingLog.status) === 'rejected') {
@@ -1000,6 +1016,9 @@ export default async function handler(req: Request) {
       }, { status: 409 });
     }
     if (!existingLog && lifecycleAuditReplayApplied(batch, action, requestId)) {
+      const eventPosInventory = action === 'verify'
+        ? await syncVerifiedEventBatchToShopifyPos({ base44, batch, requestId, user })
+        : null;
       return Response.json({
         success: true,
         skipped: true,
@@ -1010,6 +1029,8 @@ export default async function handler(req: Request) {
         native_writer_enabled: true,
         writes_performed: false,
         reason: 'lifecycle_audit_trail_present',
+        event_pos_inventory: eventPosInventory,
+        external_service_calls: eventPosInventory?.provider_calls_performed === true,
       });
     }
 
@@ -1077,6 +1098,14 @@ export default async function handler(req: Request) {
     let writtenBatch;
     let complianceLog = null;
     let customerProjection = { attempted: false, matched_count: 0, updated_count: 0, skipped_count: 0, notification_queued_count: 0, skips: [] };
+    let eventPosInventory = {
+      applicable: false,
+      success: true,
+      status: 'not_applicable',
+      provider_calls_performed: false,
+      inventory_mutation: false,
+      customer_notifications_sent: false,
+    };
     let writeStage = 'production_batch_update';
     try {
       if (action === 'verify') {
@@ -1141,6 +1170,18 @@ export default async function handler(req: Request) {
       throw error;
     }
 
+    if (action === 'verify') {
+      eventPosInventory = await syncVerifiedEventBatchToShopifyPos({
+        base44,
+        batch: { ...batch, ...writtenBatch },
+        requestId,
+        user,
+      });
+      if (eventPosInventory?.applicable === true && eventPosInventory?.success !== true) {
+        warnings.push(sanitizeText(eventPosInventory.error_code || 'event_pos_inventory_sync_requires_review', 120));
+      }
+    }
+
     await updateCommandLog({
       base44,
       commandLogId: commandLog?.id,
@@ -1159,7 +1200,8 @@ export default async function handler(req: Request) {
         customer_notification_sent: false,
         customer_notification_queued: customerProjection.notification_queued_count > 0 && boolFlag(body.notify_customer),
         customer_order_projection: customerProjection,
-        external_service_calls: false,
+        event_pos_inventory: eventPosInventory,
+        external_service_calls: eventPosInventory?.provider_calls_performed === true,
       },
     });
 
@@ -1184,7 +1226,8 @@ export default async function handler(req: Request) {
       customer_notification_sent: false,
       customer_notification_queued: customerProjection.notification_queued_count > 0 && boolFlag(body.notify_customer),
       customer_order_projection: customerProjection,
-      external_service_calls: false,
+      event_pos_inventory: eventPosInventory,
+      external_service_calls: eventPosInventory?.provider_calls_performed === true,
     });
   } catch {
     console.error('[executeNativeProductionBatchLifecycle] Error');
