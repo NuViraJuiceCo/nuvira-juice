@@ -111,6 +111,14 @@
       "type": "string",
       "description": "Default Shopify variant ID used by cart permalinks"
     },
+    "shopify_pos_product_id": {
+      "type": "string",
+      "description": "Verified Shopify product ID used for event POS inventory"
+    },
+    "shopify_pos_variant_id": {
+      "type": "string",
+      "description": "Verified Shopify variant ID used for event POS inventory"
+    },
     "consumption_instructions": {
       "type": "array",
       "description": "Daily consumption schedule for this bundle/program",

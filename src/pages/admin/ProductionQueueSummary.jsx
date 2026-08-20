@@ -111,6 +111,26 @@ function customerProjectionSuppressed(batch) {
   return batch?.native_owner_status === 'native_owned_retroactive_delivered_no_customer_projection';
 }
 
+function isEventOnlyBatch(batch) {
+  const sourceTypes = Object.keys(batch?.source_type_counts || {}).filter(Boolean);
+  return batch?.source_system === 'customer_app_native_event_stock' &&
+    batch?.native_owner_status === 'native_owned_event_stock' &&
+    sourceTypes.length === 1 && sourceTypes[0] === 'event_stock';
+}
+
+function eventPosSyncMessage(batch) {
+  if (!isEventOnlyBatch(batch)) return null;
+  const status = batch?.shopify_pos_inventory_sync_status || 'pending_verification';
+  if (status === 'in_sync') {
+    return `Shopify POS opening stock: ${formatNumber(batch.shopify_pos_inventory_sync_quantity)} verified units.`;
+  }
+  if (status === 'error' || status === 'blocked') {
+    return `Shopify POS stock needs review: ${formatLabel(batch.shopify_pos_inventory_sync_error || status)}.`;
+  }
+  if (status === 'syncing') return 'Shopify POS opening stock is syncing from the verified final quantity.';
+  return 'Shopify POS opening stock will use the final usable quantity after verification.';
+}
+
 function batchSourceLabel(batch) {
   if (batch?.source_label) return batch.source_label;
   return isNativeBatch(batch) ? 'Native Customer App' : 'Source';
@@ -1401,7 +1421,9 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     const label = formatLabel(action);
     const suppressCustomerProjection = customerProjectionSuppressed(batch);
     const warning = action === 'verify'
-      ? 'This may create one batch compliance log and link it to this exact ProductionBatch. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.'
+      ? isEventOnlyBatch(batch)
+        ? 'This creates one batch compliance log and uses the verified final usable quantity to initialize this event\'s dedicated Shopify POS stock. Online juice sales remain demand-based. It will not update customer orders, delivery tasks, or send notifications.'
+        : 'This may create one batch compliance log and link it to this exact ProductionBatch. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.'
       : action === 'start'
         ? suppressCustomerProjection
           ? 'This is a retroactive record for an already delivered order. It will update only this ProductionBatch and its audit log; the customer order and notifications are explicitly suppressed.'
@@ -1418,14 +1440,53 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
       const res = await base44.functions.invoke('executeNativeProductionBatchLifecycle', executionPayload(action));
       const result = unwrapBase44Result(res);
       if (!result?.success) throw new Error(result?.error || result?.error_code || `native_${action}_failed`);
+      const posInventory = result?.event_pos_inventory;
       setMessage({
         type: result.skipped ? 'warn' : 'success',
-        text: result.skipped ? `Native ${label} was already recorded.` : `Native ${label} completed.`,
+        text: posInventory?.applicable === true && posInventory?.success === true
+          ? `Native ${label} completed. Shopify POS opening stock is ${formatNumber(posInventory.quantity)} at ${posInventory.location_name || 'the event location'}.`
+          : posInventory?.applicable === true && posInventory?.success !== true
+            ? `Native ${label} completed, but Shopify POS stock needs review: ${formatLabel(posInventory.error_code || posInventory.status)}.`
+            : result.skipped
+              ? `Native ${label} was already recorded.`
+              : `Native ${label} completed.`,
       });
       setPreview(null);
       await onActionSuccess?.();
     } catch (error) {
       setMessage({ type: 'error', text: error?.message || `Unable to run native ${action}. Native gates may still be closed.` });
+    } finally {
+      setActionPending(false);
+    }
+  }
+
+  async function retryEventPosInventory() {
+    if (!isEventOnlyBatch(batch) || !isDoneStatus(batch.status)) return;
+    if (!window.confirm(`Retry Shopify POS stock for ${batch.batch_id || batch.product_name}? The system will use the already verified final usable quantity and will not notify customers.`)) {
+      return;
+    }
+    setActionPending(true);
+    setMessage(null);
+    try {
+      const res = await base44.functions.invoke('manageEventPosInventory', {
+        operation: 'retry_verified_batch',
+        confirmation: 'retry_verified_event_pos_inventory',
+        production_batch_id: batch.id,
+        batch_id: batch.batch_id,
+        request_id: requestIdFor('retry_event_pos_inventory', batch),
+      });
+      const result = unwrapBase44Result(res);
+      const posInventory = result?.event_pos_inventory;
+      if (!result?.success || posInventory?.success !== true) {
+        throw new Error(posInventory?.error_code || result?.error || 'event_pos_inventory_retry_failed');
+      }
+      setMessage({
+        type: posInventory.idempotent ? 'warn' : 'success',
+        text: `Shopify POS opening stock is ${formatNumber(posInventory.quantity)} at ${posInventory.location_name || 'the event location'}.`,
+      });
+      await onActionSuccess?.();
+    } catch (error) {
+      setMessage({ type: 'error', text: formatLabel(error?.message || 'Unable to retry Shopify POS stock') });
     } finally {
       setActionPending(false);
     }
@@ -1495,6 +1556,21 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
           <p className="mt-1 text-[11px] leading-relaxed text-emerald-800 dark:text-emerald-200">
             This verified batch is audit-only. Start, Complete, and Verify are closed.
           </p>
+          {eventPosSyncMessage(batch) ? (
+            <p className="mt-2 text-[11px] font-semibold leading-relaxed text-emerald-900 dark:text-emerald-100">
+              {eventPosSyncMessage(batch)}
+            </p>
+          ) : null}
+          {isEventOnlyBatch(batch) && batch.shopify_pos_inventory_sync_status !== 'in_sync' ? (
+            <button
+              type="button"
+              onClick={retryEventPosInventory}
+              disabled={actionPending}
+              className="mt-3 h-9 rounded-lg border border-emerald-300 bg-background px-3 text-xs font-semibold text-emerald-900 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-100"
+            >
+              {actionPending ? 'Syncing POS stock...' : 'Retry POS Stock Sync'}
+            </button>
+          ) : null}
         </div>
       )}
 

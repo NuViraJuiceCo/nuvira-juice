@@ -825,6 +825,10 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
     ? verificationInput.staff_on_duty
     : (Array.isArray(batch.staff_on_duty) ? batch.staff_on_duty : []);
   const quantityProduced = safeNumber(batch.actual_units) ?? safeNumber(batch.final_usable_quantity);
+  const sourceRows = Array.isArray(batch.order_sources) ? batch.order_sources : [];
+  const eventOnlyBatch = normalizeLower(batch.source_system) === 'customer_app_native_event_stock' &&
+    normalizeLower(batch.native_owner_status) === 'native_owned_event_stock' &&
+    sourceRows.length > 0 && sourceRows.every(source => normalizeLower(source?.source_type) === 'event_stock');
 
   if (!isPositiveNumber(pHResult)) blockers.push('missing_ph_result');
   if (!pHStatus) blockers.push('missing_ph_pass_fail');
@@ -836,6 +840,7 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
   if (!labelsApplied) blockers.push('labels_not_confirmed');
   if (pHStatus === 'failed' && passedFailed === 'passed') blockers.push('batch_cannot_pass_when_ph_fails');
   if (!isPositiveNumber(quantityProduced)) blockers.push('missing_quantity_produced_for_compliance_log');
+  if (eventOnlyBatch && !isPositiveNumber(batch.final_usable_quantity)) blockers.push('event_final_usable_quantity_required_for_pos');
   if (staffOnDuty.length === 0) warnings.push('staff_on_duty_not_provided');
   if (correctiveActionRequired) {
     warnings.push('corrective_action_present_requires_admin_review');
@@ -900,6 +905,12 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
       'ProductionBatch.compliance_log_id',
       'ProductionBatch.audit_trail',
       'BatchComplianceLog',
+      ...(eventOnlyBatch ? [
+        'ProductionBatch.shopify_pos_inventory_sync_status',
+        'ProductionBatch.shopify_pos_inventory_sync_quantity',
+        'CommandLog.event_pos_inventory_initialization',
+        'Shopify.POS.available_quantity',
+      ] : []),
     ],
     proposed_patch: proposedPatch,
     compliance_log_draft: complianceLogDraft,

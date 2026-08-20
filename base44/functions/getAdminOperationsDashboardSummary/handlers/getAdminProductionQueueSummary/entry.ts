@@ -578,6 +578,11 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, test
           bottle_size: normalizeText(batch.bottle_size),
           ingredients_used: safeIngredientUsageRows(batch.ingredients_used),
           ingredient_lot_notes: normalizeText(batch.ingredient_lot_notes),
+          shopify_pos_inventory_sync_status: normalizeText(batch.shopify_pos_inventory_sync_status),
+          shopify_pos_inventory_sync_quantity: safeNumber(batch.shopify_pos_inventory_sync_quantity),
+          shopify_pos_inventory_synced_at: normalizeText(batch.shopify_pos_inventory_synced_at),
+          shopify_pos_location_id: normalizeText(batch.shopify_pos_location_id),
+          shopify_pos_inventory_sync_error: normalizeText(batch.shopify_pos_inventory_sync_error),
         };
       });
 

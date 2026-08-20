@@ -371,6 +371,37 @@
     "native_owner_status": {
       "type": "string",
       "description": "Migration status for Customer App native ownership"
+    },
+    "shopify_pos_inventory_sync_status": {
+      "type": "string",
+      "enum": [
+        "pending_verification",
+        "syncing",
+        "in_sync",
+        "blocked",
+        "error"
+      ],
+      "description": "Event-only Shopify POS inventory initialization state"
+    },
+    "shopify_pos_inventory_sync_quantity": {
+      "type": "number",
+      "description": "Verified final usable quantity initialized at the linked event POS location"
+    },
+    "shopify_pos_inventory_synced_at": {
+      "type": "string",
+      "description": "ISO timestamp when verified event stock was initialized in Shopify POS"
+    },
+    "shopify_pos_inventory_command_id": {
+      "type": "string",
+      "description": "CommandLog ID for the event POS inventory initialization"
+    },
+    "shopify_pos_location_id": {
+      "type": "string",
+      "description": "Dedicated Shopify POS location used for this event stock"
+    },
+    "shopify_pos_inventory_sync_error": {
+      "type": "string",
+      "description": "Safe operator-facing blocker or error code for event POS inventory initialization"
     }
   },
   "rls": {
