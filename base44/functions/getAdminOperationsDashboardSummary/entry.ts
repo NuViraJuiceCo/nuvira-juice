@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g116b-preisolated-event-location-scope-20260820.
 // Bundle revision: g116-verified-event-production-shopify-pos-inventory-20260820.
 // Bundle revision: g115g-bundle-safe-signed-production-materializer-20260812.
 // Bundle revision: g115b-automatic-order-result-coverage-20260812.

@@ -390,9 +390,7 @@ export async function previewEventPosInventoryReadiness({ base44, eventId, batch
     const scopes = await readShopifyScopes(provider);
     if (!scopes.has('write_inventory')) blockers.push('shopify_write_inventory_scope_required');
     if (!scopes.has('write_products')) blockers.push('shopify_write_products_scope_required');
-    if (!scopes.has('write_locations') && !scopes.has('write_fulfillments')) {
-      blockers.push('shopify_location_isolation_scope_required');
-    }
+    const canIsolateLocation = scopes.has('write_locations') || scopes.has('write_fulfillments');
 
     for (const batchKey of requestedBatchKeys) {
       const batch = await loadBatch(base44, batchKey);
@@ -419,7 +417,10 @@ export async function previewEventPosInventoryReadiness({ base44, eventId, batch
         product = await loadProduct(base44, batch.product_name);
         target = await readTarget({ product, locationId, provider });
         if (target.location?.fulfillmentService?.id) rowBlockers.push('shopify_fulfillment_service_location_not_allowed');
-        if (target.location?.fulfillsOnlineOrders === true) rowWarnings.push('online_fulfillment_will_be_disabled_on_first_sync');
+        if (target.location?.fulfillsOnlineOrders === true) {
+          rowWarnings.push('online_fulfillment_will_be_disabled_on_first_sync');
+          if (!canIsolateLocation) rowBlockers.push('shopify_location_isolation_scope_required');
+        }
         if (lower(target.variant?.inventoryPolicy) !== 'continue') rowWarnings.push('online_inventory_policy_will_change_to_continue');
         if (target.inventoryItem?.tracked !== true) rowWarnings.push('inventory_tracking_will_be_enabled');
         const current = availableQuantity(target.level);
