@@ -66,6 +66,7 @@ assert.match(manageSource, /previewEventPosInventoryReadiness/);
 assert.match(manageSource, /retry_verified_event_pos_inventory/);
 assert.match(clientSource, /'manageEventPosInventory'/);
 assert.match(gatewaySource, /"manageEventPosInventory"/);
+assert.match(gatewaySource, /g116b-preisolated-event-location-scope/);
 assert.match(gatewaySource, /g116-verified-event-production-shopify-pos-inventory-20260820/);
 assert.match(criticalSource, /run-g116-event-production-pos-inventory-tests\.mjs/);
 
@@ -161,17 +162,17 @@ globalThis.Deno = {
 };
 
 let providerCalls = [];
+let scopeHandles = ['write_inventory', 'write_products', 'write_locations'];
+let locationFulfillsOnlineOrders = true;
 globalThis.fetch = async (url, options) => {
   assert.equal(url, 'https://shop.example.test/admin/api/2026-07/graphql.json');
   assert.equal(options.headers['X-Shopify-Access-Token'], 'synthetic-token');
   const request = JSON.parse(options.body);
   providerCalls.push(request);
   if (/EventPosInventoryScopes/.test(request.query)) {
-    return new Response(JSON.stringify({ data: { currentAppInstallation: { accessScopes: [
-      { handle: 'write_inventory' },
-      { handle: 'write_products' },
-      { handle: 'write_locations' },
-    ] } } }), { status: 200 });
+    return new Response(JSON.stringify({ data: { currentAppInstallation: { accessScopes:
+      scopeHandles.map(handle => ({ handle })),
+    } } }), { status: 200 });
   }
   if (/EventPosInventoryTarget/.test(request.query)) {
     return new Response(JSON.stringify({ data: {
@@ -183,7 +184,7 @@ globalThis.fetch = async (url, options) => {
       },
       location: {
         id: event.shopify_pos_location_id, name: event.shopify_pos_location_name,
-        isActive: true, fulfillsOnlineOrders: true, fulfillmentService: null,
+        isActive: true, fulfillsOnlineOrders: locationFulfillsOnlineOrders, fulfillmentService: null,
       },
     } }), { status: 200 });
   }
@@ -232,6 +233,32 @@ assert.equal(readiness.provider_writes_performed, false);
 assert.deepEqual(readiness.blockers, []);
 assert.equal(readiness.rows[0].planned_quantity, 40);
 assert.ok(readiness.warnings.includes('inventory_tracking_will_be_enabled'));
+
+scopeHandles = ['write_inventory', 'write_products'];
+providerCalls = [];
+const onlineLocationWithoutIsolationScope = await previewEventPosInventoryReadiness({
+  base44: state.base44,
+  eventId: event.id,
+  batchKeys: [batch.id],
+});
+assert.equal(onlineLocationWithoutIsolationScope.ready, false);
+assert.ok(onlineLocationWithoutIsolationScope.blockers.includes('shopify_location_isolation_scope_required'));
+assert.equal(onlineLocationWithoutIsolationScope.provider_writes_performed, false);
+
+locationFulfillsOnlineOrders = false;
+providerCalls = [];
+const isolatedLocationWithoutIsolationScope = await previewEventPosInventoryReadiness({
+  base44: state.base44,
+  eventId: event.id,
+  batchKeys: [batch.id],
+});
+assert.equal(isolatedLocationWithoutIsolationScope.ready, true);
+assert.ok(!isolatedLocationWithoutIsolationScope.blockers.includes('shopify_location_isolation_scope_required'));
+assert.ok(!isolatedLocationWithoutIsolationScope.warnings.includes('online_fulfillment_will_be_disabled_on_first_sync'));
+assert.equal(isolatedLocationWithoutIsolationScope.provider_writes_performed, false);
+
+scopeHandles = ['write_inventory', 'write_products', 'write_locations'];
+locationFulfillsOnlineOrders = true;
 
 providerCalls = [];
 const result = await syncVerifiedEventBatchToShopifyPos({
