@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
-import productionMaterializationHandler from './productionMaterializer/entry.ts';
+import productionMaterializationHandler from './productionMaterializer/handler.ts';
 
 // Bundle revision: g115h-local-production-materializer-20260812.
 // Bundle revision: g115g-bundle-safe-signed-production-materializer-20260812.
