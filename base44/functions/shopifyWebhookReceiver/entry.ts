@@ -1,4 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import {
+  isShopifyPosOrder,
+  posEventAttributionNeedsReview,
+  resolvePosEventAttribution,
+} from './posEventAttribution.js';
 
 /**
  * Shopify Webhook Receiver
@@ -116,7 +121,7 @@ function detectSourceChannel(order) {
 function mapFulfillmentMethod(order) {
   const shippingLines = order.shipping_lines || [];
   const noteAttr = (order.note_attributes || []).reduce((acc, a) => { acc[a.name] = a.value; return acc; }, {});
-  if (order.source_name === 'pos') return 'pos';
+  if (isShopifyPosOrder(order)) return 'pos';
   if (noteAttr['fulfillment_type'] === 'pickup') return 'pickup';
   if (shippingLines.some(l => (l.title || '').toLowerCase().includes('pickup'))) return 'pickup';
   return 'delivery';
@@ -162,7 +167,7 @@ function hasTag(order, expectedTag) {
 function isAppOriginatedShopifyMirror(order) {
   const source = String(order.source_name || '').toLowerCase();
   const note = String(order.note || '').toLowerCase();
-  if (source === 'pos') return false;
+  if (isShopifyPosOrder(order)) return false;
   return (
     hasTag(order, 'base44-app') ||
     note.includes('base44 order #')
@@ -171,7 +176,7 @@ function isAppOriginatedShopifyMirror(order) {
 
 function mapToShopifyOrder(order) {
   const channel = detectSourceChannel(order);
-  const isPosOrder = order.source_name === 'pos' || channel === 'pos';
+  const isPosOrder = isShopifyPosOrder(order) || channel === 'pos';
   const attrs = noteAttributes(order);
   const addressFields = extractAddressFields(order);
   return {
@@ -216,7 +221,7 @@ function mapToShopifyOrder(order) {
     discount_codes: (order.discount_codes || []).map(d => d.code),
     customer_notes: order.note || '',
     tags: (order.tags || '').split(',').map(t => t.trim()).filter(Boolean),
-    is_pos_order: order.source_name === 'pos',
+    is_pos_order: isPosOrder,
     event_name: attrs.event_name || attrs.event || '',
     event_date: attrs.event_date || attrs.pickup_date || '',
     event_location: attrs.event_location || attrs.location || attrs.location_name || '',
@@ -224,6 +229,62 @@ function mapToShopifyOrder(order) {
     is_subscription: (order.tags || '').toLowerCase().includes('subscription'),
     subscription_cadence: '',
     shopify_synced_at: new Date().toISOString(),
+  };
+}
+
+async function mapIncomingShopifyOrder(base44, order) {
+  const mapped = mapToShopifyOrder(order);
+  if (!mapped.is_pos_order) return mapped;
+  const attribution = await resolvePosEventAttribution(base44, order);
+  return { ...mapped, ...attribution };
+}
+
+const POS_EVENT_ATTRIBUTION_FIELDS = [
+  'source_type',
+  'order_type',
+  'fulfillment_mode',
+  'fulfillment_status',
+  'production_status',
+  'order_lock_status',
+  'is_pos_order',
+  'shopify_pos_location_id',
+  'shopify_pos_location_name',
+  'shopify_pos_device_id',
+  'shopify_pos_staff_id',
+  'event_id',
+  'event_key',
+  'event_name',
+  'event_date',
+  'event_location',
+  'event_attribution_status',
+  'event_attribution_reason',
+  'data_quality_status',
+  'sync_status',
+];
+
+function posAttributionUpdateFields(updates) {
+  if (!updates?.is_pos_order) return {};
+  return {
+    source_type: updates.source_type,
+    order_type: updates.order_type,
+    fulfillment_mode: updates.fulfillment_mode,
+    fulfillment_status: updates.fulfillment_status,
+    production_status: updates.production_status,
+    order_lock_status: updates.order_lock_status,
+    is_pos_order: true,
+    shopify_pos_location_id: updates.shopify_pos_location_id,
+    shopify_pos_location_name: updates.shopify_pos_location_name,
+    shopify_pos_device_id: updates.shopify_pos_device_id,
+    shopify_pos_staff_id: updates.shopify_pos_staff_id,
+    event_id: updates.event_id,
+    event_key: updates.event_key,
+    event_name: updates.event_name,
+    event_date: updates.event_date,
+    event_location: updates.event_location,
+    event_attribution_status: updates.event_attribution_status,
+    event_attribution_reason: updates.event_attribution_reason,
+    data_quality_status: updates.data_quality_status,
+    sync_status: updates.sync_status,
   };
 }
 
@@ -524,7 +585,7 @@ Deno.serve(async (req) => {
   if (topic === 'orders/create' || topic === 'orders/paid') {
     let record;
     let action = 'created';
-    const mappedForNativeSafeSync = mapToShopifyOrder(payload);
+    const mappedForNativeSafeSync = await mapIncomingShopifyOrder(base44, payload);
     nativeSafeSyncBridge = await maybeRunNativeSafeSyncWriter(base44, {
       record: existing.length > 0 ? { ...mappedForNativeSafeSync, id: existing[0].id } : mappedForNativeSafeSync,
       topic,
@@ -535,7 +596,7 @@ Deno.serve(async (req) => {
       action = nativeSafeSyncBridge.action === 'created' ? 'created' : 'updated';
       console.log(`Native safeSync handled Shopify webhook ${topic} #${orderNumber}`);
     } else if (existing.length > 0) {
-      const updates = mapToShopifyOrder(payload);
+      const updates = await mapIncomingShopifyOrder(base44, payload);
       record = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
         source_channel: updates.source_channel,
         customer_name: updates.customer_name,
@@ -558,6 +619,7 @@ Deno.serve(async (req) => {
         line_items: updates.line_items,
         total_price: updates.total_price,
         total_discounts: updates.total_discounts,
+        ...posAttributionUpdateFields(updates),
         shopify_synced_at: new Date().toISOString(),
       });
       action = 'updated';
@@ -588,12 +650,13 @@ Deno.serve(async (req) => {
           'line_items',
           'total_price',
           'total_discounts',
+          ...(updates.is_pos_order ? POS_EVENT_ATTRIBUTION_FIELDS : []),
           'shopify_synced_at',
         ],
       });
       console.log(`Updated existing ShopifyOrder for ${topic} #${orderNumber}`);
     } else {
-      record = mapToShopifyOrder(payload);
+      record = await mapIncomingShopifyOrder(base44, payload);
       record = await base44.asServiceRole.entities.ShopifyOrder.create(record);
       await createOrderWriteAuditLog(base44, {
         record,
@@ -604,6 +667,8 @@ Deno.serve(async (req) => {
       });
       console.log(`Created ShopifyOrder for #${orderNumber}`);
     }
+
+    await reconcilePosEventAttributionAlert(base44, record, shopifyOrderId, orderNumber);
 
     // Only actionable exceptions become alerts. Successful orders belong in
     // the operations dashboard, not an indefinitely unresolved notice queue.
@@ -638,7 +703,7 @@ Deno.serve(async (req) => {
     await syncIngestedOrderToHub(base44, record, topic);
 
   } else if (topic === 'orders/updated') {
-    const mappedForNativeSafeSync = mapToShopifyOrder(payload);
+    const mappedForNativeSafeSync = await mapIncomingShopifyOrder(base44, payload);
     nativeSafeSyncBridge = await maybeRunNativeSafeSyncWriter(base44, {
       record: existing.length > 0 ? { ...mappedForNativeSafeSync, id: existing[0].id } : mappedForNativeSafeSync,
       topic,
@@ -647,7 +712,7 @@ Deno.serve(async (req) => {
     if (nativeSafeSyncBridge.handled) {
       console.log(`Native safeSync handled Shopify update webhook #${orderNumber}`);
     } else if (existing.length > 0) {
-      const updates = mapToShopifyOrder(payload);
+      const updates = await mapIncomingShopifyOrder(base44, payload);
       const updatedRecord = await base44.asServiceRole.entities.ShopifyOrder.update(existing[0].id, {
         source_channel: updates.source_channel,
         customer_name: updates.customer_name,
@@ -670,6 +735,7 @@ Deno.serve(async (req) => {
         line_items: updates.line_items,
         total_price: updates.total_price,
         total_discounts: updates.total_discounts,
+        ...posAttributionUpdateFields(updates),
         shopify_synced_at: new Date().toISOString(),
       });
       await createOrderWriteAuditLog(base44, {
@@ -685,13 +751,15 @@ Deno.serve(async (req) => {
           'line_items',
           'total_price',
           'total_discounts',
+          ...(updates.is_pos_order ? POS_EVENT_ATTRIBUTION_FIELDS : []),
           'shopify_synced_at',
         ],
       });
+      await reconcilePosEventAttributionAlert(base44, updatedRecord, shopifyOrderId, orderNumber);
       console.log(`Updated ShopifyOrder #${orderNumber}`);
     } else {
       // Order not in Base44 yet — create it
-      const created = await base44.asServiceRole.entities.ShopifyOrder.create(mapToShopifyOrder(payload));
+      const created = await base44.asServiceRole.entities.ShopifyOrder.create(await mapIncomingShopifyOrder(base44, payload));
       await createOrderWriteAuditLog(base44, {
         record: created,
         topic,
@@ -701,6 +769,7 @@ Deno.serve(async (req) => {
       });
       nativeOpsAttempted = shouldAttemptNativeOrderOps(created, topic);
       nativeOpsResult = await maybeRunNativeOrderOps(base44, created, topic);
+      await reconcilePosEventAttributionAlert(base44, created, shopifyOrderId, orderNumber);
       console.log(`Created missing ShopifyOrder #${orderNumber} from update event`);
     }
 
@@ -854,6 +923,35 @@ async function createAlert(base44, alertType, title, message, shopifyOrderId, or
   };
   if (existing[0]) await base44.asServiceRole.entities.OperationalAlert.update(existing[0].id, payload);
   else await base44.asServiceRole.entities.OperationalAlert.create(payload);
+}
+
+async function reconcilePosEventAttributionAlert(base44, record, shopifyOrderId, orderNumber) {
+  if (record?.is_pos_order !== true) return;
+  if (posEventAttributionNeedsReview(record)) {
+    await createAlert(
+      base44,
+      'pos_event_attribution',
+      `POS Event Attribution Needed #${orderNumber}`,
+      record.event_attribution_reason || 'The POS sale was recorded, but its event location could not be verified.',
+      shopifyOrderId,
+      orderNumber,
+      'warning',
+    );
+    return;
+  }
+  if (record?.event_attribution_status !== 'matched') return;
+  const alerts = await base44.asServiceRole.entities.OperationalAlert.filter({
+    alert_type: 'pos_event_attribution',
+    shopify_order_id: shopifyOrderId,
+    resolved: false,
+  }, '-created_date', 5).catch(() => []);
+  for (const alert of alerts || []) {
+    await base44.asServiceRole.entities.OperationalAlert.update(alert.id, {
+      resolved: true,
+      is_read: true,
+      message: `Resolved automatically: matched to ${record.event_name || record.shopify_pos_location_name || 'configured event location'}.`,
+    });
+  }
 }
 
 async function logSync(base44, syncType, status, synced, failed) {

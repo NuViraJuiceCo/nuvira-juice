@@ -103,6 +103,10 @@ function sanitizeOrder(order) {
     customer_order_date: safeString(order?.customer_order_date, 40),
     created_date: safeString(order?.created_date, 40),
     location_label: safeString(order?.location_label, 80),
+    shopify_pos_location_id: safeString(order?.shopify_pos_location_id, 160),
+    shopify_pos_location_name: safeString(order?.shopify_pos_location_name, 160),
+    event_attribution_status: safeString(order?.event_attribution_status, 80),
+    event_attribution_reason: safeString(order?.event_attribution_reason, 500),
     tags: Array.isArray(order?.tags) ? order.tags.map(tag => safeString(tag, 40)).filter(Boolean).slice(0, 12) : [],
     line_items: sanitizeLineItems(order?.line_items),
     item_count: safeNumber(order?.item_count),
@@ -167,6 +171,8 @@ function summarizeOrders(orders) {
     requires_delivery: orders.filter(order => order.requires_delivery === true).length,
     requires_production: orders.filter(order => order.requires_production === true).length,
     requires_fulfillment_task: orders.filter(order => order.requires_fulfillment_task === true).length,
+    event_attribution_matched: orders.filter(order => order.event_attribution_status === 'matched').length,
+    event_attribution_review: orders.filter(order => ['missing_location', 'unmatched_location', 'ambiguous_location', 'lookup_failed'].includes(order.event_attribution_status)).length,
   };
 }
 
