@@ -1,6 +1,7 @@
 import { handleMarketingLaunchAction, releaseCompletedMarketingHold } from './marketingLaunch.ts';
 import {
   DEFAULT_MARKETING_CADENCE_RULES,
+  internalOrPrivateEmail,
   marketingCadenceDecision,
   testOrder,
 } from './marketingCadencePolicy.js';
@@ -112,6 +113,7 @@ const EVENT_PROVIDER_NAMES: Record<string, string> = {
   subscription_recommended: 'nuvira.subscription.recommended',
   customer_winback_due: 'nuvira.customer.winback',
   marketing_sunset_due: 'nuvira.customer.marketing_sunset',
+  event_customer_welcome: 'nuvira.event.welcome',
 };
 
 const PROVIDER_REQUIRED_FIELDS: Record<string, string[]> = {
@@ -124,6 +126,7 @@ const PROVIDER_REQUIRED_FIELDS: Record<string, string[]> = {
   subscription_recommended: ['customer_name', 'favorite_product', 'order_count', 'subscribe_url', 'mailing_address'],
   customer_winback_due: ['customer_name', 'favorite_product', 'favorite_product_description', 'favorite_product_image_url', 'last_order_date', 'program_summary', 'programs_url', 'shop_url', 'mailing_address'],
   marketing_sunset_due: ['customer_name', 'preferences_url', 'shop_url', 'mailing_address'],
+  event_customer_welcome: ['customer_name', 'event_name', 'event_date', 'event_location', 'mailing_address'],
 };
 
 const PROVIDER_NUMBER_FIELDS: Record<string, string[]> = {
@@ -142,6 +145,7 @@ const PROVIDER_TEMPLATES = [
   'NuVira Repeat Customer Subscription Invitation',
   'NuVira Customer Win-Back',
   'NuVira Marketing Preferences Check',
+  'NuVira Event Welcome',
 ];
 
 const PROVIDER_AUTOMATIONS = [
@@ -153,6 +157,7 @@ const PROVIDER_AUTOMATIONS = [
   'NuVira - Repeat Customer Subscription Invitation',
   'NuVira - Customer Win-Back',
   'NuVira - Marketing Preferences Check',
+  'NuVira - Event Welcome v1',
 ];
 
 function normalizeSingleLine(value: unknown, maxLength = 300): string {
@@ -463,6 +468,254 @@ async function profileFor(base44: any, email: string): Promise<any | null> {
     last_name: lastName,
     phone: normalizeSingleLine(profile?.phone || claim?.phone || order?.customer_phone, 80),
   };
+}
+
+type EventWelcomeConfig = {
+  event_key: string;
+  event_name: string;
+  event_date: string;
+  event_location: string;
+  window_start: Date;
+  window_end: Date;
+};
+
+function eventWelcomeConfig(body: Record<string, any>): EventWelcomeConfig {
+  const eventKey = normalizeSingleLine(body?.event_key, 120).toLowerCase();
+  const eventName = normalizeSingleLine(body?.event_name, 180);
+  const eventDate = normalizeSingleLine(body?.event_date, 120);
+  const eventLocation = normalizeSingleLine(body?.event_location, 240);
+  const windowStart = dateOrNull(body?.window_start);
+  const windowEnd = dateOrNull(body?.window_end);
+  if (!/^[a-z0-9][a-z0-9_-]{4,119}$/.test(eventKey)) throw new Error('event_welcome_event_key_invalid');
+  if (!eventName || !eventDate || !eventLocation) throw new Error('event_welcome_details_required');
+  if (!windowStart || !windowEnd || windowEnd.getTime() <= windowStart.getTime()) {
+    throw new Error('event_welcome_window_invalid');
+  }
+  if (windowEnd.getTime() - windowStart.getTime() > 18 * 60 * 60 * 1000) {
+    throw new Error('event_welcome_window_too_wide');
+  }
+  return {
+    event_key: eventKey,
+    event_name: eventName,
+    event_date: eventDate,
+    event_location: eventLocation,
+    window_start: windowStart,
+    window_end: windowEnd,
+  };
+}
+
+async function listBounded(entity: any, maxRows = 2000): Promise<any[]> {
+  const rows: any[] = [];
+  for (let skip = 0; skip < maxRows; skip += 200) {
+    const page = await entity.list('-created_date', 200, skip);
+    const normalized = Array.isArray(page) ? page : [];
+    rows.push(...normalized);
+    if (normalized.length < 200) break;
+  }
+  return rows;
+}
+
+function recordEmail(row: any): string {
+  return normalizeEmail(row?.customer_email || row?.contact_email || row?.email);
+}
+
+function recordOrderNumber(row: any): string {
+  return normalizeSingleLine(row?.shopify_order_number || row?.order_number || row?.id, 160);
+}
+
+function recordOrderDate(row: any): Date | null {
+  return dateOrNull(
+    row?.customer_order_date
+      || row?.processed_at
+      || row?.created_at
+      || row?.created_date,
+  );
+}
+
+function isPosEventOrder(row: any): boolean {
+  const source = normalizeSingleLine(row?.source_channel || row?.source_type || row?.source, 50).toLowerCase();
+  return row?.is_pos_order === true || ['pos', 'event', 'shopify_pos'].includes(source);
+}
+
+function paidCommerceOrder(row: any): boolean {
+  return row?.is_test_order !== true && (
+    row?.payment_captured === true
+      || ['paid', 'captured'].includes(normalizeSingleLine(row?.payment_status || row?.financial_status, 40).toLowerCase())
+  );
+}
+
+function orderWithinEventWindow(row: any, config: EventWelcomeConfig): boolean {
+  const date = recordOrderDate(row);
+  return Boolean(
+    date
+      && date.getTime() >= config.window_start.getTime()
+      && date.getTime() <= config.window_end.getTime(),
+  );
+}
+
+async function collectEventWelcomeCandidates(base44: any, config: EventWelcomeConfig) {
+  const [shopifyOrders, nativeOrders] = await Promise.all([
+    listBounded(base44.asServiceRole.entities.ShopifyOrder, 3000),
+    listBounded(base44.asServiceRole.entities.Order, 3000),
+  ]);
+  const allOrders = [...shopifyOrders, ...nativeOrders];
+  const eventOrders = shopifyOrders
+    .filter((row: any) => isPosEventOrder(row) && paidCommerceOrder(row) && orderWithinEventWindow(row, config))
+    .sort((left: any, right: any) => (
+      (recordOrderDate(left)?.getTime() || 0) - (recordOrderDate(right)?.getTime() || 0)
+    ));
+
+  const firstEventOrderByEmail = new Map<string, any>();
+  for (const order of eventOrders) {
+    const email = recordEmail(order);
+    if (email && !firstEventOrderByEmail.has(email)) firstEventOrderByEmail.set(email, order);
+  }
+
+  const results: any[] = [];
+  for (const [email, order] of firstEventOrderByEmail.entries()) {
+    const orderNumber = recordOrderNumber(order);
+    const eventId = `event_welcome:${config.event_key}:${email}`;
+    let reason = 'eligible';
+    if (!email.includes('@') || email.endsWith('@nuvira.local')) reason = 'email_invalid_or_placeholder';
+    else if (internalOrPrivateEmail(email)) reason = 'internal_or_private_identity_excluded';
+
+    if (reason === 'eligible') {
+      const priorPurchase = allOrders.some((historical: any) => {
+        if (recordEmail(historical) !== email || !paidCommerceOrder(historical)) return false;
+        const historicalNumber = recordOrderNumber(historical);
+        if (historicalNumber && orderNumber && historicalNumber === orderNumber) return false;
+        const historicalDate = recordOrderDate(historical);
+        return !historicalDate || historicalDate.getTime() < config.window_start.getTime();
+      });
+      if (priorPurchase) reason = 'existing_customer_prior_purchase';
+    }
+
+    const priorEvent = reason === 'eligible' ? await existingJourneyEvent(base44, eventId) : null;
+    if (priorEvent) reason = 'event_welcome_already_recorded';
+
+    const consent = reason === 'eligible'
+      ? await resolveConsent(base44, email, 'event_customer_welcome')
+      : { eligible: false, status: 'unknown', reason };
+    if (reason === 'eligible' && !consent.eligible) reason = consent.reason;
+
+    const profile = await profileFor(base44, email);
+    results.push({
+      email,
+      order,
+      order_number: orderNumber,
+      order_at: recordOrderDate(order)?.toISOString() || null,
+      customer_name: customerName(profile, order),
+      event_id: eventId,
+      eligible: reason === 'eligible',
+      reason,
+      consent_status: consent.status,
+    });
+  }
+  return results;
+}
+
+function eventWelcomeSummary(rows: any[]) {
+  const reasons = rows.reduce((summary: Record<string, number>, row: any) => {
+    summary[row.reason] = (summary[row.reason] || 0) + 1;
+    return summary;
+  }, {});
+  return {
+    event_customer_count: rows.length,
+    eligible_new_customer_count: rows.filter((row: any) => row.eligible).length,
+    suppressed_count: rows.filter((row: any) => !row.eligible).length,
+    reasons,
+  };
+}
+
+function publicEventWelcomeCandidate(row: any) {
+  return {
+    customer_email: row.email,
+    customer_name: row.customer_name,
+    order_number: row.order_number,
+    order_at: row.order_at,
+    consent_status: row.consent_status,
+    eligible: row.eligible,
+    reason: row.reason,
+  };
+}
+
+async function eventWelcomePreview(base44: any, body: Record<string, any>) {
+  const config = eventWelcomeConfig(body);
+  const candidates = await collectEventWelcomeCandidates(base44, config);
+  return Response.json({
+    success: true,
+    dry_run: true,
+    event: {
+      event_key: config.event_key,
+      event_name: config.event_name,
+      event_date: config.event_date,
+      event_location: config.event_location,
+      window_start: config.window_start.toISOString(),
+      window_end: config.window_end.toISOString(),
+    },
+    summary: eventWelcomeSummary(candidates),
+    candidates: candidates.slice(0, 200).map(publicEventWelcomeCandidate),
+  });
+}
+
+async function eventWelcomeSend(base44: any, body: Record<string, any>) {
+  const requiredConfirmation = 'SEND NUVIRA EVENT WELCOMES';
+  if (normalizeSingleLine(body?.confirm, 100) !== requiredConfirmation) {
+    return Response.json({ error: 'event_welcome_confirmation_required', required_confirmation: requiredConfirmation }, { status: 409 });
+  }
+  const currentPolicy = policy();
+  if (currentPolicy.mode !== 'production' || !currentPolicy.customer_sends_enabled) {
+    return Response.json({ error: 'event_welcome_production_policy_not_ready', policy: currentPolicy }, { status: 409 });
+  }
+  const config = eventWelcomeConfig(body);
+  const candidates = await collectEventWelcomeCandidates(base44, config);
+  const eligible = candidates.filter((row: any) => row.eligible);
+  if (eligible.length > 100) {
+    return Response.json({ error: 'event_welcome_recipient_cap_exceeded', eligible_count: eligible.length, cap: 100 }, { status: 409 });
+  }
+
+  const outcomes: any[] = [];
+  for (const candidate of eligible) {
+    const result = await createAndForwardEvent(base44, {
+      event_id: candidate.event_id,
+      event_name: 'event_customer_welcome',
+      event_at: isoNow(),
+      customer_email: candidate.email,
+      source: 'pos',
+      order_number: candidate.order_number,
+      order_id: normalizeSingleLine(candidate.order?.id, 160) || null,
+      order: candidate.order,
+      payload: {
+        CUSTOMER_NAME: candidate.customer_name,
+        EVENT_NAME: config.event_name,
+        EVENT_DATE: config.event_date,
+        EVENT_LOCATION: config.event_location,
+        MAILING_ADDRESS,
+      },
+    });
+    outcomes.push({
+      customer_email: candidate.email,
+      order_number: candidate.order_number,
+      event_id: candidate.event_id,
+      forwarded: result.forwarded === true,
+      duplicate: result.duplicate === true,
+      resend_status: result?.event?.resend_status || null,
+      reason: result?.reason || result?.error || result?.event?.error_message || null,
+    });
+  }
+
+  return Response.json({
+    success: outcomes.every((row) => row.forwarded || row.duplicate),
+    dry_run: false,
+    event_key: config.event_key,
+    summary: {
+      ...eventWelcomeSummary(candidates),
+      forwarded_count: outcomes.filter((row) => row.forwarded).length,
+      duplicate_count: outcomes.filter((row) => row.duplicate).length,
+      failed_or_suppressed_count: outcomes.filter((row) => !row.forwarded && !row.duplicate).length,
+    },
+    outcomes,
+  });
 }
 
 async function existingJourneyEvent(base44: any, eventId: string): Promise<any | null> {
@@ -1390,6 +1643,13 @@ function journeyProofPayloads(profile: any): Record<string, Record<string, any>>
     subscription_recommended: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'NuVira juice', ORDER_COUNT: 2, SUBSCRIBE_URL: `${APP_URL}/subscribe`, MAILING_ADDRESS },
     customer_winback_due: { CUSTOMER_NAME: customerName(profile), FAVORITE_PRODUCT: 'OASIS', FAVORITE_PRODUCT_DESCRIPTION: PRODUCT_CONTENT.oasis.description, FAVORITE_PRODUCT_IMAGE_URL: PRODUCT_CONTENT.oasis.image_url, LAST_ORDER_DATE: 'June 4, 2026', PROGRAM_SUMMARY: CURRENT_PROGRAM_SUMMARY, PROGRAMS_URL: `${APP_URL}/programs`, SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     marketing_sunset_due: { CUSTOMER_NAME: customerName(profile), PREFERENCES_URL: protectedCustomerUrl('/account/settings'), SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
+    event_customer_welcome: {
+      CUSTOMER_NAME: customerName(profile),
+      EVENT_NAME: 'Supplement Superstores St. Peters Customer Appreciation BBQ',
+      EVENT_DATE: 'Saturday, August 22, 2026',
+      EVENT_LOCATION: 'Supplement Superstores — St. Peters, 181 Mid Rivers Mall Dr., St. Peters, MO 63376',
+      MAILING_ADDRESS,
+    },
   };
 }
 
@@ -1458,7 +1718,7 @@ export async function handleCustomerJourneyRequest(base44: any, caller: any, raw
   try {
     const body = raw?.args && typeof raw.args === 'object' ? { ...raw, ...raw.args } : raw;
     const action = normalizeSingleLine(body?.action, 80);
-    const supportedAction = ['record_activity', 'preview', 'preview_rewards_email_campaign', 'evaluate_scheduled', 'evaluate_now', 'sandbox_event', 'internal_proof_event', 'marketing_launch_preview', 'marketing_launch_sync_contacts', 'marketing_launch_create_draft', 'marketing_launch_send_test', 'marketing_launch_set_order_hold'].includes(action);
+    const supportedAction = ['record_activity', 'preview', 'preview_rewards_email_campaign', 'evaluate_scheduled', 'evaluate_now', 'sandbox_event', 'internal_proof_event', 'event_welcome_preview', 'event_welcome_send', 'marketing_launch_preview', 'marketing_launch_sync_contacts', 'marketing_launch_create_draft', 'marketing_launch_send_test', 'marketing_launch_set_order_hold'].includes(action);
     const entityAutomation = Boolean(body?.event && body?.data);
     if (!supportedAction && !entityAutomation) return null;
 
@@ -1478,6 +1738,8 @@ export async function handleCustomerJourneyRequest(base44: any, caller: any, raw
     }
     if (action === 'preview') return await preview(base44);
     if (action === 'preview_rewards_email_campaign') return await previewRewardsCampaign(base44);
+    if (action === 'event_welcome_preview') return await eventWelcomePreview(base44, body);
+    if (action === 'event_welcome_send') return await eventWelcomeSend(base44, body);
     const marketingResponse = await handleMarketingLaunchAction(base44, body);
     if (marketingResponse) return marketingResponse;
     if (action === 'evaluate_now') return await evaluateJourneys(base44);

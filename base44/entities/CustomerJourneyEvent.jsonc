@@ -29,6 +29,7 @@
         "marketing_sunset_due",
         "marketing_sunset_suppressed",
         "marketing_sunset_retained",
+        "event_customer_welcome",
         "service_issue_opened",
         "service_issue_resolved"
       ]
