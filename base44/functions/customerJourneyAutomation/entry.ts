@@ -57,6 +57,8 @@ Deno.serve(async (req) => {
       'evaluate_now',
       'sandbox_event',
       'internal_proof_event',
+      'event_welcome_preview',
+      'event_welcome_send',
       'marketing_launch_preview',
       'marketing_launch_sync_contacts',
       'marketing_launch_create_draft',
