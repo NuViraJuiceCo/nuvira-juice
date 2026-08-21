@@ -161,6 +161,46 @@
     "event_location": {
       "type": "string"
     },
+    "event_id": {
+      "type": "string",
+      "description": "Base44 Event record matched from the authoritative Shopify POS location"
+    },
+    "event_key": {
+      "type": "string",
+      "description": "Stable event key copied from the matched Event hub_event_id"
+    },
+    "shopify_pos_location_id": {
+      "type": "string",
+      "description": "Canonical Shopify Location GID captured from the POS order webhook"
+    },
+    "shopify_pos_location_name": {
+      "type": "string",
+      "description": "Verified display name from the matched Event location configuration"
+    },
+    "shopify_pos_device_id": {
+      "type": "string",
+      "description": "Shopify POS device identifier when present on the order payload"
+    },
+    "shopify_pos_staff_id": {
+      "type": "string",
+      "description": "Shopify POS staff user identifier when present on the order payload"
+    },
+    "event_attribution_status": {
+      "type": "string",
+      "enum": [
+        "matched",
+        "missing_location",
+        "unmatched_location",
+        "ambiguous_location",
+        "lookup_failed"
+      ],
+      "description": "Fail-closed event attribution result for Shopify POS orders"
+    },
+    "event_attribution_reason": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Operational reason for the POS event attribution result"
+    },
     "assigned_driver": {
       "type": "string"
     },

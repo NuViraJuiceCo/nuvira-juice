@@ -5,6 +5,7 @@ import {
   marketingCadenceDecision,
   testOrder,
 } from './marketingCadencePolicy.js';
+import { normalizeShopifyLocationId } from '../shopifyWebhookReceiver/posEventAttribution.js';
 
 type JourneyMode = 'disabled' | 'test' | 'production';
 type ConsentResult = {
@@ -475,6 +476,7 @@ type EventWelcomeConfig = {
   event_name: string;
   event_date: string;
   event_location: string;
+  shopify_pos_location_id: string;
   window_start: Date;
   window_end: Date;
 };
@@ -484,10 +486,12 @@ function eventWelcomeConfig(body: Record<string, any>): EventWelcomeConfig {
   const eventName = normalizeSingleLine(body?.event_name, 180);
   const eventDate = normalizeSingleLine(body?.event_date, 120);
   const eventLocation = normalizeSingleLine(body?.event_location, 240);
+  const shopifyLocation = normalizeShopifyLocationId(body?.shopify_pos_location_id);
   const windowStart = dateOrNull(body?.window_start);
   const windowEnd = dateOrNull(body?.window_end);
   if (!/^[a-z0-9][a-z0-9_-]{4,119}$/.test(eventKey)) throw new Error('event_welcome_event_key_invalid');
   if (!eventName || !eventDate || !eventLocation) throw new Error('event_welcome_details_required');
+  if (!shopifyLocation) throw new Error('event_welcome_pos_location_required');
   if (!windowStart || !windowEnd || windowEnd.getTime() <= windowStart.getTime()) {
     throw new Error('event_welcome_window_invalid');
   }
@@ -499,6 +503,7 @@ function eventWelcomeConfig(body: Record<string, any>): EventWelcomeConfig {
     event_name: eventName,
     event_date: eventDate,
     event_location: eventLocation,
+    shopify_pos_location_id: shopifyLocation.gid,
     window_start: windowStart,
     window_end: windowEnd,
   };
@@ -553,6 +558,12 @@ function orderWithinEventWindow(row: any, config: EventWelcomeConfig): boolean {
   );
 }
 
+function orderMatchesVerifiedEvent(row: any, config: EventWelcomeConfig): boolean {
+  const orderLocation = normalizeShopifyLocationId(row?.shopify_pos_location_id);
+  return row?.event_attribution_status === 'matched'
+    && orderLocation?.gid === config.shopify_pos_location_id;
+}
+
 async function collectEventWelcomeCandidates(base44: any, config: EventWelcomeConfig) {
   const [shopifyOrders, nativeOrders] = await Promise.all([
     listBounded(base44.asServiceRole.entities.ShopifyOrder, 3000),
@@ -560,7 +571,12 @@ async function collectEventWelcomeCandidates(base44: any, config: EventWelcomeCo
   ]);
   const allOrders = [...shopifyOrders, ...nativeOrders];
   const eventOrders = shopifyOrders
-    .filter((row: any) => isPosEventOrder(row) && paidCommerceOrder(row) && orderWithinEventWindow(row, config))
+    .filter((row: any) => (
+      isPosEventOrder(row)
+      && paidCommerceOrder(row)
+      && orderMatchesVerifiedEvent(row, config)
+      && orderWithinEventWindow(row, config)
+    ))
     .sort((left: any, right: any) => (
       (recordOrderDate(left)?.getTime() || 0) - (recordOrderDate(right)?.getTime() || 0)
     ));
@@ -604,6 +620,8 @@ async function collectEventWelcomeCandidates(base44: any, config: EventWelcomeCo
       order,
       order_number: orderNumber,
       order_at: recordOrderDate(order)?.toISOString() || null,
+      shopify_pos_location_id: normalizeSingleLine(order?.shopify_pos_location_id, 160),
+      event_attribution_status: normalizeSingleLine(order?.event_attribution_status, 80),
       customer_name: customerName(profile, order),
       event_id: eventId,
       eligible: reason === 'eligible',
@@ -633,6 +651,8 @@ function publicEventWelcomeCandidate(row: any) {
     customer_name: row.customer_name,
     order_number: row.order_number,
     order_at: row.order_at,
+    shopify_pos_location_id: row.shopify_pos_location_id,
+    event_attribution_status: row.event_attribution_status,
     consent_status: row.consent_status,
     eligible: row.eligible,
     reason: row.reason,
@@ -650,6 +670,7 @@ async function eventWelcomePreview(base44: any, body: Record<string, any>) {
       event_name: config.event_name,
       event_date: config.event_date,
       event_location: config.event_location,
+      shopify_pos_location_id: config.shopify_pos_location_id,
       window_start: config.window_start.toISOString(),
       window_end: config.window_end.toISOString(),
     },

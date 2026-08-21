@@ -12,6 +12,7 @@
         "inventory_shortage",
         "missing_info",
         "payment_issue",
+        "pos_event_attribution",
         "refund",
         "cancellation"
       ]
