@@ -5,7 +5,7 @@ import {
   marketingCadenceDecision,
   testOrder,
 } from './marketingCadencePolicy.js';
-import { normalizeShopifyLocationId } from '../shopifyWebhookReceiver/posEventAttribution.js';
+import { normalizeShopifyLocationId } from './shopifyLocation.js';
 
 type JourneyMode = 'disabled' | 'test' | 'production';
 type ConsentResult = {

@@ -329,7 +329,7 @@ assert.equal(persistentInvokeCount, 3);
 assert.equal(failureLogs, 3, 'A persistent conflict remains retry eligible and auditable.');
 
 const planningSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/entry.ts'), 'utf8');
-const bundledPlanningSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/productionMaterializer/entry.ts'), 'utf8');
+const bundledPlanningSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/productionMaterializer/handler.ts'), 'utf8');
 const planningReadModelSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionPlanningSummary/productionComplianceReadModel.js'), 'utf8');
 const bundledPlanningReadModelSource = fs.readFileSync(path.join(repoRoot, 'base44/functions/syncOrderToHub/productionMaterializer/productionComplianceReadModel.js'), 'utf8');
 const gatewaySource = fs.readFileSync(path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/entry.ts'), 'utf8');
@@ -357,7 +357,8 @@ assert.match(syncSource, /g115f-direct-production-materializer-composition/);
 assert.match(syncSource, /g115g-bundle-safe-signed-production-materializer/);
 assert.match(syncSource, /g115h-local-production-materializer/);
 assert.match(syncSource, /isRetriableMaterializationPreflight/);
-assert.match(syncSource, /\.\/productionMaterializer\/entry\.ts/);
+assert.match(syncSource, /\.\/productionMaterializer\/handler\.ts/);
+assert.doesNotMatch(syncSource, /\.\/productionMaterializer\/entry\.ts/);
 assert.match(materializationInvokeSource, /productionMaterializationHandler\(new Request/);
 assert.doesNotMatch(materializationInvokeSource, /asServiceRole\.functions\.(fetch|invoke)/);
 assert.equal(bundledPlanningSource, planningSource, 'Bundled automatic materializer must exactly match the canonical admin handler.');

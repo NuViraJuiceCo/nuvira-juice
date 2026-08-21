@@ -109,6 +109,7 @@ assert.match(lookupFailed.event_attribution_reason, /failed safely/);
 
 const receiver = readFileSync('base44/functions/shopifyWebhookReceiver/entry.ts', 'utf8');
 const journey = readFileSync('base44/functions/customerJourneyAutomation/customerJourneyAutomation.ts', 'utf8');
+const journeyLocationHelper = readFileSync('base44/functions/customerJourneyAutomation/shopifyLocation.js', 'utf8');
 const orderEntity = readFileSync('base44/entities/ShopifyOrder.jsonc', 'utf8');
 const alertEntity = readFileSync('base44/entities/OperationalAlert.jsonc', 'utf8');
 
@@ -119,6 +120,8 @@ assert.match(receiver, /pos_event_attribution/);
 assert.match(journey, /event_welcome_pos_location_required/);
 assert.match(journey, /event_attribution_status === 'matched'/);
 assert.match(journey, /orderLocation\?\.gid === config\.shopify_pos_location_id/);
+assert.match(journey, /from '\.\/shopifyLocation\.js'/);
+assert.match(journeyLocationHelper, /gid:\/\/shopify\/Location\/\$\{numeric\}/);
 assert.match(orderEntity, /"shopify_pos_location_id"/);
 assert.match(orderEntity, /"event_attribution_status"/);
 assert.match(alertEntity, /"pos_event_attribution"/);
