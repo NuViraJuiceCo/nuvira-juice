@@ -1,10 +1,12 @@
 export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
 const SEVERITY_ORDER = {
-  insufficient: 0,
-  final_stock: 1,
-  one_left: 2,
-  low_stock: 3,
+  inventory_unknown: 0,
+  inventory_untracked: 1,
+  insufficient: 2,
+  final_stock: 3,
+  one_left: 4,
+  low_stock: 5,
 };
 
 function wholeNumber(value) {
@@ -25,16 +27,60 @@ export function assessLineItem({
   variant,
   lowStockThreshold = DEFAULT_LOW_STOCK_THRESHOLD,
 }) {
-  if (!lineItem || !variant || variant.inventoryIsTracked !== true) return null;
+  if (!lineItem) return null;
 
-  const onHand = wholeNumber(variant.inventoryAtLocation);
   const inCart = wholeNumber(lineItem.quantity);
-  if (onHand === null || inCart === null || inCart === 0) return null;
+  if (inCart === null || inCart === 0) return null;
 
   const name = itemName(lineItem, variant);
+  const variantId = Number(lineItem.variantId);
+
+  if (!variant) {
+    return {
+      variantId,
+      name,
+      onHand: null,
+      inCart,
+      remaining: null,
+      code: 'inventory_unknown',
+      tone: 'critical',
+      label: 'STOP — STOCK CHECK UNAVAILABLE',
+      message: `NuVira Event Stock Guard could not read ${name} at this POS location. Verify the location and physical count before checkout.`,
+    };
+  }
+
+  if (variant.inventoryIsTracked !== true) {
+    return {
+      variantId,
+      name,
+      onHand: null,
+      inCart,
+      remaining: null,
+      code: 'inventory_untracked',
+      tone: 'critical',
+      label: 'STOP — INVENTORY NOT TRACKED',
+      message: `${name} does not have Shopify inventory tracking enabled. Verify physical event stock before checkout; do not assume it is available.`,
+    };
+  }
+
+  const onHand = wholeNumber(variant.inventoryAtLocation);
+  if (onHand === null) {
+    return {
+      variantId,
+      name,
+      onHand: null,
+      inCart,
+      remaining: null,
+      code: 'inventory_unknown',
+      tone: 'critical',
+      label: 'STOP — STOCK COUNT UNAVAILABLE',
+      message: `${name} has no readable count at this POS location. Verify the active location and physical count before checkout.`,
+    };
+  }
+
   const remaining = onHand - inCart;
   const base = {
-    variantId: Number(lineItem.variantId),
+    variantId,
     name,
     onHand,
     inCart,
@@ -76,13 +122,13 @@ export function assessLineItem({
     };
   }
 
-  if (onHand <= lowStockThreshold) {
+  if (remaining <= lowStockThreshold) {
     return {
       ...base,
       code: 'low_stock',
       tone: 'warning',
       label: 'LOW STOCK',
-      message: `${name} has ${onHand} ${unitLabel(onHand)} on hand; ${remaining} will remain after this cart.`,
+      message: `${name} has ${onHand} ${unitLabel(onHand)} on hand; only ${remaining} will remain after this cart.`,
     };
   }
 
@@ -121,6 +167,12 @@ export function toastMessage(warnings = []) {
   const primary = warnings[0];
   const suffix = warnings.length > 1 ? ` +${warnings.length - 1} more warning${warnings.length === 2 ? '' : 's'}.` : '';
 
+  if (primary.code === 'inventory_unknown') {
+    return `STOP: stock could not be checked for ${primary.name}; verify it before checkout.${suffix}`;
+  }
+  if (primary.code === 'inventory_untracked') {
+    return `STOP: inventory is not tracked for ${primary.name}; verify physical stock before checkout.${suffix}`;
+  }
   if (primary.code === 'insufficient') {
     return `STOP: only ${primary.onHand} ${primary.name} on hand; ${primary.inCart} are in the cart.${suffix}`;
   }
@@ -130,5 +182,5 @@ export function toastMessage(warnings = []) {
   if (primary.code === 'one_left') {
     return `LOW STOCK: only 1 ${primary.name} will remain after this sale.${suffix}`;
   }
-  return `LOW STOCK: ${primary.name} has ${primary.onHand} on hand.${suffix}`;
+  return `LOW STOCK: only ${primary.remaining} ${primary.name} will remain after this sale.${suffix}`;
 }
