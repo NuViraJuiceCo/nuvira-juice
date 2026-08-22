@@ -523,8 +523,8 @@ async function initializeQuantity({ target, quantity, providerIdempotencyKey, pr
   if (level && currentQuantity === quantity) return { quantity, already_applied: true };
   if (level && currentQuantity !== 0) throw codedError('shopify_event_location_inventory_changed');
   if (!level) {
-    const data = await shopifyGraphql(`mutation ActivateVerifiedEventInventory($inventoryItemId: ID!, $locationId: ID!, $available: Int!) {
-      inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId, available: $available) {
+    const data = await shopifyGraphql(`mutation ActivateVerifiedEventInventory($inventoryItemId: ID!, $locationId: ID!, $available: Int!, $idempotencyKey: String!) {
+      inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId, available: $available) @idempotent(key: $idempotencyKey) {
         inventoryLevel { id quantities(names: ["available"]) { name quantity } }
         userErrors { field message }
       }
@@ -532,6 +532,7 @@ async function initializeQuantity({ target, quantity, providerIdempotencyKey, pr
       inventoryItemId: target.inventoryItem.id,
       locationId: target.location.id,
       available: quantity,
+      idempotencyKey: providerIdempotencyKey,
     }, provider, { mutating: true });
     const result = providerResult(data, 'inventoryActivate', 'shopify_event_inventory_activation_failed');
     if (availableQuantity(result.inventoryLevel) !== quantity) throw codedError('shopify_event_inventory_activation_readback_failed');
