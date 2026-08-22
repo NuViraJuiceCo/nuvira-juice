@@ -31,10 +31,40 @@ function safeCode(value, fallback = 'event_pos_inventory_sync_failed') {
   return valueText || fallback;
 }
 
-function codedError(code) {
+function safeDetail(value, fallback = 'Event POS inventory initialization requires review') {
+  const valueText = text(value)
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .slice(0, 500);
+  return valueText || fallback;
+}
+
+function codedError(code, detail = '') {
   const error = new Error(code);
   error.code = code;
+  error.safeDetail = safeDetail(detail);
   return error;
+}
+
+function graphqlOperationName(query) {
+  return safeCode(text(query).match(/\b(?:query|mutation)\s+([A-Za-z0-9_]+)/)?.[1], 'shopify_operation');
+}
+
+function shopifyGraphqlFailure(response, payload, query) {
+  const operation = graphqlOperationName(query);
+  const errors = Array.isArray(payload?.errors) ? payload.errors.slice(0, 3) : [];
+  const first = errors[0] || null;
+  const providerCode = safeCode(first?.extensions?.code, 'request_failed');
+  const errorCode = response.ok
+    ? `shopify_graphql_${operation}_${providerCode}`
+    : `shopify_graphql_${operation}_http_${response.status}`;
+  const providerDetail = errors.length > 0
+    ? errors.map(error => {
+      const code = safeCode(error?.extensions?.code, 'request_failed');
+      return `${operation} [${code}]: ${safeDetail(error?.message, 'Shopify GraphQL request failed')}`;
+    }).join(' | ')
+    : `${operation}: Shopify returned HTTP ${response.status}`;
+  return codedError(errorCode, providerDetail);
 }
 
 function integerQuantity(value) {
@@ -152,7 +182,9 @@ async function shopifyGraphql(query, variables, provider, { mutating = false } =
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || (Array.isArray(payload?.errors) && payload.errors.length > 0)) {
-    throw codedError('shopify_graphql_request_failed');
+    const failure = shopifyGraphqlFailure(response, payload, query);
+    console.error(`[event-pos-inventory] ${failure.safeDetail}`);
+    throw failure;
   }
   return payload?.data || {};
 }
@@ -160,7 +192,11 @@ async function shopifyGraphql(query, variables, provider, { mutating = false } =
 function providerResult(payload, field, errorCode) {
   const result = payload?.[field] || null;
   if (!result) throw codedError(errorCode);
-  if (Array.isArray(result.userErrors) && result.userErrors.length > 0) throw codedError(errorCode);
+  if (Array.isArray(result.userErrors) && result.userErrors.length > 0) {
+    const first = result.userErrors[0] || null;
+    const providerCode = safeCode(first?.code, 'provider_user_error');
+    throw codedError(`${errorCode}:${providerCode}`, `${field} [${providerCode}]: ${safeDetail(first?.message)}`);
+  }
   return result;
 }
 
@@ -253,15 +289,16 @@ async function claimCommand({ base44, batch, event, requestId, user, quantity })
   return { state: 'claimed', command, idempotencyKey };
 }
 
-async function failCommand({ base44, commandId, batch, code, provider }) {
+async function failCommand({ base44, commandId, batch, code, detail, provider }) {
   const errorCode = safeCode(code);
+  const errorDetail = safeDetail(detail);
   const now = new Date().toISOString();
   await Promise.all([
     commandId ? base44.asServiceRole.entities.CommandLog.update(commandId, {
       status: 'failed',
       completed_at: now,
       error_code: errorCode,
-      error_message: 'Event POS inventory initialization requires review',
+      error_message: errorDetail,
       result: {
         provider_write_completed: provider.writes > 0,
         native_projection_completed: false,
@@ -704,6 +741,7 @@ export async function syncVerifiedEventBatchToShopifyPos({ base44, batch, reques
       commandId: command?.id,
       batch,
       code: error?.code || error?.message,
+      detail: error?.safeDetail,
       provider,
     });
   }
