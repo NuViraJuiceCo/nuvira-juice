@@ -134,17 +134,56 @@ function optionalNumber(value, fieldName, { min = 0 } = {}) {
   return parsed;
 }
 
+function eventClockTime(value, fieldName) {
+  const time = sanitizeText(value, 5);
+  if (!time) return null;
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    throw new Error(`${fieldName} must use 24-hour HH:mm format`);
+  }
+  return time;
+}
+
+function eventWelcomeKey(value) {
+  const key = sanitizeText(value, 120).toLowerCase();
+  if (!key) return null;
+  if (!/^[a-z0-9][a-z0-9_-]{4,119}$/.test(key)) {
+    throw new Error('event.event_welcome_key may use lowercase letters, numbers, underscores, and hyphens');
+  }
+  return key;
+}
+
+function shopifyLocationGid(value) {
+  const gid = sanitizeText(value, 160);
+  if (!gid) return null;
+  if (!/^gid:\/\/shopify\/Location\/\d+$/.test(gid)) {
+    throw new Error('event.shopify_pos_location_id must be a Shopify Location GID');
+  }
+  return gid;
+}
+
 function eventMutationPayload(body) {
   const event = body?.event && typeof body.event === 'object' && !Array.isArray(body.event) ? body.event : {};
   const title = sanitizeText(event.title, 140);
   const date = parseIsoDate(event.date, 'event.date');
+  const startTime = eventClockTime(event.start_time || event.time, 'event.time');
+  const endTime = eventClockTime(event.end_time, 'event.end_time');
+  const location = sanitizePublicLocation(event.location, 240) || null;
+  const welcomeEnabled = event.event_welcome_enabled === true;
+  const posLocationId = shopifyLocationGid(event.shopify_pos_location_id);
   if (!title) throw new Error('event.title is required');
   if (!date) throw new Error('event.date is required');
+  if (welcomeEnabled && (!startTime || !endTime || !location || !posLocationId)) {
+    throw new Error('Event welcomes require a start time, end time, location, and dedicated Shopify POS location GID');
+  }
+  if (welcomeEnabled && startTime === endTime) {
+    throw new Error('Event start and end time cannot be the same');
+  }
   return {
     title,
     description: sanitizeText(event.description, 2000) || null,
     date,
-    time: sanitizeText(event.time, 40) || null,
+    time: startTime,
+    end_time: endTime,
     location: sanitizePublicLocation(event.location, 240) || null,
     image_url: sanitizeEventUrl(event.image_url, 'event.image_url'),
     price: optionalNumber(event.price, 'event.price'),
@@ -155,6 +194,10 @@ function eventMutationPayload(body) {
       : [],
     website_link: sanitizeEventUrl(event.website_link, 'event.website_link'),
     tickets_link: sanitizeEventUrl(event.tickets_link, 'event.tickets_link'),
+    shopify_pos_location_id: posLocationId,
+    shopify_pos_location_name: sanitizeText(event.shopify_pos_location_name, 160) || null,
+    event_welcome_enabled: welcomeEnabled,
+    event_welcome_key: eventWelcomeKey(event.event_welcome_key),
   };
 }
 

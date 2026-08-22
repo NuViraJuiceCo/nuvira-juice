@@ -152,6 +152,7 @@ export default async function handler(req: Request) {
       flags: {
         admin_push_enabled: envFlag('ENABLE_ADMIN_PUSH_NOTIFICATIONS'),
         admin_order_processed_push_enabled: envFlag('ENABLE_ADMIN_ORDER_PROCESSED_PUSH'),
+        admin_new_member_push_enabled: envFlag('ENABLE_ADMIN_NEW_MEMBER_PUSH'),
       },
       active_subscription_count: counts.web_push + counts.fcm + counts.apns,
       active_token_types: activeTokenTypes,

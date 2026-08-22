@@ -444,6 +444,15 @@ function pushSubtypeEnabled(
       : { enabled: false, reason: 'admin_order_processed_push_disabled' };
   }
 
+  if (notificationSubtype === 'admin_new_member') {
+    if (!envFlag('ENABLE_ADMIN_PUSH_NOTIFICATIONS')) {
+      return { enabled: false, reason: 'admin_push_disabled' };
+    }
+    return envFlag('ENABLE_ADMIN_NEW_MEMBER_PUSH')
+      ? { enabled: true, reason: null }
+      : { enabled: false, reason: 'admin_new_member_push_disabled' };
+  }
+
   if (!envFlag('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS')) {
     return { enabled: false, reason: 'customer_push_disabled' };
   }

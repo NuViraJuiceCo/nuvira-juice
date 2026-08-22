@@ -5,6 +5,10 @@ import {
   marketingCadenceDecision,
   testOrder,
 } from './marketingCadencePolicy.js';
+import {
+  EVENT_WELCOME_DELAY_HOURS,
+  scheduledEventWelcomeDecision,
+} from './eventWelcomeTiming.js';
 import { normalizeShopifyLocationId } from './shopifyLocation.js';
 
 type JourneyMode = 'disabled' | 'test' | 'production';
@@ -114,7 +118,7 @@ const EVENT_PROVIDER_NAMES: Record<string, string> = {
   subscription_recommended: 'nuvira.subscription.recommended',
   customer_winback_due: 'nuvira.customer.winback',
   marketing_sunset_due: 'nuvira.customer.marketing_sunset',
-  event_customer_welcome: 'nuvira.event.welcome',
+  event_customer_welcome: 'nuvira.event.welcome.ready',
 };
 
 const PROVIDER_REQUIRED_FIELDS: Record<string, string[]> = {
@@ -159,6 +163,7 @@ const PROVIDER_AUTOMATIONS = [
   'NuVira - Customer Win-Back',
   'NuVira - Marketing Preferences Check',
   'NuVira - Event Welcome v1',
+  'NuVira - Event Welcome Ready v2',
 ];
 
 function normalizeSingleLine(value: unknown, maxLength = 300): string {
@@ -479,6 +484,7 @@ type EventWelcomeConfig = {
   shopify_pos_location_id: string;
   window_start: Date;
   window_end: Date;
+  send_after_at: Date;
 };
 
 function eventWelcomeConfig(body: Record<string, any>): EventWelcomeConfig {
@@ -498,6 +504,7 @@ function eventWelcomeConfig(body: Record<string, any>): EventWelcomeConfig {
   if (windowEnd.getTime() - windowStart.getTime() > 18 * 60 * 60 * 1000) {
     throw new Error('event_welcome_window_too_wide');
   }
+  const sendAfterAt = new Date(windowEnd.getTime() + EVENT_WELCOME_DELAY_HOURS * 60 * 60 * 1000);
   return {
     event_key: eventKey,
     event_name: eventName,
@@ -506,6 +513,7 @@ function eventWelcomeConfig(body: Record<string, any>): EventWelcomeConfig {
     shopify_pos_location_id: shopifyLocation.gid,
     window_start: windowStart,
     window_end: windowEnd,
+    send_after_at: sendAfterAt,
   };
 }
 
@@ -673,6 +681,8 @@ async function eventWelcomePreview(base44: any, body: Record<string, any>) {
       shopify_pos_location_id: config.shopify_pos_location_id,
       window_start: config.window_start.toISOString(),
       window_end: config.window_end.toISOString(),
+      send_after_at: config.send_after_at.toISOString(),
+      timing_rule: 'two_hours_after_event_end',
     },
     summary: eventWelcomeSummary(candidates),
     candidates: candidates.slice(0, 200).map(publicEventWelcomeCandidate),
@@ -689,6 +699,15 @@ async function eventWelcomeSend(base44: any, body: Record<string, any>) {
     return Response.json({ error: 'event_welcome_production_policy_not_ready', policy: currentPolicy }, { status: 409 });
   }
   const config = eventWelcomeConfig(body);
+  const now = new Date();
+  if (now.getTime() < config.send_after_at.getTime()) {
+    return Response.json({
+      error: 'event_welcome_send_too_early',
+      timing_rule: 'two_hours_after_event_end',
+      event_end_at: config.window_end.toISOString(),
+      send_after_at: config.send_after_at.toISOString(),
+    }, { status: 409 });
+  }
   const candidates = await collectEventWelcomeCandidates(base44, config);
   const eligible = candidates.filter((row: any) => row.eligible);
   if (eligible.length > 100) {
@@ -700,7 +719,7 @@ async function eventWelcomeSend(base44: any, body: Record<string, any>) {
     const result = await createAndForwardEvent(base44, {
       event_id: candidate.event_id,
       event_name: 'event_customer_welcome',
-      event_at: isoNow(),
+      event_at: config.send_after_at.toISOString(),
       customer_email: candidate.email,
       source: 'pos',
       order_number: candidate.order_number,
@@ -729,6 +748,9 @@ async function eventWelcomeSend(base44: any, body: Record<string, any>) {
     success: outcomes.every((row) => row.forwarded || row.duplicate),
     dry_run: false,
     event_key: config.event_key,
+    timing_rule: 'two_hours_after_event_end',
+    event_end_at: config.window_end.toISOString(),
+    send_after_at: config.send_after_at.toISOString(),
     summary: {
       ...eventWelcomeSummary(candidates),
       forwarded_count: outcomes.filter((row) => row.forwarded).length,
@@ -737,6 +759,93 @@ async function eventWelcomeSend(base44: any, body: Record<string, any>) {
     },
     outcomes,
   });
+}
+
+async function evaluateScheduledEventWelcomes(base44: any, now: Date, maxEvents: number) {
+  const events = await base44.asServiceRole.entities.Event.filter(
+    { is_active: true, event_welcome_enabled: true },
+    'date',
+    100,
+  ).catch(() => []);
+  const results: Array<Record<string, any>> = [];
+  const eventSummaries: Array<Record<string, any>> = [];
+  let candidateCount = 0;
+
+  for (const event of events) {
+    if (results.length >= maxEvents) break;
+    const decision = scheduledEventWelcomeDecision(event, now);
+    if (!decision.valid || !decision.due || !decision.config) continue;
+
+    const config = eventWelcomeConfig({
+      ...decision.config,
+      window_start: decision.config.window_start.toISOString(),
+      window_end: decision.config.window_end.toISOString(),
+    });
+    const candidates = await collectEventWelcomeCandidates(base44, config);
+    const eligible = candidates.filter((row: any) => row.eligible);
+    if (eligible.length > 100) {
+      eventSummaries.push({
+        event_id: normalizeSingleLine(event?.id, 160) || null,
+        event_key: config.event_key,
+        send_after_at: config.send_after_at.toISOString(),
+        error: 'event_welcome_recipient_cap_exceeded',
+        eligible_count: eligible.length,
+        cap: 100,
+      });
+      continue;
+    }
+
+    let processedForEvent = 0;
+    for (const candidate of eligible) {
+      if (results.length >= maxEvents) break;
+      candidateCount += 1;
+      const result = await createAndForwardEvent(base44, {
+        event_id: candidate.event_id,
+        event_name: 'event_customer_welcome',
+        event_at: config.send_after_at.toISOString(),
+        customer_email: candidate.email,
+        source: 'pos',
+        order_number: candidate.order_number,
+        order_id: normalizeSingleLine(candidate.order?.id, 160) || null,
+        order: candidate.order,
+        payload: {
+          CUSTOMER_NAME: candidate.customer_name,
+          EVENT_NAME: config.event_name,
+          EVENT_DATE: config.event_date,
+          EVENT_LOCATION: config.event_location,
+          MAILING_ADDRESS,
+        },
+      });
+      processedForEvent += 1;
+      results.push({
+        event_id: candidate.event_id,
+        event_name: 'event_customer_welcome',
+        event_key: config.event_key,
+        resend_status: result?.event?.resend_status || null,
+        duplicate: result?.duplicate === true,
+        forwarded: result?.forwarded === true,
+        error: result?.error || null,
+        reason: result?.reason || result?.event?.error_message || null,
+      });
+    }
+    eventSummaries.push({
+      event_id: normalizeSingleLine(event?.id, 160) || null,
+      event_key: config.event_key,
+      event_end_at: config.window_end.toISOString(),
+      send_after_at: config.send_after_at.toISOString(),
+      timing_rule: 'two_hours_after_event_end',
+      ...eventWelcomeSummary(candidates),
+      processed_count: processedForEvent,
+    });
+  }
+
+  return {
+    scanned_event_count: events.length,
+    due_event_count: eventSummaries.length,
+    candidate_count: candidateCount,
+    event_summaries: eventSummaries,
+    results,
+  };
 }
 
 async function existingJourneyEvent(base44: any, eventId: string): Promise<any | null> {
@@ -1302,6 +1411,18 @@ async function evaluateJourneys(base44: any) {
   const programReminders = await evaluateProgramJourneyReminders(base44, now);
   const results: Array<Record<string, any>> = [];
   let candidates = 0;
+  const scheduledEventWelcomes: any = currentPolicy.mode === 'production' && currentPolicy.customer_sends_enabled
+    ? await evaluateScheduledEventWelcomes(base44, now, maxEvents)
+    : {
+        scanned_event_count: 0,
+        due_event_count: 0,
+        candidate_count: 0,
+        event_summaries: [],
+        results: [],
+        skipped_reason: 'event_welcome_production_policy_not_ready',
+      };
+  results.push(...scheduledEventWelcomes.results);
+  candidates += scheduledEventWelcomes.candidate_count;
 
   const emit = async (factory: () => Promise<any>) => {
     if (results.length >= maxEvents) return false;
@@ -1578,6 +1699,14 @@ async function evaluateJourneys(base44: any) {
     failed_count: results.filter((result) => Boolean(result.error)).length,
     capped: results.length >= maxEvents,
     program_reminders: programReminders,
+    scheduled_event_welcomes: {
+      timing_rule: 'two_hours_after_event_end',
+      scanned_event_count: scheduledEventWelcomes.scanned_event_count,
+      due_event_count: scheduledEventWelcomes.due_event_count,
+      candidate_count: scheduledEventWelcomes.candidate_count,
+      skipped_reason: scheduledEventWelcomes.skipped_reason || null,
+      events: scheduledEventWelcomes.event_summaries,
+    },
     results,
   });
 }

@@ -1,4 +1,37 @@
 {
   "name": "customerJourneyAutomation",
-  "entry": "entry.ts"
+  "entry": "entry.ts",
+  "automations": [
+    {
+      "name": "Evaluate consent eligible customer journeys every 15 minutes",
+      "description": "Marks idle authenticated carts as abandoned, releases configured event welcomes at event end plus two hours, and forwards only consent-eligible lifecycle events when the provider gate is enabled.",
+      "function_args": {
+        "action": "scheduled_sweep"
+      },
+      "is_active": true,
+      "type": "scheduled",
+      "schedule_mode": "recurring",
+      "schedule_type": "simple",
+      "repeat_unit": "minutes",
+      "repeat_interval": 15,
+      "start_time": "14:00",
+      "repeat_on_days": null,
+      "repeat_on_day_of_month": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    },
+    {
+      "name": "Close customer journeys from authoritative order changes",
+      "description": "Marks carts converted after a paid order and emits one delivered-order lifecycle event after authoritative delivery.",
+      "function_args": null,
+      "is_active": true,
+      "type": "entity",
+      "entity_name": "Order",
+      "event_types": [
+        "create",
+        "update"
+      ]
+    }
+  ]
 }

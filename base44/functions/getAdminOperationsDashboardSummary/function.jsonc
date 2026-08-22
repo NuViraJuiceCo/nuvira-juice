@@ -34,6 +34,15 @@
       "ends_type": "never"
     },
     {
+      "name": "Notify admins when a customer profile is created",
+      "description": "Creates one duplicate-safe admin in-app notification and attempts push delivery when a genuinely new UserProfile is created.",
+      "function_args": null,
+      "is_active": true,
+      "type": "entity",
+      "entity_name": "UserProfile",
+      "event_types": ["create"]
+    },
+    {
       "name": "Sync Merch to Shopify",
       "description": "Preserved inactive legacy automation; route through the consolidated admin gateway if deliberately re-enabled.",
       "function_args": {

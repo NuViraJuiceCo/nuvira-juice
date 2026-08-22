@@ -17,7 +17,12 @@
       "format": "date"
     },
     "time": {
-      "type": "string"
+      "type": "string",
+      "description": "Event start time in America/Chicago using HH:mm"
+    },
+    "end_time": {
+      "type": "string",
+      "description": "Event end time in America/Chicago using HH:mm; required when the event welcome is enabled"
     },
     "location": {
       "type": "string"
@@ -68,6 +73,15 @@
         "verified_event_production"
       ],
       "description": "Inventory source-of-truth mode for this event"
+    },
+    "event_welcome_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Allows the consent-aware new-customer event welcome to run two hours after this event ends"
+    },
+    "event_welcome_key": {
+      "type": "string",
+      "description": "Stable event-specific idempotency key for event welcome delivery"
     }
   },
   "required": [
