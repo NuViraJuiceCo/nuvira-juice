@@ -1,0 +1,12 @@
+{
+  "name": "NuVira Event Stock Guard",
+  "tile_heading_ready": "Event stock ready",
+  "tile_heading_warning": "Stock warning",
+  "tile_heading_error": "Check stock manually",
+  "tile_subheading_idle": "Monitors every event item",
+  "tile_subheading_ready": "Cart quantities fit on-hand stock",
+  "tile_subheading_loading": "Checking on-hand quantities",
+  "tile_subheading_error": "Inventory lookup unavailable",
+  "modal_heading": "Event inventory check",
+  "product_block_heading": "Event inventory"
+}
