@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g124-event-welcome-timing-and-admin-new-member-push-20260822.
 // Bundle revision: g116b-preisolated-event-location-scope-20260820.
 // Bundle revision: g116-verified-event-production-shopify-pos-inventory-20260820.
 // Bundle revision: g115g-bundle-safe-signed-production-materializer-20260812.
@@ -78,6 +79,7 @@ import handler61 from './handlers/monitorPostPaymentChain/entry.ts';
 import handler62 from './handlers/executeNativeSafeSyncOrderUpdate/entry.ts';
 import handler63 from './handlers/notifyOrderProcessed/entry.ts';
 import handler64 from './handlers/manageEventPosInventory/entry.ts';
+import handler65 from './handlers/notifyAdminNewMember/entry.ts';
 
 const HANDLERS = {
   "appendAdminHubOrderNote": handler0,
@@ -147,6 +149,7 @@ const HANDLERS = {
   "executeNativeSafeSyncOrderUpdate": handler62,
   "notifyOrderProcessed": handler63,
   "manageEventPosInventory": handler64,
+  "notifyAdminNewMember": handler65,
   "monitorComplianceExpiry": handler61,
 };
 
@@ -187,7 +190,16 @@ Deno.serve(async (req) => {
   const automationArgs = body.args && typeof body.args === 'object' && !Array.isArray(body.args)
     ? body.args as Record<string, unknown>
     : null;
-  const requestedAction = typeof body.gateway_action === 'string'
+  const eventType = typeof body.event === 'object' && body.event
+    ? String((body.event as Record<string, unknown>).type || (body.event as Record<string, unknown>).event_type || '').toLowerCase()
+    : '';
+  const entityName = typeof body.event === 'object' && body.event
+    ? String((body.event as Record<string, unknown>).entity_name || '')
+    : '';
+  const isNewMemberAutomation = entityName === 'UserProfile' && eventType === 'create';
+  const requestedAction = isNewMemberAutomation
+    ? 'notifyAdminNewMember'
+    : typeof body.gateway_action === 'string'
     ? body.gateway_action
     : (typeof automationArgs?.gateway_action === 'string' ? automationArgs.gateway_action : DEFAULT_ACTION);
   if (RETIRED_LEGACY_HUB_ACTIONS.has(requestedAction)) {

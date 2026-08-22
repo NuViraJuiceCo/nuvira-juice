@@ -124,6 +124,7 @@ function matchesSearch(event, search) {
 function EventRow({ event, onEdit, onArchive }) {
   const date = event.date || dateKey(event.start_datetime);
   const time = event.time || formatTime(event.start_datetime);
+  const timeLabel = [time, event.end_time].filter(Boolean).join('–');
   const hasExternalLink = Boolean(event.website_link || event.tickets_link);
   const category = event.type || event.event_type || (Array.isArray(event.tags) ? event.tags.find(Boolean) : '');
 
@@ -135,12 +136,13 @@ function EventRow({ event, onEdit, onArchive }) {
             <AdminStatusPill value={eventStatus(event)} label={eventStatus(event)} size="md" />
             <AdminStatusPill value={sourceLabel(event)} label={sourceLabel(event)} tone={sourceTone(event)} size="md" />
             {category ? <AdminStatusPill value={category} label={category} tone="source" size="md" /> : null}
+            {event.event_welcome_enabled ? <AdminStatusPill value="scheduled" label="Welcome +2h" tone="native" size="md" /> : null}
             {event.price ? <AdminStatusPill value="ticketed" label={`$${Number(event.price).toFixed(2)}`} tone="source" size="md" /> : null}
           </div>
           <div>
             <h2 className="text-base font-black leading-tight text-foreground sm:text-lg">{event.title || 'Untitled event'}</h2>
             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-muted-foreground">
-              <span>{formatDate(date)}{time ? ` · ${time}` : ''}</span>
+              <span>{formatDate(date)}{timeLabel ? ` · ${timeLabel}` : ''}</span>
               {event.event_type ? <span>{event.event_type}</span> : null}
             </p>
           </div>
@@ -210,6 +212,7 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
     title: event?.title || '',
     date: dateKey(event?.date || event?.start_datetime) || todayDate(),
     time: event?.time || formatTime(event?.start_datetime) || '',
+    end_time: event?.end_time || '',
     location: event?.location || '',
     description: event?.description || event?.summary || '',
     capacity: event?.capacity ?? '',
@@ -217,10 +220,20 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
     website_link: event?.website_link || '',
     tickets_link: event?.tickets_link || '',
     image_url: event?.image_url || '',
+    event_welcome_enabled: event?.event_welcome_enabled === true,
+    event_welcome_key: event?.event_welcome_key || '',
+    shopify_pos_location_id: event?.shopify_pos_location_id || '',
+    shopify_pos_location_name: event?.shopify_pos_location_name || '',
     tags: Array.isArray(event?.tags) && event.tags.length > 0 ? event.tags : ['Community'],
   }));
   const setField = (field, value) => setForm(current => ({ ...current, [field]: value }));
-  const canSubmit = form.title.trim() && form.date && !pending;
+  const welcomeConfigurationReady = !form.event_welcome_enabled || (
+    form.time
+    && form.end_time
+    && form.location.trim()
+    && /^gid:\/\/shopify\/Location\/\d+$/.test(form.shopify_pos_location_id.trim())
+  );
+  const canSubmit = form.title.trim() && form.date && welcomeConfigurationReady && !pending;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={isEdit ? 'Edit event' : 'Create event'}>
@@ -249,8 +262,12 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
             <input required type="date" value={form.date} onChange={e => setField('date', e.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
           </label>
           <label className="space-y-1">
-            <span className="text-xs font-bold text-foreground">Time</span>
+            <span className="text-xs font-bold text-foreground">Start time</span>
             <input type="time" value={form.time} onChange={e => setField('time', e.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-foreground">End time</span>
+            <input type="time" value={form.end_time} onChange={e => setField('end_time', e.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
           </label>
           <label className="space-y-1 sm:col-span-2">
             <span className="text-xs font-bold text-foreground">Category</span>
@@ -269,6 +286,38 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
             <span className="text-xs font-bold text-foreground">Description</span>
             <textarea rows={4} maxLength={2000} value={form.description} onChange={e => setField('description', e.target.value)} className="w-full rounded-lg border border-border bg-background p-3 text-sm text-foreground" />
           </label>
+          <div className="space-y-3 rounded-xl border border-border bg-background p-3 sm:col-span-2">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={form.event_welcome_enabled}
+                onChange={e => setField('event_welcome_enabled', e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border"
+              />
+              <span>
+                <span className="block text-sm font-bold text-foreground">Send the event welcome two hours after the event ends</span>
+                <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+                  Only first-time customers with promotional email consent and a verified purchase at this event are eligible. Repeat syncs are duplicate-safe.
+                </span>
+              </span>
+            </label>
+            {form.event_welcome_enabled && (
+              <div className="grid grid-cols-1 gap-3 border-t border-border pt-3 sm:grid-cols-2">
+                <label className="space-y-1 sm:col-span-2">
+                  <span className="text-xs font-bold text-foreground">Shopify POS location GID</span>
+                  <input required value={form.shopify_pos_location_id} onChange={e => setField('shopify_pos_location_id', e.target.value)} placeholder="gid://shopify/Location/123456789" className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-foreground">POS location name</span>
+                  <input maxLength={160} value={form.shopify_pos_location_name} onChange={e => setField('shopify_pos_location_name', e.target.value)} className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-foreground">Stable welcome key (optional)</span>
+                  <input maxLength={120} value={form.event_welcome_key} onChange={e => setField('event_welcome_key', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))} placeholder="event-name-2026-09-12" className="h-10 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground" />
+                </label>
+              </div>
+            )}
+          </div>
           <label className="space-y-1">
             <span className="text-xs font-bold text-foreground">Capacity</span>
             <input type="number" min="1" value={form.capacity} onChange={e => setField('capacity', e.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />

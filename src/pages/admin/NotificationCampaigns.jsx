@@ -463,9 +463,9 @@ export default function NotificationCampaigns() {
                 <Smartphone className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="font-semibold text-sm">Admin Order Alerts</h2>
+                <h2 className="font-semibold text-sm">Admin Activity Alerts</h2>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Enables paid-order push alerts for this admin device. Customer campaigns use the same saved push subscriptions.
+                  Enables paid-order and new-member alerts for this admin device. Customer campaigns use the same saved push subscriptions.
                 </p>
               </div>
             </div>

@@ -6,7 +6,7 @@ Prepared: August 21, 2026
 
 Send one consent-aware, event-specific welcome email to a first-time NuVira customer after a paid event POS purchase without treating every POS buyer as a new event customer.
 
-## Provider configuration
+## August 22 provider configuration (historical and in flight)
 
 - Resend event: `nuvira.event.welcome`
 - Resend template: `NuVira Event Welcome`
@@ -25,6 +25,18 @@ The automation maps the published template variables from the matching fields on
 - `EVENT_DATE` ← `event.event_date`
 - `EVENT_LOCATION` ← `event.event_location`
 
+Do not change or replay the August 22 in-flight runs. They were created with the original provider-side two-hour delay and remain isolated on `nuvira.event.welcome`.
+
+## Future event timing
+
+- Resend event: `nuvira.event.welcome.ready`
+- Resend automation: `NuVira - Event Welcome Ready v2`
+- Provider delay: none
+- Timing authority: the Customer App event record
+- Rule: send at the configured event end time plus exactly two hours
+
+The event scheduler evaluates active event records in `America/Chicago`, including daylight-saving time and overnight events. It does not forward before the due timestamp. If the scheduler or a manual recovery runs after the target, the eligible welcome is forwarded immediately. The stable event/customer idempotency key prevents duplicates, and the event remains eligible for a bounded 48-hour reconciliation window so a late Shopify POS sync can still be picked up.
+
 ## Server actions
 
 `event_welcome_preview` is an admin/owner-only dry run. It requires an explicit event key, the dedicated Shopify POS location ID, exact event details, and an ISO event window of no more than 18 hours. It reads paid Shopify POS/event orders that were authoritatively matched to that location, deduplicates by normalized email, and reports every eligible or suppressed customer with a reason.
@@ -34,8 +46,11 @@ The automation maps the published template variables from the matching fields on
 - exact confirmation `SEND NUVIRA EVENT WELCOMES`;
 - production journey mode and every existing customer-journey policy gate to be open;
 - no more than 100 eligible recipients.
+- the current time to be at or after the configured event end plus two hours.
 
 The send path uses the stable idempotency key `event_welcome:<event_key>:<normalized_email>`. A retry cannot create a second welcome for the same customer and event.
+
+For future automatic scheduling, the Event record must have `event_welcome_enabled: true`, a date, start time, end time, public event name and location, and the dedicated Shopify POS location GID. The admin Events editor validates these fields before saving and labels configured rows `Welcome +2h`.
 
 ## Eligibility and suppression
 
@@ -59,6 +74,8 @@ The shared cadence layer makes the event and general loyalty welcome mutually ex
 
 ## Launch sequence
 
+The sequence below documents the August 22 manual launch. Future events use the configured Event record and the immediate `nuvira.event.welcome.ready` provider automation instead of starting a fresh provider delay.
+
 1. Deploy this source and entity update.
 2. Confirm every POS device is assigned to the dedicated August 22 Shopify location and process one reversible test sale.
 3. Verify the mirrored order reports `event_attribution_status: matched`, the expected location GID, and the correct event details.
@@ -74,6 +91,7 @@ Do not replace this flow with an all-POS trigger. A POS sale with a missing, unk
 ## Verification
 
 - `node scripts/migration/run-g118-event-welcome-tests.mjs`
+- `node scripts/migration/run-g124-admin-new-member-push-tests.mjs`
 - `node scripts/migration/run-g119-pos-event-attribution-tests.mjs`
 - `node scripts/migration/run-g66-customer-journey-automation-tests.mjs`
 - `node scripts/migration/run-g111-unified-email-communications-tests.mjs`
