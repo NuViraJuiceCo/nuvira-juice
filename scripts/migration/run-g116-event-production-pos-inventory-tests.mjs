@@ -164,11 +164,18 @@ globalThis.Deno = {
 let providerCalls = [];
 let scopeHandles = ['write_inventory', 'write_products', 'write_locations'];
 let locationFulfillsOnlineOrders = true;
+let shopifyFailure = null;
 globalThis.fetch = async (url, options) => {
   assert.equal(url, 'https://shop.example.test/admin/api/2026-07/graphql.json');
   assert.equal(options.headers['X-Shopify-Access-Token'], 'synthetic-token');
   const request = JSON.parse(options.body);
   providerCalls.push(request);
+  if (shopifyFailure && request.query.includes(shopifyFailure.operation)) {
+    return new Response(JSON.stringify({ errors: [{
+      message: shopifyFailure.message,
+      extensions: { code: shopifyFailure.code },
+    }] }), { status: shopifyFailure.status || 200 });
+  }
   if (/EventPosInventoryScopes/.test(request.query)) {
     return new Response(JSON.stringify({ data: { currentAppInstallation: { accessScopes:
       scopeHandles.map(handle => ({ handle })),
@@ -281,6 +288,30 @@ assert.equal(state.rows.get('Product')[0].shopify_pos_variant_id, 'gid://shopify
 assert.equal(state.writes.filter(write => write.entity === 'InventoryItem').length, 0);
 
 providerCalls = [];
+shopifyFailure = {
+  operation: 'ActivateVerifiedEventInventory',
+  code: 'INVALID_INPUT',
+  message: 'Synthetic provider rejection for diagnostic coverage',
+};
+const providerFailureBatch = { ...batch, id: 'batch_provider_failure', batch_id: 'EVENT-20990821-S2-OASIS-ERROR' };
+const providerFailureState = store({
+  Event: [event], Product: [product], CommandLog: [], ProductionBatch: [providerFailureBatch],
+});
+const providerFailureResult = await syncVerifiedEventBatchToShopifyPos({
+  base44: providerFailureState.base44,
+  batch: providerFailureBatch,
+  requestId: 'verify_provider_failure',
+  user: { email: 'admin@example.test', role: 'admin' },
+});
+assert.equal(providerFailureResult.status, 'error');
+assert.equal(providerFailureResult.error_code, 'shopify_graphql_activateverifiedeventinventory_invalid_input');
+assert.equal(
+  providerFailureState.rows.get('CommandLog')[0].error_message,
+  'activateverifiedeventinventory [invalid_input]: Synthetic provider rejection for diagnostic coverage',
+);
+shopifyFailure = null;
+
+providerCalls = [];
 const replay = await syncVerifiedEventBatchToShopifyPos({
   base44: state.base44,
   batch: state.rows.get('ProductionBatch')[0],
@@ -331,7 +362,7 @@ globalThis.Deno = originalDeno;
 console.log(JSON.stringify({
   success: true,
   suite: 'g116-event-production-pos-inventory',
-  cases: 20,
+  cases: 21,
   live_provider_calls_performed: false,
   production_writes_performed: false,
   customer_notifications_sent: false,
