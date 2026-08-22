@@ -214,7 +214,9 @@ globalThis.fetch = async (url, options) => {
     } } }), { status: 200 });
   }
   assert.match(request.query, /ActivateVerifiedEventInventory/);
+  assert.match(request.query, /inventoryActivate[\s\S]*@idempotent\(key: \$idempotencyKey\)/);
   assert.equal(request.variables.available, 40);
+  assert.equal(request.variables.idempotencyKey, 'event-pos:event_s2:batch_oasis:available-v1');
   return new Response(JSON.stringify({ data: { inventoryActivate: {
     inventoryLevel: { id: 'level_oasis', quantities: [{ name: 'available', quantity: 40 }] },
     userErrors: [],
