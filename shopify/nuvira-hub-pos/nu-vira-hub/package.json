@@ -1,0 +1,26 @@
+{
+  "name": "nu-vira-hub",
+  "version": "1.0.0",
+  "license": "UNLICENSED",
+  "scripts": {
+    "shopify": "shopify",
+    "build": "shopify app build",
+    "dev": "shopify app dev",
+    "info": "shopify app info",
+    "generate": "shopify app generate",
+    "deploy": "shopify app deploy",
+    "test": "node --test extensions/nu-vira-event-stock-guard/src/inventoryGuard.test.mjs",
+    "typecheck": "tsc -p extensions/nu-vira-event-stock-guard/tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  },
+  "trustedDependencies": [
+    "@shopify/plugin-cloudflare"
+  ],
+  "author": "nuvisionary",
+  "private": true,
+  "workspaces": [
+    "extensions/*"
+  ]
+}

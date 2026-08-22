@@ -1,0 +1,21 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "5eca5d85cd59324ce8f78e35d9dfa3a0"
+application_url = "https://nuvira-flow-core.base44.app"
+embedded = false
+name = "NuVira Hub"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_all_orders,read_customers,write_inventory,read_inventory,read_locations,read_orders,write_orders,read_products,write_products"
+optional_scopes = [ ]
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = [ ]
+
+[webhooks]
+api_version = "2026-04"
+
+[build]
+automatically_update_urls_on_dev = true

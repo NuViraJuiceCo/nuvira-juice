@@ -1,0 +1,23 @@
+api_version = "2026-07"
+
+[[extensions]]
+type = "ui_extension"
+# Change the merchant-facing name of the extension in locales/en.default.json
+name = "t:name"
+uid = "561045da-728b-daaa-9fb3-5696c7093d2384883141"
+handle = "nuvira-event-stock-guard"
+description = "Location-aware low-stock and sell-out warnings for event inventory"
+
+# module: file that contains your extension’s source code
+# target: location where your extension appears in POS
+[[extensions.targeting]]
+module = "./src/Tile.jsx"
+target = "pos.home.tile.render"
+
+[[extensions.targeting]]
+module = "./src/Modal.jsx"
+target = "pos.home.modal.render"
+
+[[extensions.targeting]]
+module = "./src/ProductBlock.jsx"
+target = "pos.product-details.block.render"
