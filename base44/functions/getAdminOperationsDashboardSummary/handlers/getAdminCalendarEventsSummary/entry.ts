@@ -144,7 +144,7 @@ function eventClockTime(value, fieldName) {
 }
 
 function eventWelcomeKey(value) {
-  const key = sanitizeText(value, 120).toLowerCase();
+  const key = (sanitizeText(value, 120) || '').toLowerCase();
   if (!key) return null;
   if (!/^[a-z0-9][a-z0-9_-]{4,119}$/.test(key)) {
     throw new Error('event.event_welcome_key may use lowercase letters, numbers, underscores, and hyphens');
