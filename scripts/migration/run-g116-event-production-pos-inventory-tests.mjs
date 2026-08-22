@@ -53,6 +53,8 @@ assert.match(helperSource, /single_event_product_batch_required/);
 assert.match(helperSource, /fulfillsOnlineOrders: false/);
 assert.match(helperSource, /inventoryPolicy: 'CONTINUE'/);
 assert.match(helperSource, /@idempotent\(key: \$idempotencyKey\)/);
+assert.match(helperSource, /mutation TrackVerifiedEventInventory[\s\S]*?inventoryItemUpdate[\s\S]*?userErrors \{ field message \}/);
+assert.doesNotMatch(helperSource, /mutation TrackVerifiedEventInventory[\s\S]{0,500}userErrors \{ code field message \}/);
 assert.match(helperSource, /compareQuantity: 0/);
 assert.match(helperSource, /customer_notifications_sent: false/);
 assert.doesNotMatch(helperSource, /entities\.InventoryItem\.(create|update)/);

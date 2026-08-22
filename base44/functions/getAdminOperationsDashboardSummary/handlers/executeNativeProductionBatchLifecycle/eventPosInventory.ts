@@ -533,7 +533,7 @@ async function ensureTracking(target, provider) {
   const data = await shopifyGraphql(`mutation TrackVerifiedEventInventory($id: ID!, $input: InventoryItemInput!) {
     inventoryItemUpdate(id: $id, input: $input) {
       inventoryItem { id tracked }
-      userErrors { code field message }
+      userErrors { field message }
     }
   }`, { id: target.inventoryItem.id, input: { tracked: true } }, provider, { mutating: true });
   const result = providerResult(data, 'inventoryItemUpdate', 'shopify_inventory_tracking_failed');
