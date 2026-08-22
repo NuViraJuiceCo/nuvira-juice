@@ -24,7 +24,7 @@ function Extension() {
             )}
 
             {!loading && !error && !hasCartItems && (
-              <s-banner heading="No tracked products in the cart" tone="info">
+              <s-banner heading="No products in the cart" tone="info">
                 Add an event item and NuVira Event Stock Guard will compare the cart to stock at this POS location.
               </s-banner>
             )}
@@ -40,9 +40,13 @@ function Extension() {
                 <s-stack direction="block" gap="small">
                   <s-badge tone={warning.tone}>{warning.label}</s-badge>
                   <s-text>{warning.message}</s-text>
-                  <s-text>
-                    On hand here: {warning.onHand} · In cart: {warning.inCart} · After sale: {Math.max(0, warning.remaining)}
-                  </s-text>
+                  {warning.onHand === null ? (
+                    <s-text>In cart: {warning.inCart} · Physical count required before checkout</s-text>
+                  ) : (
+                    <s-text>
+                      On hand here: {warning.onHand} · In cart: {warning.inCart} · After sale: {Math.max(0, warning.remaining)}
+                    </s-text>
+                  )}
                 </s-stack>
               </s-section>
             ))}
