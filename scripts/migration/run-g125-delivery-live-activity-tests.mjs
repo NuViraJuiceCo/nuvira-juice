@@ -21,9 +21,15 @@ const webBridge = read('src/lib/deliveryLiveActivity.js');
 const app = read('src/App.jsx');
 const tracker = read('src/pages/OrderTracker.jsx');
 const iosPlugin = read('ios/App/App/NativeDeliveryLiveActivityPlugin.swift');
+const iosAppDelegate = read('ios/App/App/AppDelegate.swift');
 const iosAttributes = read('ios/App/Shared/NuViraDeliveryAttributes.swift');
 const iosWidget = read('ios/App/NuViraDeliveryActivity/NuViraDeliveryActivityWidget.swift');
 const iosInfo = read('ios/App/App/Info.plist');
+const iosExtensionInfo = read('ios/App/NuViraDeliveryActivity/Info.plist');
+const iosExtensionAssets = read('ios/App/NuViraDeliveryActivity/Assets.xcassets/NuViraDeliveryLogo.imageset/Contents.json');
+const iosCompactExtensionAssets = read('ios/App/NuViraDeliveryActivity/Assets.xcassets/NuViraDeliveryCompactLogo.imageset/Contents.json');
+const iosAppLogoExtensionAssets = read('ios/App/NuViraDeliveryActivity/Assets.xcassets/NuViraDeliveryAppLogo.imageset/Contents.json');
+const iosSmallAppLogoExtensionAssets = read('ios/App/NuViraDeliveryActivity/Assets.xcassets/NuViraDeliveryAppLogoSmall.imageset/Contents.json');
 const iosProject = read('ios/App/App.xcodeproj/project.pbxproj');
 const androidPlugin = read('android/app/src/main/java/com/nuvirajuice/app/DeliveryLiveActivityPlugin.java');
 const androidMessaging = read('android/app/src/main/java/com/nuvirajuice/app/NuViraMessagingService.java');
@@ -175,7 +181,7 @@ test('explicit route IDs isolate an active route and preserve stop order', async
   assert.equal(result.anchor_snapshot.stops_ahead, 1);
   assert.equal(result.anchor_snapshot.stops_delivered, 1);
   assert.equal(result.anchor_snapshot.stops_total, 3);
-  assert.equal(result.anchor_snapshot.status_label, '1 stop away');
+  assert.equal(result.anchor_snapshot.status_label, 'Out for Delivery');
   assert.equal(result.anchor_snapshot.progress_percent, 33);
 });
 
@@ -444,16 +450,40 @@ test('status transitions refresh active route snapshots without changing dry-run
 test('web integration sanitizes deep links and supports cold-start navigation', () => {
   assert.match(webBridge, /ALLOWED_DEEP_LINK/);
   assert.match(webBridge, /CapacitorApp\.getLaunchUrl\(\)/);
+  assert.match(webBridge, /DeliveryLiveActivity\.consumePendingNavigation\(\)/);
+  assert.match(webBridge, /PENDING_NATIVE_ROUTE_KEY/);
+  assert.match(webBridge, /window\.sessionStorage\.setItem\(PENDING_NATIVE_ROUTE_KEY/);
+  assert.match(webBridge, /expires_at: Date\.now\(\) \+ PENDING_NATIVE_ROUTE_TTL_MS/);
+  assert.match(webBridge, /const preservedRoute = consumePreservedNativeRoute\(\)/);
+  assert.match(webBridge, /preservedRoute \|\| nativeRouteFromUrl\(pendingNavigation\?\.url\) \|\| nativeRouteFromUrl\(launchUrl\?\.url\)/);
   assert.match(webBridge, /DeliveryLiveActivity\.addListener\('deliveryLiveActivityTokenChanged'/);
   assert.match(webBridge, /ensureDeliveryLiveActivityRegistration/);
   assert.match(app, /installDeliveryLiveActivityListeners/);
+  assert.match(iosPlugin, /CAPPluginMethod\(name: "consumePendingNavigation"/);
+  assert.match(iosPlugin, /NuViraPendingNavigationStore\.consume\(\)/);
+  assert.match(iosPlugin, /allowedPathPattern/);
+  assert.match(iosPlugin, /order-tracker/);
+  assert.match(iosPlugin, /account\/orders/);
+  assert.match(iosAppDelegate, /launchOptions\?\[\.url\] as\? URL/);
+  assert.match(iosAppDelegate, /NuViraPendingNavigationStore\.capture\(url: url\)/);
 });
 
 test('the tracker presents a compact, privacy-safe live delivery card', () => {
-  for (const marker of ['Live delivery', 'stops_ahead', 'progress_percent', 'Precise driver location stays private', 'syncDeliveryLiveActivity']) {
+  for (const marker of ['Live delivery', 'stops_ahead', 'progress_percent', 'Precise driver location stays private', 'syncDeliveryLiveActivity', 'Car', 'markerProgress']) {
     assert.ok(tracker.includes(marker), marker);
   }
+  assert.match(tracker, /Route position/);
+  assert.match(tracker, /You're next/);
+  assert.doesNotMatch(tracker, /etaData\?\.stops_delivered/);
   assert.doesNotMatch(tracker, /driver_latitude|driver_longitude|driver_location/);
+  assert.match(tracker, /\{!isOnRoute && <div className="mt-8 flex items-center gap-4 border-t/);
+});
+
+test('the order journey visually continues the Live Activity system across viewports', () => {
+  for (const marker of ['bg-[#063b2a]', 'bg-[#0b1d16]', 'bg-lime-300', 'max-w-5xl', 'sm:grid-cols-2']) {
+    assert.ok(tracker.includes(marker), marker);
+  }
+  assert.match(tracker, /animate=\{\{ width: `\$\{journey\.progressPercent\}%` \}\}/);
 });
 
 test('the iOS target contains ActivityKit attributes, widget UI, and app support metadata', () => {
@@ -462,7 +492,36 @@ test('the iOS target contains ActivityKit attributes, widget UI, and app support
   assert.match(iosPlugin, /pushTokenUpdates/);
   assert.match(iosWidget, /ActivityConfiguration\(for: NuViraDeliveryAttributes\.self\)/);
   assert.match(iosWidget, /DynamicIsland/);
+  assert.match(iosWidget, /DeliveryProgressTrack\(value: progress\(context\.state\)\)/);
+  assert.match(iosWidget, /systemName: "car\.side\.fill"/);
+  assert.match(iosWidget, /\.scaleEffect\(x: -1, y: 1\)/);
   assert.match(iosInfo, /NSSupportsLiveActivities/);
+  assert.match(iosExtensionInfo, /<key>CFBundleExecutable<\/key>\s*<string>\$\(EXECUTABLE_NAME\)<\/string>/);
+  assert.match(iosExtensionAssets, /nuvira-delivery-logo\.png/);
+  assert.match(iosCompactExtensionAssets, /nuvira-delivery-compact-logo\.png/);
+  assert.match(iosAppLogoExtensionAssets, /nuvira-delivery-app-logo-1x\.png/);
+  assert.match(iosAppLogoExtensionAssets, /nuvira-delivery-app-logo-2x\.png/);
+  assert.match(iosAppLogoExtensionAssets, /nuvira-delivery-app-logo-3x\.png/);
+  assert.match(iosSmallAppLogoExtensionAssets, /nuvira-delivery-app-logo-small-1x\.png/);
+  assert.match(iosSmallAppLogoExtensionAssets, /nuvira-delivery-app-logo-small-2x\.png/);
+  assert.match(iosSmallAppLogoExtensionAssets, /nuvira-delivery-app-logo-small-3x\.png/);
+  assert.match(iosExtensionAssets, /"template-rendering-intent"\s*:\s*"original"/);
+  assert.match(iosAppLogoExtensionAssets, /"template-rendering-intent"\s*:\s*"original"/);
+  assert.match(iosSmallAppLogoExtensionAssets, /"template-rendering-intent"\s*:\s*"original"/);
+  assert.match(iosWidget, /NuViraDeliveryAppLogoSmall/);
+  assert.match(iosWidget, /NuViraDeliveryAppLogo/);
+  assert.match(iosWidget, /renderingMode\(\.original\)/);
+  assert.match(iosWidget, /widgetAccentedRenderingMode\(\.fullColor\)/);
+  assert.match(iosWidget, /privacySensitive\(false\)/);
+  assert.match(iosWidget, /\.unredacted\(\)/);
+  assert.match(iosWidget, /Color\.clear\.frame\(height: 14\)/);
+  assert.match(iosWidget, /let markerWidth: CGFloat = 30/);
+  assert.match(iosWidget, /RoundedRectangle\(cornerRadius: 7/);
+  assert.match(iosWidget, /StopsAheadView\(state: context\.state\)/);
+  assert.match(iosWidget, /state\.stopsAhead == 0 \? "You're next"/);
+  assert.match(tracker, /<Car className="h-3\.5 w-4"/);
+  assert.doesNotMatch(tracker, /<Car className="[^"]*scale-x/);
+  assert.match(iosProject, /Assets\.xcassets in Resources/);
   assert.match(iosProject, /NuViraDeliveryActivity\.appex/);
 });
 

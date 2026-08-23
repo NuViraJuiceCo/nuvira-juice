@@ -194,6 +194,150 @@ function customerStatusForHubOrder(order) {
   return normalizeLower(order?.source_channel) === 'pos' ? 'picked_up' : 'order_received';
 }
 
+const DELIVERY_PROGRESS_RANK = Object.freeze({
+  order_received: 0,
+  scheduled_for_juicing: 1,
+  in_production: 2,
+  bottled_packed: 3,
+  out_for_delivery: 4,
+  arriving_soon: 5,
+});
+
+function customerFulfillmentType(order, hubOrder, tasks = []) {
+  const explicitValues = [
+    order?.fulfillment_type,
+    order?.fulfillment_method,
+    hubOrder?.fulfillment_method,
+    ...tasks.flatMap(task => [task?.fulfillment_type, task?.fulfillment_method]),
+  ].map(normalizeLower).filter(Boolean);
+  const explicit = explicitValues.find(value => ['delivery', 'pickup'].includes(value));
+  if (explicit) return explicit;
+  return normalizeLower(hubOrder?.source_channel) === 'pos' ? 'pickup' : 'delivery';
+}
+
+function customerTerminalExceptionStatus(order, hubOrder) {
+  const payment = normalizeLower(order?.payment_status || order?.financial_status || hubOrder?.payment_status || hubOrder?.financial_status);
+  const refund = normalizeLower(order?.refund_status || hubOrder?.refund_status);
+  if (payment === 'refunded' || refund.includes('refund') || order?.refunded_at || hubOrder?.refunded_at) return 'refunded';
+
+  const statuses = [
+    order?.status,
+    order?.order_status,
+    hubOrder?.order_status,
+    hubOrder?.status,
+  ].map(normalizeLower).filter(Boolean);
+  if (statuses.some(value => ['cancelled', 'canceled', 'voided'].includes(value))) return 'cancelled';
+  if (statuses.includes('failed')) return 'failed';
+  return null;
+}
+
+function deliveryProgressStatus(value) {
+  const status = normalizeLower(value).replace(/[\s-]+/g, '_');
+  const map = {
+    confirmed: 'order_received',
+    paid: 'order_received',
+    payment_received: 'order_received',
+    processing: 'order_received',
+    order_received: 'order_received',
+    new: 'scheduled_for_juicing',
+    pending: 'scheduled_for_juicing',
+    scheduled: 'scheduled_for_juicing',
+    awaiting_production: 'scheduled_for_juicing',
+    production_scheduled: 'scheduled_for_juicing',
+    scheduled_for_production: 'scheduled_for_juicing',
+    scheduled_for_juicing: 'scheduled_for_juicing',
+    in_production: 'in_production',
+    preparing: 'in_production',
+    producing: 'in_production',
+    production_started: 'in_production',
+    bottled: 'bottled_packed',
+    labeled: 'bottled_packed',
+    packed: 'bottled_packed',
+    ready_for_delivery: 'bottled_packed',
+    route_assigned: 'bottled_packed',
+    in_cold_storage: 'bottled_packed',
+    qc_checked: 'bottled_packed',
+    completed_pending_verification: 'bottled_packed',
+    verified_logged: 'bottled_packed',
+    completed: 'bottled_packed',
+    complete: 'bottled_packed',
+    fulfilled: 'bottled_packed',
+    picked_up: 'bottled_packed',
+    bottled_packed: 'bottled_packed',
+    assigned_for_delivery: 'out_for_delivery',
+    on_route: 'out_for_delivery',
+    in_transit: 'out_for_delivery',
+    out_for_delivery: 'out_for_delivery',
+    arriving_soon: 'arriving_soon',
+  };
+  return map[status] || null;
+}
+
+function strongestDeliveryProgress(values) {
+  return values
+    .map(deliveryProgressStatus)
+    .filter(Boolean)
+    .sort((left, right) => DELIVERY_PROGRESS_RANK[right] - DELIVERY_PROGRESS_RANK[left])[0] || 'order_received';
+}
+
+function resolveCustomerLifecycleStatus({ order, hubOrder, tasks = [] }) {
+  const terminalException = customerTerminalExceptionStatus(order, hubOrder);
+  if (terminalException) return terminalException;
+
+  const fulfillmentType = customerFulfillmentType(order, hubOrder, tasks);
+  const orderStatus = mapCustomerStatus(order?.status || order?.order_status || order?.production_status || order?.fulfillment_status);
+  const hubStatus = customerStatusForHubOrder(hubOrder);
+
+  if (fulfillmentType === 'pickup') {
+    const pickupStatus = orderStatus || hubStatus || 'order_received';
+    if (['delivered', 'fulfilled', 'completed', 'complete', 'picked_up'].includes(normalizeLower(pickupStatus))) return 'picked_up';
+    return pickupStatus;
+  }
+
+  if (order?.delivered_at || hubOrder?.delivered_at) return 'delivered';
+
+  const linkedTasks = (Array.isArray(tasks) ? tasks : []).filter(Boolean);
+  if (linkedTasks.length > 0) {
+    const taskDelivered = task => (
+      ['delivered'].includes(normalizeLower(task?.delivery_status))
+      || ['delivered'].includes(normalizeLower(task?.status))
+      || Boolean(task?.delivered_at)
+    );
+    if (linkedTasks.every(taskDelivered)) return 'delivered';
+
+    const taskStatuses = linkedTasks.flatMap(task => [
+      task?.delivery_status,
+      task?.status,
+      task?.production_status,
+    ]);
+    const safeOrderStatus = ['out_for_delivery', 'arriving_soon', 'delivered', 'picked_up']
+      .includes(normalizeLower(order?.status)) ? null : order?.status;
+    return strongestDeliveryProgress([
+      ...taskStatuses,
+      order?.delivery_status,
+      safeOrderStatus,
+      order?.production_status,
+      order?.fulfillment_status,
+      hubOrder?.delivery_status,
+      hubOrder?.production_status,
+      hubOrder?.fulfillment_status,
+      hubOrder?.order_status,
+    ]);
+  }
+
+  if (orderStatus === 'delivered' || hubStatus === 'delivered' || order?.delivered_at || hubOrder?.delivered_at) return 'delivered';
+  return strongestDeliveryProgress([
+    order?.delivery_status,
+    order?.status,
+    order?.production_status,
+    order?.fulfillment_status,
+    hubOrder?.delivery_status,
+    hubOrder?.production_status,
+    hubOrder?.fulfillment_status,
+    hubOrder?.order_status,
+  ]);
+}
+
 function sanitizeHubOrderForCustomer(order) {
   if (!order) return null;
   const customerStatus = customerStatusForHubOrder(order);
@@ -677,7 +821,7 @@ Deno.serve(async (req) => {
 
     const TERMINAL_STATUSES = ['delivered', 'picked_up', 'cancelled', 'refunded', 'failed'];
 
-    const orderStatus = order?.status || customerStatusForHubOrder(hubOrder) || 'unknown';
+    const orderStatus = resolveCustomerLifecycleStatus({ order, hubOrder, tasks: deliveryProofTasks });
     const isTerminal = TERMINAL_STATUSES.includes(orderStatus);
     const deliveryProofTask = deliveryProofTasks.find(task => (
       normalizeText(task?.delivery_photo_url) || normalizeText(task?.delivery_drop_location)

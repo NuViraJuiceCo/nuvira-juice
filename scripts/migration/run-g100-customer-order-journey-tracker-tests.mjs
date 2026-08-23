@@ -68,6 +68,9 @@ assert.match(tracker, /deliveryStatus\?\.status\s*\|\|\s*order\?\.status/, 'auth
 assert.match(tracker, /query\.state\.data/, 'React Query v5 polling callback must read query state');
 assert.match(tracker, /currentDetail\?\.found && !currentDetail\?\.is_terminal/, 'active orders must refresh automatically');
 assert.match(tracker, /Freshness journey/);
+assert.match(tracker, /Live delivery/);
+assert.match(tracker, /Expected arrival/);
+assert.match(tracker, /Updated live/);
 assert.match(tracker, /Status history/);
 assert.match(tracker, /Order details/);
 assert.match(tracker, /Return \+ Reward/);

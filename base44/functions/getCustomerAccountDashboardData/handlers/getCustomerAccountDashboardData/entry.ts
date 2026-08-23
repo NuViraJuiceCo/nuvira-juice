@@ -452,6 +452,88 @@ function authoritativeCustomerOrderStatus(order) {
   return normalizeLower(order?.source_channel) === 'pos' ? 'picked_up' : 'order_received';
 }
 
+const CUSTOMER_DELIVERY_PROGRESS_RANK = Object.freeze({
+  order_received: 0,
+  scheduled_for_juicing: 1,
+  in_production: 2,
+  bottled_packed: 3,
+  out_for_delivery: 4,
+  arriving_soon: 5,
+});
+
+function customerDeliveryProgressStatus(value) {
+  const status = normalizeLower(value).replace(/[\s-]+/g, '_');
+  const map = {
+    confirmed: 'order_received',
+    paid: 'order_received',
+    processing: 'order_received',
+    order_received: 'order_received',
+    new: 'scheduled_for_juicing',
+    pending: 'scheduled_for_juicing',
+    scheduled: 'scheduled_for_juicing',
+    awaiting_production: 'scheduled_for_juicing',
+    production_scheduled: 'scheduled_for_juicing',
+    scheduled_for_production: 'scheduled_for_juicing',
+    scheduled_for_juicing: 'scheduled_for_juicing',
+    in_production: 'in_production',
+    preparing: 'in_production',
+    producing: 'in_production',
+    bottled: 'bottled_packed',
+    labeled: 'bottled_packed',
+    packed: 'bottled_packed',
+    ready_for_delivery: 'bottled_packed',
+    route_assigned: 'bottled_packed',
+    in_cold_storage: 'bottled_packed',
+    qc_checked: 'bottled_packed',
+    completed_pending_verification: 'bottled_packed',
+    verified_logged: 'bottled_packed',
+    completed: 'bottled_packed',
+    complete: 'bottled_packed',
+    fulfilled: 'bottled_packed',
+    picked_up: 'bottled_packed',
+    bottled_packed: 'bottled_packed',
+    assigned_for_delivery: 'out_for_delivery',
+    on_route: 'out_for_delivery',
+    in_transit: 'out_for_delivery',
+    out_for_delivery: 'out_for_delivery',
+    arriving_soon: 'arriving_soon',
+  };
+  return map[status] || null;
+}
+
+function strongestCustomerDeliveryProgress(values) {
+  return values
+    .map(customerDeliveryProgressStatus)
+    .filter(Boolean)
+    .sort((left, right) => CUSTOMER_DELIVERY_PROGRESS_RANK[right] - CUSTOMER_DELIVERY_PROGRESS_RANK[left])[0] || 'order_received';
+}
+
+function customerHistoryLifecycleStatus(order, tasks = []) {
+  const currentStatus = normalizeLower(order?.status);
+  if (['cancelled', 'canceled', 'refunded', 'failed'].includes(currentStatus)) return currentStatus === 'canceled' ? 'cancelled' : currentStatus;
+  if (normalizeLower(order?.fulfillment_type) === 'pickup') return currentStatus;
+  if (order?.delivered_at) return 'delivered';
+
+  const linkedTasks = (Array.isArray(tasks) ? tasks : []).filter(Boolean);
+  if (linkedTasks.length === 0) return currentStatus;
+  const taskDelivered = task => (
+    normalizeLower(task?.delivery_status) === 'delivered'
+    || normalizeLower(task?.status) === 'delivered'
+    || Boolean(task?.delivered_at)
+  );
+  if (linkedTasks.every(taskDelivered)) return 'delivered';
+
+  const safeOrderStatus = ['out_for_delivery', 'arriving_soon', 'delivered', 'picked_up']
+    .includes(currentStatus) ? null : order?.status;
+  return strongestCustomerDeliveryProgress([
+    ...linkedTasks.flatMap(task => [task?.delivery_status, task?.status, task?.production_status]),
+    order?.delivery_status,
+    safeOrderStatus,
+    order?.production_status,
+    order?.fulfillment_status,
+  ]);
+}
+
 function sanitizeAuthoritativeHistoryOrder(order) {
   const orderNumber = normalizeOrderNumber(order?.shopify_order_number || order?.order_number);
   const items = (Array.isArray(order?.line_items) ? order.line_items : []).map(item => ({
@@ -498,8 +580,7 @@ function sanitizeAuthoritativeHistoryOrder(order) {
 }
 
 async function applyOwnedDeliveryProofToOrderHistory(base44, orders, identityEmails) {
-  const deliveredOrders = (orders || []).filter(order => normalizeLower(order?.status) === 'delivered');
-  if (deliveredOrders.length === 0) return orders;
+  if (!Array.isArray(orders) || orders.length === 0) return orders;
 
   const taskRows = uniqueRows((await Promise.all(
     (identityEmails || [])
@@ -516,13 +597,9 @@ async function applyOwnedDeliveryProofToOrderHistory(base44, orders, identityEma
   if (taskRows.length === 0) return orders;
 
   return (orders || []).map(order => {
-    if (normalizeLower(order?.status) !== 'delivered') return order;
-    if (normalizeText(order?.delivery_photo_url) && normalizeText(order?.delivery_drop_location)) return order;
-
     const orderId = normalizeText(order?.id);
     const orderNumber = normalizeOrderNumber(order?.order_number);
-    const proofTask = taskRows.find(task => {
-      if (!normalizeText(task?.delivery_photo_url) && !normalizeText(task?.delivery_drop_location)) return false;
+    const linkedTasks = taskRows.filter(task => {
       const taskOrderNumber = normalizeOrderNumber(task?.order_number || task?.shopify_order_number);
       const linkedIds = [task?.base44_order_id, task?.order_id].map(normalizeText).filter(Boolean);
       return Boolean(
@@ -530,13 +607,20 @@ async function applyOwnedDeliveryProofToOrderHistory(base44, orders, identityEma
         || (orderNumber && taskOrderNumber === orderNumber)
       );
     });
+    if (linkedTasks.length === 0) return order;
 
-    if (!proofTask) return order;
+    const status = customerHistoryLifecycleStatus(order, linkedTasks);
+    const proofTask = status === 'delivered'
+      ? linkedTasks.find(task => normalizeText(task?.delivery_photo_url) || normalizeText(task?.delivery_drop_location))
+      : null;
     return {
       ...order,
-      delivered_at: normalizeText(order?.delivered_at || proofTask?.delivered_at) || null,
-      delivery_photo_url: normalizeText(order?.delivery_photo_url || proofTask?.delivery_photo_url) || null,
-      delivery_drop_location: normalizeText(order?.delivery_drop_location || proofTask?.delivery_drop_location) || null,
+      status,
+      ...(proofTask ? {
+        delivered_at: normalizeText(order?.delivered_at || proofTask?.delivered_at) || null,
+        delivery_photo_url: normalizeText(order?.delivery_photo_url || proofTask?.delivery_photo_url) || null,
+        delivery_drop_location: normalizeText(order?.delivery_drop_location || proofTask?.delivery_drop_location) || null,
+      } : {}),
     };
   });
 }

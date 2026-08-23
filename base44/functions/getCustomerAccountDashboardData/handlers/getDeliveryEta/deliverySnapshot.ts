@@ -164,11 +164,9 @@ function activitySnapshot({
       : 0;
   const statusLabel = delivered
     ? 'Delivered'
-    : onRoute && stopsAhead === 0
-      ? 'You are next'
-      : onRoute
-        ? `${stopsAhead} stop${stopsAhead === 1 ? '' : 's'} away`
-        : 'Delivery not active';
+    : onRoute
+      ? 'Out for Delivery'
+      : 'Delivery not active';
   const message = delivered
     ? 'Your NuVira delivery is complete.'
     : onRoute && stopsAhead === 0
@@ -226,6 +224,67 @@ function durationSeconds(leg: Record<string, any> | null | undefined): number {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : FALLBACK_LEG_SECONDS;
 }
 
+function safeDistanceTelemetrySnapshot(snapshot: Record<string, any>, order: Record<string, any>, status: string, now: Date) {
+  const orderId = normalizeSingleLine(order.id);
+  const orderNumber = normalizeOrderNumber(order.order_number);
+  if (normalizeSingleLine(snapshot?.order_id) !== orderId || normalizeOrderNumber(snapshot?.order_number) !== orderNumber) return null;
+  const progress = Number(snapshot.progress_percent);
+  const etaStartEpoch = Number(snapshot.eta_start_epoch);
+  const etaEndEpoch = Number(snapshot.eta_end_epoch);
+  if (!Number.isFinite(progress) || progress < 12 || progress > 94) return null;
+  if (!Number.isFinite(etaStartEpoch) || !Number.isFinite(etaEndEpoch) || etaEndEpoch <= etaStartEpoch) return null;
+  return {
+    schema_version: 2,
+    order_id: orderId,
+    order_number: orderNumber,
+    deep_link: `/order-tracker/${encodeURIComponent(orderNumber)}`,
+    fulfillment_type: 'delivery',
+    status,
+    activity_state: 'en_route',
+    activity_eligible: true,
+    on_route: true,
+    status_label: 'Out for Delivery',
+    message: normalizeSingleLine(snapshot.message).slice(0, 160) || 'Your NuVira delivery is moving your way.',
+    eta_window: normalizeSingleLine(snapshot.eta_window).slice(0, 80) || null,
+    eta_start: normalizeSingleLine(snapshot.eta_start).slice(0, 80) || null,
+    eta_end: normalizeSingleLine(snapshot.eta_end).slice(0, 80) || null,
+    eta_start_epoch: etaStartEpoch,
+    eta_end_epoch: etaEndEpoch,
+    stops_ahead: Math.max(0, Number(snapshot.stops_ahead) || 0),
+    stops_remaining: Math.max(1, Number(snapshot.stops_remaining) || 1),
+    stops_total: Math.max(1, Number(snapshot.stops_total) || 1),
+    stops_delivered: Math.max(0, Number(snapshot.stops_delivered) || 0),
+    progress_percent: Math.round(progress),
+    progress_source: 'distance_eta',
+    updated_at: normalizeSingleLine(snapshot.updated_at).slice(0, 80) || now.toISOString(),
+    sequence: Math.max(0, Number(snapshot.sequence) || Math.floor(now.getTime() / 1000)),
+    stale_at: normalizeSingleLine(snapshot.stale_at).slice(0, 80) || new Date(now.getTime() + 3 * 60 * 1000).toISOString(),
+    stale_at_epoch: Math.max(0, Number(snapshot.stale_at_epoch) || Math.floor((now.getTime() + 3 * 60 * 1000) / 1000)),
+    privacy_label: 'Route progress only. Precise driver location is not shared.',
+  };
+}
+
+async function freshDistanceTelemetrySnapshot(base44: any, order: Record<string, any>, status: string, now: Date) {
+  if (!ON_ROUTE_STATUSES.has(status) || !isDelivery(order)) return null;
+  const entity = base44?.asServiceRole?.entities?.DeliveryRouteTelemetry;
+  if (!entity || typeof entity.filter !== 'function') return null;
+  try {
+    const rows = await entity.filter({ state: 'active' }, '-last_sample_at', 30);
+    for (const row of rows) {
+      const lastSample = parseDate(row.last_sample_at);
+      const expiresAt = parseDate(row.expires_at);
+      if (!lastSample || now.getTime() - lastSample > 3 * 60 * 1000 || (expiresAt && expiresAt <= now.getTime())) continue;
+      const snapshot = (Array.isArray(row.snapshots) ? row.snapshots : [])
+        .find((candidate: Record<string, any>) => normalizeSingleLine(candidate?.order_id) === normalizeSingleLine(order.id));
+      const safe = snapshot ? safeDistanceTelemetrySnapshot(snapshot, order, status, now) : null;
+      if (safe) return safe;
+    }
+  } catch {
+    // Older deployments may not have the telemetry entity yet; retain the existing safe fallback.
+  }
+  return null;
+}
+
 export async function buildDeliveryRouteSnapshots({
   base44,
   anchorOrderId,
@@ -246,6 +305,17 @@ export async function buildDeliveryRouteSnapshots({
   if (!isDelivery(anchorOrder, anchorTask) || (!ROUTE_STATUSES.has(anchorStatus) && !ON_ROUTE_STATUSES.has(anchorStatus))) {
     const inactive = activitySnapshot({ order: anchorOrder, status: anchorStatus, now });
     return { anchor_order: anchorOrder, anchor_snapshot: inactive, route_snapshots: [inactive], route_orders: [anchorOrder], route_date: routeDate };
+  }
+
+  const distanceTelemetry = await freshDistanceTelemetrySnapshot(base44, anchorOrder, anchorStatus, now);
+  if (distanceTelemetry) {
+    return {
+      anchor_order: anchorOrder,
+      anchor_snapshot: distanceTelemetry,
+      route_snapshots: [distanceTelemetry],
+      route_orders: [anchorOrder],
+      route_date: routeDate,
+    };
   }
 
   const routeRecords = orders

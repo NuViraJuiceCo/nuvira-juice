@@ -30,7 +30,7 @@ const statusLabels = {
   scheduled_for_production: 'Scheduled',
   in_production: 'In Production',
   bottled_packed: 'Packed',
-  out_for_delivery: 'On the Way',
+  out_for_delivery: 'Out for Delivery',
   arriving_soon: 'Arriving',
   delivered: 'Delivered',
   ready_for_pickup: 'Ready',

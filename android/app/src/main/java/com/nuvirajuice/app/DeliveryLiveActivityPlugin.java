@@ -15,16 +15,25 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import java.text.DateFormat;
 import java.util.Date;
 import java.util.Map;
 import org.json.JSONObject;
 
-@CapacitorPlugin(name = "DeliveryLiveActivity")
+@CapacitorPlugin(
+    name = "DeliveryLiveActivity",
+    permissions = @Permission(
+        alias = "routeLocation",
+        strings = { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION }
+    )
+)
 public class DeliveryLiveActivityPlugin extends Plugin {
     private static final String CHANNEL_ID = "nuvira_live_delivery";
     private static final String DELIVERY_MARKER = "1";
@@ -83,6 +92,49 @@ public class DeliveryLiveActivityPlugin extends Plugin {
         result.put("activityId", activityId(orderId));
         result.put("platform", "android");
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void startRouteTracking(PluginCall call) {
+        if (getPermissionState("routeLocation") != PermissionState.GRANTED) {
+            requestPermissionForAlias("routeLocation", call, "routeLocationPermissionCallback");
+            return;
+        }
+        startRouteTrackingAfterPermission(call);
+    }
+
+    @PermissionCallback
+    private void routeLocationPermissionCallback(PluginCall call) {
+        if (getPermissionState("routeLocation") != PermissionState.GRANTED) {
+            call.reject("Location access is required while an active delivery route is being tracked.", "LOCATION_PERMISSION_REQUIRED");
+            return;
+        }
+        startRouteTrackingAfterPermission(call);
+    }
+
+    @PluginMethod
+    public void stopRouteTracking(PluginCall call) {
+        DriverRouteTrackingService.stop(getContext());
+        call.resolve(DriverRouteTrackingService.status());
+    }
+
+    @PluginMethod
+    public void getRouteTrackingStatus(PluginCall call) {
+        call.resolve(DriverRouteTrackingService.status());
+    }
+
+    private void startRouteTrackingAfterPermission(PluginCall call) {
+        String endpoint = singleLine(call.getString("endpoint"), 500);
+        String sessionId = singleLine(call.getString("sessionId"), 180);
+        String sessionToken = singleLine(call.getString("sessionToken"), 256);
+        int interval = Math.max(15, Math.min(120, call.getInt("minimumUpdateIntervalSeconds", 30)));
+        int distance = Math.max(25, Math.min(500, call.getInt("minimumDistanceMeters", 75)));
+        if (!DriverRouteTrackingService.validEndpoint(endpoint) || sessionId.isEmpty() || sessionToken.isEmpty()) {
+            call.reject("The route tracking session is invalid.", "INVALID_ROUTE_SESSION");
+            return;
+        }
+        DriverRouteTrackingService.start(getContext(), endpoint, sessionId, sessionToken, interval, distance);
+        call.resolve(DriverRouteTrackingService.status());
     }
 
     static boolean handleRemoteMessage(Context context, Map<String, String> data) {

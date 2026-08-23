@@ -37,6 +37,12 @@ import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
 import { unwrapBase44Result } from '@/lib/base44-result';
 import { usePageVisibility } from '@/lib/usePageVisibility';
+import {
+  getDriverRouteTelemetryStatus,
+  getNativeDriverRouteTrackingStatus,
+  startDriverRouteTelemetry,
+  stopDriverRouteTelemetry,
+} from '@/lib/driverRouteTelemetry';
 
 const NUVIRA_BASE_ADDRESS = '619 N Main St Unit 3, O\'Fallon, MO 63366';
 const DELIVERY_LIFECYCLE_READ_MODEL_MODE = 'DELIVERY_LIFECYCLE';
@@ -2064,6 +2070,140 @@ function StopSection({ title, subtitle, stops, completed, selectedDate, onAssign
   );
 }
 
+function LiveRouteTrackingPanel({ stops, enabled, onRouteChange }) {
+  const queryClient = useQueryClient();
+  const [pendingAction, setPendingAction] = useState('');
+  const [message, setMessage] = useState(null);
+  const activeStops = useMemo(() => stops.filter(stop => {
+    const status = normalizedStatus(stop.task_status || stop.delivery_status || stop.status).replace(/[ -]+/g, '_');
+    return ['out_for_delivery', 'arriving_soon'].includes(status) && Boolean(stop.task_id || stop.native_fulfillment_task_id);
+  }), [stops]);
+  const orderedTaskIds = useMemo(
+    () => activeStops.map(stop => stop.task_id || stop.native_fulfillment_task_id).filter(Boolean),
+    [activeStops],
+  );
+
+  const { data: routeStatus, refetch: refetchRouteStatus, isFetching } = useQuery({
+    queryKey: ['driver-route-telemetry-status'],
+    queryFn: async () => {
+      const [server, device] = await Promise.all([
+        getDriverRouteTelemetryStatus(),
+        getNativeDriverRouteTrackingStatus(),
+      ]);
+      return { server, device };
+    },
+    enabled,
+    staleTime: 15_000,
+    refetchInterval: enabled ? 30_000 : false,
+    refetchIntervalInBackground: false,
+  });
+
+  const server = routeStatus?.server || {};
+  const device = routeStatus?.device || {};
+  const active = server.state === 'active';
+  const trackingHealthy = active && server.sample_fresh && server.last_provider_status === 'ok';
+
+  async function refreshAll() {
+    await Promise.all([
+      refetchRouteStatus(),
+      queryClient.invalidateQueries({ queryKey: ['driver-route-telemetry-status'] }),
+      onRouteChange?.(),
+    ]);
+  }
+
+  async function startTracking() {
+    if (!orderedTaskIds.length) return;
+    setPendingAction('start');
+    setMessage(null);
+    try {
+      await startDriverRouteTelemetry({
+        fulfillmentTaskId: orderedTaskIds[0],
+        orderedTaskIds,
+      });
+      setMessage({ type: 'success', text: 'Live route tracking started. Customer ETAs will update from remaining travel distance.' });
+      await refreshAll();
+    } catch (error) {
+      const reason = error?.message || 'route_tracking_start_failed';
+      setMessage({
+        type: 'error',
+        text: reason.includes('permission')
+          ? 'Location permission is required while you are actively delivering.'
+          : 'Live route tracking could not start. Confirm the route, driver assignment, and location access, then retry.',
+      });
+    } finally {
+      setPendingAction('');
+    }
+  }
+
+  async function stopTracking() {
+    setPendingAction('stop');
+    setMessage(null);
+    try {
+      await stopDriverRouteTelemetry({ sessionId: server.session_id, reason: 'operator_stopped' });
+      setMessage({ type: 'success', text: 'Live route tracking stopped.' });
+      await refreshAll();
+    } catch {
+      setMessage({ type: 'error', text: 'Route tracking could not be stopped cleanly. Refresh and try again.' });
+    } finally {
+      setPendingAction('');
+    }
+  }
+
+  if (!enabled || (activeStops.length === 0 && !active)) return null;
+
+  return (
+    <section className="rounded-lg border border-emerald-500/30 bg-emerald-950 px-3 py-3 text-white shadow-sm md:rounded-xl md:px-4" aria-label="Live route tracking">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-lime-300 text-emerald-950">
+            <Navigation className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold">Live route tracking</p>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${trackingHealthy ? 'bg-lime-300 text-emerald-950' : active ? 'bg-amber-300 text-amber-950' : 'bg-white/10 text-white/80'}`}>
+                {trackingHealthy ? 'Distance ETA live' : active ? 'Waiting for location' : 'Off'}
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-emerald-100/80">
+              Customer progress uses remaining route distance and traffic. Precise driver location is never shown or stored.
+            </p>
+          </div>
+        </div>
+        <button type="button" onClick={() => refetchRouteStatus()} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-emerald-100" aria-label="Refresh route tracking status" title="Refresh route tracking status">
+          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-md bg-white/10 px-3 py-2">
+          <p className="text-[9px] font-bold uppercase text-emerald-100/60">Active stops</p>
+          <p className="mt-0.5 font-semibold">{active ? server.tracked_order_count : activeStops.length}</p>
+        </div>
+        <div className="rounded-md bg-white/10 px-3 py-2">
+          <p className="text-[9px] font-bold uppercase text-emerald-100/60">Driver device</p>
+          <p className="mt-0.5 truncate font-semibold">{device.active ? 'Sharing route progress' : active ? 'Connecting' : 'Not sharing'}</p>
+        </div>
+      </div>
+
+      {message && (
+        <p className={`mt-3 rounded-md px-3 py-2 text-xs ${message.type === 'error' ? 'bg-red-500/20 text-red-100' : 'bg-lime-300/15 text-lime-100'}`} role="status">
+          {message.text}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={active ? stopTracking : startTracking}
+        disabled={Boolean(pendingAction) || (!active && orderedTaskIds.length === 0)}
+        className={`mt-3 h-11 w-full rounded-md text-sm font-bold disabled:cursor-not-allowed disabled:opacity-60 ${active ? 'border border-white/25 bg-transparent text-white' : 'bg-lime-300 text-emerald-950'}`}
+      >
+        {pendingAction ? 'Saving...' : active ? 'Stop Live Route Tracking' : 'Start Live Route Tracking'}
+      </button>
+    </section>
+  );
+}
+
 export default function DeliveryQueue() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -2335,6 +2475,12 @@ export default function DeliveryQueue() {
         {testTaskMode !== 'only' && (
           <RouteOptimizationPanel deliveryDate={deliveryDate} stops={deliveryStops} />
         )}
+
+        <LiveRouteTrackingPanel
+          stops={deliveryStops}
+          enabled={testTaskMode !== 'only' && canUseAdmin && isPageVisible}
+          onRouteChange={refreshDeliveryActionSummaries}
+        />
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">

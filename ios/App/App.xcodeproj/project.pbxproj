@@ -24,6 +24,7 @@
 		A10000000000000000000004 /* NuViraDeliveryActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* NuViraDeliveryActivityBundle.swift */; };
 		A10000000000000000000005 /* NuViraDeliveryActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* NuViraDeliveryActivityWidget.swift */; };
 		A10000000000000000000006 /* NuViraDeliveryActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* NuViraDeliveryActivity.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* Assets.xcassets */; };
 		C5A8D1022DE6823400123450 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = C5A8D1012DE6823400123450 /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
@@ -70,6 +71,7 @@
 		A20000000000000000000004 /* NuViraDeliveryActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuViraDeliveryActivityWidget.swift; sourceTree = "<group>"; };
 		A20000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000006 /* NuViraDeliveryActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NuViraDeliveryActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000007 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		C5A8D1012DE6823400123450 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -147,6 +149,7 @@
 			children = (
 				A20000000000000000000003 /* NuViraDeliveryActivityBundle.swift */,
 				A20000000000000000000004 /* NuViraDeliveryActivityWidget.swift */,
+				A20000000000000000000007 /* Assets.xcassets */,
 				A20000000000000000000005 /* Info.plist */,
 			);
 			path = NuViraDeliveryActivity;
@@ -259,6 +262,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000007 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -435,7 +439,7 @@
 				APPLE_PAY_MERCHANT_ID = merchant.com.nuvirajuice;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEVELOPMENT_TEAM = JPFWU38MTS;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -443,7 +447,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.117917.0;
+				MARKETING_VERSION = 2.117918.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.base69d48d0c39891f7945481152.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -461,7 +465,7 @@
 				APPLE_PAY_MERCHANT_ID = merchant.com.nuvirajuice;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEVELOPMENT_TEAM = JPFWU38MTS;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -469,7 +473,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.117917.0;
+				MARKETING_VERSION = 2.117918.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.base69d48d0c39891f7945481152.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -483,7 +487,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEVELOPMENT_TEAM = JPFWU38MTS;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NuViraDeliveryActivity/Info.plist;
@@ -493,7 +497,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.117917.0;
+				MARKETING_VERSION = 2.117918.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.base69d48d0c39891f7945481152.app.NuViraDeliveryActivity;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -510,7 +514,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEVELOPMENT_TEAM = JPFWU38MTS;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = NuViraDeliveryActivity/Info.plist;
@@ -520,7 +524,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.117917.0;
+				MARKETING_VERSION = 2.117918.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.base69d48d0c39891f7945481152.app.NuViraDeliveryActivity;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				PRODUCT_NAME = "$(TARGET_NAME)";
