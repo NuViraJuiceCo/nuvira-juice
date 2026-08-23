@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 // @deno-types="npm:@types/web-push@3.6.4"
 import webpush from 'npm:web-push@3.6.7';
+import { buildDeliveryRouteSnapshots } from './deliverySnapshot.ts';
 
 const VAPID_PUBLIC_KEY = Deno.env.get('WEB_PUSH_VAPID_PUBLIC_KEY') || '';
 const VAPID_PRIVATE_KEY = Deno.env.get('WEB_PUSH_VAPID_PRIVATE_KEY');
@@ -20,6 +21,8 @@ const APNS_PRIMARY_ENVIRONMENT = (Deno.env.get('APNS_PRIMARY_ENVIRONMENT') || 'p
   : 'production';
 const APNS_ALLOW_ENV_FALLBACK = Deno.env.get('APNS_ALLOW_ENV_FALLBACK') !== 'false';
 const TRANSACTIONAL_TEST_RECIPIENT = 'info@nuvirajuice.com';
+const DELIVERY_LIVE_ACTIVITY_OPERATION = 'refresh_delivery_live_activity';
+const DELIVERY_LIVE_ACTIVITY_ATTRIBUTES_TYPE = 'NuViraDeliveryAttributes';
 
 const ELEVATED_TRANSACTIONAL_PUSH_SUBTYPES = new Set([
   'scheduled_for_juicing',
@@ -558,6 +561,7 @@ async function sendFcmSubscriptions(
   base44: Base44Client,
   subscriptions: PushSubscriptionRecord[],
   payload: Record<string, string>,
+  options: { dataOnly?: boolean } = {},
 ) {
   const serviceAccount = readFirebaseServiceAccount();
   const projectId = FIREBASE_PROJECT_ID || serviceAccount?.project_id || '';
@@ -589,14 +593,20 @@ async function sendFcmSubscriptions(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        message: {
-          token: fcmToken,
-          notification: {
-            title: payload.title,
-            body: payload.body,
-          },
-          data: payload,
-        },
+        message: options.dataOnly
+          ? {
+              token: fcmToken,
+              data: payload,
+              android: { priority: 'high' },
+            }
+          : {
+              token: fcmToken,
+              notification: {
+                title: payload.title,
+                body: payload.body,
+              },
+              data: payload,
+            },
       }),
     });
 
@@ -731,6 +741,414 @@ async function sendApnsSubscriptions(
   return { sent, failed, revoked, skipped_reason: null };
 }
 
+function deliveryLiveActivitiesEnabled(): boolean {
+  return envFlag('ENABLE_DELIVERY_LIVE_ACTIVITIES')
+    && Deno.env.get('DELIVERY_LIVE_ACTIVITIES_KILL_SWITCH') === 'false';
+}
+
+function normalizeHexToken(value: unknown): string {
+  const token = normalizeSingleLine(value).replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+  return token.length >= 32 && token.length <= 4096 && token.length % 2 === 0 ? token : '';
+}
+
+function liveActivityContentState(snapshot: Record<string, any>) {
+  return {
+    status: normalizeSingleLine(snapshot.status || 'out_for_delivery'),
+    statusLabel: normalizeSingleLine(snapshot.status_label || 'On the way'),
+    etaStartEpoch: Number(snapshot.eta_start_epoch || 0),
+    etaEndEpoch: Number(snapshot.eta_end_epoch || 0),
+    stopsAhead: Number(snapshot.stops_ahead || 0),
+    stopsDelivered: Number(snapshot.stops_delivered || 0),
+    stopsTotal: Number(snapshot.stops_total || 0),
+    progressPercent: Number(snapshot.progress_percent || 0),
+    updatedAtEpoch: Number(snapshot.sequence || Math.floor(Date.now() / 1000)),
+    isDelayed: snapshot.status === 'delayed',
+    message: normalizeSingleLine(snapshot.message || ''),
+  };
+}
+
+function liveActivityAttributes(snapshot: Record<string, any>) {
+  return {
+    orderId: normalizeSingleLine(snapshot.order_id),
+    orderNumber: normalizeSingleLine(snapshot.order_number),
+    deepLink: normalizeSingleLine(snapshot.deep_link || '/account/orders'),
+  };
+}
+
+function liveActivityDataPayload(snapshot: Record<string, any>, event: string): Record<string, string> {
+  return {
+    nuvira_delivery_live_activity: '1',
+    schema_version: '1',
+    event,
+    order_id: normalizeSingleLine(snapshot.order_id),
+    order_number: normalizeSingleLine(snapshot.order_number),
+    deep_link: normalizeSingleLine(snapshot.deep_link || '/account/orders'),
+    status: normalizeSingleLine(snapshot.status),
+    status_label: normalizeSingleLine(snapshot.status_label),
+    eta_start_epoch: String(Number(snapshot.eta_start_epoch || 0)),
+    eta_end_epoch: String(Number(snapshot.eta_end_epoch || 0)),
+    stops_ahead: String(Number(snapshot.stops_ahead || 0)),
+    stops_delivered: String(Number(snapshot.stops_delivered || 0)),
+    stops_total: String(Number(snapshot.stops_total || 0)),
+    progress_percent: String(Number(snapshot.progress_percent || 0)),
+    updated_at_epoch: String(Number(snapshot.sequence || Math.floor(Date.now() / 1000))),
+    stale_at_epoch: String(Number(snapshot.stale_at_epoch || 0)),
+    message: normalizeSingleLine(snapshot.message),
+  };
+}
+
+async function snapshotHash(snapshot: Record<string, any>): Promise<string> {
+  const stablePayload = {
+    order_id: snapshot.order_id,
+    activity_state: snapshot.activity_state,
+    status: snapshot.status,
+    status_label: snapshot.status_label,
+    eta_start_epoch: snapshot.eta_start_epoch,
+    eta_end_epoch: snapshot.eta_end_epoch,
+    stops_ahead: snapshot.stops_ahead,
+    stops_delivered: snapshot.stops_delivered,
+    stops_total: snapshot.stops_total,
+    progress_percent: snapshot.progress_percent,
+  };
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(stablePayload)));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function findDeliveryActivityRows(base44: Base44Client, identityEmails: string[]) {
+  const rows: Record<string, any>[] = [];
+  const seen = new Set<string>();
+  for (const email of identityEmails) {
+    const matches = await base44.asServiceRole.entities.DeliveryLiveActivity.filter({ customer_email: email }, '-updated_date', 100);
+    for (const row of matches) {
+      if (!row.id || seen.has(row.id) || row.enabled === false || row.state === 'revoked') continue;
+      seen.add(row.id);
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+async function updateDeliveryActivityRow(base44: Base44Client, row: Record<string, any>, updates: Record<string, any>) {
+  if (!row?.id) return null;
+  return base44.asServiceRole.entities.DeliveryLiveActivity.update(row.id, updates);
+}
+
+async function upsertPendingActivityStart(
+  base44: Base44Client,
+  installation: Record<string, any>,
+  order: Record<string, any>,
+  snapshot: Record<string, any>,
+  hash: string,
+) {
+  const filters = {
+    customer_email: normalizeEmail(order.customer_email),
+    scope: 'activity',
+    platform: 'ios',
+    installation_id: installation.installation_id,
+    order_id: order.id,
+  };
+  const rows = await base44.asServiceRole.entities.DeliveryLiveActivity.filter(filters, '-updated_date', 5);
+  const current = rows.find((row: Record<string, any>) => row.state !== 'revoked') || rows[0];
+  const payload = {
+    ...filters,
+    order_number: normalizeSingleLine(order.order_number),
+    activity_id: current?.activity_id || `push-start:${order.id}`,
+    activity_push_token: current?.activity_push_token || null,
+    apns_environment: installation.apns_environment || 'unknown',
+    app_bundle_id: installation.app_bundle_id || APNS_BUNDLE_ID,
+    app_version: installation.app_version || null,
+    build_number: installation.build_number || null,
+    state: 'active',
+    enabled: true,
+    last_sequence: Number(snapshot.sequence || 0),
+    last_snapshot_hash: hash,
+    started_at: current?.started_at || new Date().toISOString(),
+    last_updated_at: new Date().toISOString(),
+    ended_at: null,
+    revoked_at: null,
+  };
+  return current
+    ? base44.asServiceRole.entities.DeliveryLiveActivity.update(current.id, payload)
+    : base44.asServiceRole.entities.DeliveryLiveActivity.create(payload);
+}
+
+async function sendApnsLiveActivity(
+  base44: Base44Client,
+  row: Record<string, any>,
+  token: string,
+  snapshot: Record<string, any>,
+  event: 'start' | 'update' | 'end',
+) {
+  let jwt = '';
+  try {
+    jwt = await createApnsJwt();
+  } catch {
+    return { sent: false, revoked: false, reason: 'apns_credentials_missing' };
+  }
+
+  const contentState = liveActivityContentState(snapshot);
+  const timestamp = Number(snapshot.sequence || Math.floor(Date.now() / 1000));
+  const aps: Record<string, any> = {
+    timestamp,
+    event,
+    'content-state': contentState,
+  };
+  if (snapshot.stale_at_epoch) aps['stale-date'] = Number(snapshot.stale_at_epoch);
+  if (event === 'start') {
+    aps['attributes-type'] = DELIVERY_LIVE_ACTIVITY_ATTRIBUTES_TYPE;
+    aps.attributes = liveActivityAttributes(snapshot);
+    aps.alert = {
+      title: 'Your NuVira delivery is moving',
+      body: normalizeSingleLine(snapshot.status_label || 'Track your delivery live.'),
+    };
+    aps['input-push-token'] = 1;
+  }
+  if (event === 'end') aps['dismissal-date'] = timestamp + 60 * 60;
+
+  let lastStatus = 0;
+  let lastReason = '';
+  for (const environment of apnsEnvironments(row)) {
+    const host = environment === 'sandbox' ? 'api.sandbox.push.apple.com' : 'api.push.apple.com';
+    let response: Response;
+    try {
+      response = await fetch(`https://${host}/3/device/${token}`, {
+        method: 'POST',
+        headers: {
+          authorization: `bearer ${jwt}`,
+          'apns-topic': `${normalizeSingleLine(row.app_bundle_id) || APNS_BUNDLE_ID}.push-type.liveactivity`,
+          'apns-push-type': 'liveactivity',
+          'apns-priority': event === 'start' ? '10' : '5',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ aps }),
+      });
+    } catch {
+      lastReason = 'apns_request_failed';
+      continue;
+    }
+    if (response.ok) return { sent: true, revoked: false, environment, reason: null };
+    lastStatus = response.status;
+    const errorBody = await response.json().catch(() => ({}));
+    lastReason = normalizeSingleLine(errorBody.reason || response.statusText);
+    if (lastStatus === 400 && ['BadDeviceToken', 'DeviceTokenNotForTopic'].includes(lastReason)) continue;
+    break;
+  }
+
+  const revoked = lastStatus === 410 || lastReason === 'Unregistered';
+  if (revoked) {
+    await updateDeliveryActivityRow(base44, row, {
+      state: 'revoked',
+      enabled: false,
+      revoked_at: new Date().toISOString(),
+      last_updated_at: new Date().toISOString(),
+    });
+  }
+  console.warn(`[sendCustomerPushNotification] Live Activity APNs failed status=${lastStatus || 'unknown'} reason=${lastReason || 'unknown'}`);
+  return { sent: false, revoked, reason: lastReason || 'apns_delivery_failed' };
+}
+
+async function sendDeliveryLiveActivitySnapshot(
+  base44: Base44Client,
+  order: Record<string, any>,
+  snapshot: Record<string, any>,
+) {
+  const customerEmail = normalizeEmail(order.customer_email);
+  const identityEmails = await resolveIdentityEmails(base44, customerEmail);
+  const registrations = await findDeliveryActivityRows(base44, identityEmails).catch((error) => {
+    if (isMissingSchemaError(error)) return [];
+    throw error;
+  });
+  if (registrations.length === 0) {
+    return { attempted: false, sent: 0, failed: 0, reason: 'no_live_activity_registration' };
+  }
+
+  const hash = await snapshotHash(snapshot);
+  const isEnd = snapshot.activity_state === 'delivered' || snapshot.activity_state === 'inactive';
+  const iosOrderActivityRows = registrations.filter((row) => (
+    row.platform === 'ios'
+    && row.scope === 'activity'
+    && row.order_id === order.id
+    && normalizeHexToken(row.activity_push_token)
+  ));
+  const activeIosRows = iosOrderActivityRows.filter((row) => row.state === 'active');
+  const iosInstallations = registrations.filter((row) => (
+    row.platform === 'ios'
+    && row.scope === 'installation'
+    && row.state === 'registered'
+    && normalizeHexToken(row.push_to_start_token)
+  ));
+  const androidCapability = registrations.some((row) => (
+    row.platform === 'android' && row.scope === 'installation' && row.state === 'registered'
+  ));
+
+  let attempted = false;
+  let sent = 0;
+  let failed = 0;
+
+  if (isEnd) {
+    for (const row of iosOrderActivityRows) {
+      if (row.last_snapshot_hash === hash && row.state === 'ended') continue;
+      attempted = true;
+      const result = await sendApnsLiveActivity(base44, row, normalizeHexToken(row.activity_push_token), snapshot, 'end');
+      if (result.sent) {
+        sent += 1;
+        await updateDeliveryActivityRow(base44, row, {
+          state: 'ended',
+          enabled: false,
+          last_sequence: Number(snapshot.sequence || 0),
+          last_snapshot_hash: hash,
+          last_updated_at: new Date().toISOString(),
+          ended_at: new Date().toISOString(),
+        });
+      } else failed += 1;
+    }
+  } else if (activeIosRows.length > 0) {
+    for (const row of activeIosRows) {
+      if (row.last_snapshot_hash === hash) continue;
+      attempted = true;
+      const result = await sendApnsLiveActivity(base44, row, normalizeHexToken(row.activity_push_token), snapshot, 'update');
+      if (result.sent) {
+        sent += 1;
+        await updateDeliveryActivityRow(base44, row, {
+          last_sequence: Number(snapshot.sequence || 0),
+          last_snapshot_hash: hash,
+          last_updated_at: new Date().toISOString(),
+          apns_environment: result.environment || row.apns_environment,
+        });
+      } else failed += 1;
+    }
+  } else {
+    for (const installation of iosInstallations) {
+      const existing = registrations.find((row) => (
+        row.platform === 'ios'
+        && row.scope === 'activity'
+        && row.installation_id === installation.installation_id
+        && row.order_id === order.id
+        && row.state === 'active'
+        && row.last_snapshot_hash === hash
+      ));
+      if (existing) continue;
+      attempted = true;
+      const result = await sendApnsLiveActivity(base44, installation, normalizeHexToken(installation.push_to_start_token), snapshot, 'start');
+      if (result.sent) {
+        sent += 1;
+        await upsertPendingActivityStart(base44, installation, order, snapshot, hash);
+      } else failed += 1;
+    }
+  }
+
+  if (androidCapability) {
+    const subscriptions = await findPushSubscriptions(base44, identityEmails);
+    const androidSubscriptions = subscriptions.filter((row) => (
+      row.token_type === 'fcm'
+      && (
+        normalizeSingleLine(row.device_platform).toLowerCase() === 'android'
+        || normalizeSingleLine(row.app_bundle_id) === 'com.nuvirajuice.app'
+      )
+    ));
+    if (androidSubscriptions.length > 0) {
+      attempted = true;
+      const result = await sendFcmSubscriptions(
+        base44,
+        androidSubscriptions,
+        liveActivityDataPayload(snapshot, isEnd ? 'end' : 'update'),
+        { dataOnly: true },
+      );
+      sent += result.sent;
+      failed += result.failed;
+    }
+  }
+
+  return {
+    attempted,
+    sent,
+    failed,
+    reason: sent > 0 ? null : attempted ? 'live_activity_delivery_failed' : 'no_compatible_live_activity_target',
+  };
+}
+
+async function refreshDeliveryLiveActivities(base44: Base44Client, body: Record<string, any>) {
+  if (!deliveryLiveActivitiesEnabled()) {
+    return Response.json({
+      success: true,
+      live_activity_attempted: false,
+      live_activity_sent: false,
+      reason: 'delivery_live_activities_disabled',
+    });
+  }
+
+  const orderId = normalizeSingleLine(body.order_id);
+  if (!orderId || orderId.length > 160 || !/^[A-Za-z0-9._:@/-]+$/.test(orderId)) {
+    return Response.json({ error: 'order_id_required' }, { status: 400 });
+  }
+
+  const orderRows = await base44.asServiceRole.entities.Order.filter({ id: orderId }, undefined, 1);
+  const preflightOrder = orderRows[0] || null;
+  if (!preflightOrder) return Response.json({ error: 'order_not_found' }, { status: 404 });
+  if (preflightOrder.is_test_order === true) {
+    return Response.json({ success: true, live_activity_attempted: false, live_activity_sent: false, reason: 'test_order_suppressed' });
+  }
+
+  let hasLiveActivityRegistration = false;
+  try {
+    const registrations = await base44.asServiceRole.entities.DeliveryLiveActivity.filter({ enabled: true }, '-updated_date', 1);
+    hasLiveActivityRegistration = registrations.length > 0;
+  } catch (error) {
+    if (!isMissingSchemaError(error)) throw error;
+  }
+  if (!hasLiveActivityRegistration) {
+    return Response.json({
+      success: true,
+      live_activity_attempted: false,
+      live_activity_sent: false,
+      reason: 'no_live_activity_registration',
+    });
+  }
+
+  const route = await buildDeliveryRouteSnapshots({
+    base44,
+    anchorOrderId: orderId,
+    googleMapsApiKey: Deno.env.get('GOOGLE_MAPS_API_KEY') || '',
+  });
+  if (!route.anchor_order || !route.anchor_snapshot) return Response.json({ error: 'order_not_found' }, { status: 404 });
+
+  const refreshRoute = body.refresh_route === true;
+  const snapshots = refreshRoute
+    ? route.route_snapshots.filter((snapshot: Record<string, any>) => (
+        snapshot.activity_state === 'en_route' || snapshot.order_id === orderId
+      ))
+    : [route.anchor_snapshot];
+  const ordersById = new Map((route.route_orders || []).map((order: Record<string, any>) => [order.id, order]));
+  ordersById.set(route.anchor_order.id, route.anchor_order);
+
+  let attempted = false;
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  for (const snapshot of snapshots.slice(0, 30)) {
+    const order = ordersById.get(snapshot.order_id);
+    if (!order?.id || order.is_test_order === true) {
+      skipped += 1;
+      continue;
+    }
+    const result = await sendDeliveryLiveActivitySnapshot(base44, order, snapshot);
+    attempted ||= result.attempted;
+    sent += result.sent;
+    failed += result.failed;
+    if (!result.attempted) skipped += 1;
+  }
+
+  return Response.json({
+    success: true,
+    live_activity_attempted: attempted,
+    live_activity_sent: sent > 0,
+    sent_count: sent,
+    failed_count: failed,
+    skipped_count: skipped,
+    route_snapshot_count: snapshots.length,
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return Response.json({ error: 'Method not allowed' }, { status: 405 });
@@ -749,6 +1167,9 @@ Deno.serve(async (req) => {
     const body = await readJsonBody(req);
     if (!body) {
       return Response.json({ error: 'malformed_json' }, { status: 400 });
+    }
+    if (normalizeSingleLine(body.operation) === DELIVERY_LIVE_ACTIVITY_OPERATION) {
+      return refreshDeliveryLiveActivities(base44, body);
     }
     let customerEmail = '';
     try {

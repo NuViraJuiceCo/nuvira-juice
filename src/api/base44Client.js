@@ -91,6 +91,7 @@ const CUSTOMER_GATEWAY_ACTIONS = new Set([
   'getDeliveryEta',
   'getOrderBySession',
   'manageProgramJourney',
+  'manageDeliveryLiveActivity',
   'pauseSubscription',
   'registerPushSubscription',
   'requestAccountDeletion',

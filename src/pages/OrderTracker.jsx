@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle, Clock3, ChevronDown, CircleCheckBig, Sparkles } from 'lucide-react';
+import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle, Clock3, ChevronDown, CircleCheckBig, Sparkles, Navigation, ShieldCheck } from 'lucide-react';
 import { SAFE_TOP_PADDING } from '@/components/layout/MobilePageHeader';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
@@ -12,6 +12,7 @@ import { buildCustomerJourneyTimeline, getCustomerOrderJourney, resolveCustomerJ
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import { orderContainsProgram } from '@/lib/program-catalog';
+import { syncDeliveryLiveActivity } from '@/lib/deliveryLiveActivity';
 
 // Parse a date string safely as a LOCAL calendar date (never UTC).
 // "2026-05-09" → May 9 in local time, not May 8 at UTC midnight.
@@ -160,6 +161,27 @@ export default function OrderTracker() {
     refetchInterval: 5 * 60 * 1000,   // every 5 min (was 3 min) — only fires when isOnRoute
     refetchIntervalInBackground: false, // pause when tab inactive
   });
+
+  React.useEffect(() => {
+    if (!order?.id || !order?.order_number) return;
+    if (etaData?.order_id && isOnRoute) {
+      syncDeliveryLiveActivity(etaData).catch(() => null);
+      return;
+    }
+    if (journey.normalizedStatus === 'delivered') {
+      syncDeliveryLiveActivity({
+        order_id: order.id,
+        order_number: order.order_number,
+        deep_link: `/order-tracker/${encodeURIComponent(order.order_number)}`,
+        status: 'delivered',
+        status_label: 'Delivered',
+        activity_state: 'delivered',
+        progress_percent: 100,
+        sequence: Math.floor(Date.now() / 1000),
+        message: 'Your NuVira delivery is complete.',
+      }).catch(() => null);
+    }
+  }, [etaData, isOnRoute, journey.normalizedStatus, order?.id, order?.order_number]);
 
   // ── Error state (network/5xx failure only — lookup errors now return found:false) ──
   if (isError) {
@@ -467,42 +489,64 @@ export default function OrderTracker() {
       </section>
 
       {isOnRoute && etaData?.on_route && (
-        <section className="mx-4 mt-4 bg-emerald-50 border border-emerald-200 rounded-3xl p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse shrink-0" />
-            <div>
-              <p className="text-xs font-bold text-emerald-700 uppercase tracking-wide">Driver is on the way</p>
-              {etaData?.message && <p className="text-xs text-emerald-700/75 mt-0.5">{etaData.message}</p>}
+        <section className="mx-4 mt-4 overflow-hidden rounded-3xl border border-emerald-300/25 bg-[#062d21] text-white shadow-[0_18px_45px_rgba(1,45,31,0.22)]">
+          <div className="relative p-5">
+            <div className="relative flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-200">
+                  <Navigation className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-300" />
+                    <p className="text-[10px] font-black uppercase tracking-normal text-emerald-200">Live delivery</p>
+                  </div>
+                  <p className="mt-1 text-sm font-semibold text-white/85">{etaData.status_label || etaData.message}</p>
+                </div>
+              </div>
+              <Truck className="h-5 w-5 text-emerald-200/80" />
             </div>
-          </div>
+
+            <div className="relative mt-5">
+              <p className="text-[10px] font-bold uppercase tracking-normal text-white/50">Expected arrival</p>
+              <p className="mt-1 font-heading text-3xl font-bold leading-none tracking-normal text-white">
+                {etaData.eta_window || 'Updating now'}
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-emerald-100/70">{etaData.message}</p>
+            </div>
+
           {etaData.stops_total > 1 && (
-            <div className="mb-3">
-              <div className="flex gap-1">
+            <div className="relative mt-5">
+              <div className="flex gap-1.5">
                 {Array.from({ length: etaData.stops_total }).map((_, i) => {
                   const isDone = i < etaData.stops_delivered;
                   const isYours = i === etaData.stops_total - etaData.stops_remaining + etaData.stops_ahead;
                   return (
-                    <div key={i} className={`h-2 flex-1 rounded-full transition-all ${isDone ? 'bg-emerald-500' : isYours ? 'bg-emerald-300 animate-pulse' : 'bg-emerald-100'}`} />
+                    <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${isDone ? 'bg-emerald-300' : isYours ? 'bg-white animate-pulse' : 'bg-white/15'}`} />
                   );
                 })}
               </div>
               <div className="flex justify-between mt-1">
-                <p className="text-[10px] text-emerald-600">Start</p>
-                <p className="text-[10px] text-emerald-600">Your stop</p>
+                <p className="text-[9px] text-white/40">Route started</p>
+                <p className="text-[9px] text-emerald-200">Your stop</p>
               </div>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-white rounded-xl p-2.5 text-center">
-              <p className="text-lg font-bold font-heading text-emerald-700">{etaData.stops_ahead ?? 0}</p>
-              <p className="text-[10px] text-muted-foreground">Stops ahead</p>
+          <div className="relative mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-3">
+              <p className="font-heading text-2xl font-bold text-white">{etaData.stops_ahead ?? 0}</p>
+              <p className="text-[10px] font-medium text-white/50">Stops ahead</p>
             </div>
-            <div className="bg-white rounded-xl p-2.5 text-center">
-              <p className="text-lg font-bold font-heading text-emerald-700">{etaData.stops_delivered ?? 0}</p>
-              <p className="text-[10px] text-muted-foreground">Delivered so far</p>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-3">
+              <p className="font-heading text-2xl font-bold text-white">{etaData.stops_delivered ?? 0}</p>
+              <p className="text-[10px] font-medium text-white/50">Completed stops</p>
             </div>
           </div>
-          <p className="text-[10px] text-emerald-600/70 mt-2.5 text-center">ETA updates automatically · Driver location is private</p>
+          <div className="relative mt-4 flex items-center gap-2 border-t border-white/10 pt-3 text-[10px] text-emerald-100/55">
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-300" />
+            <span>ETA updates automatically. Precise driver location stays private.</span>
+          </div>
+          </div>
         </section>
       )}
 

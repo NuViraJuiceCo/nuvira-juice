@@ -80,6 +80,7 @@ const harnesses = [
   'scripts/migration/run-g119-pos-event-attribution-tests.mjs',
   'scripts/migration/run-g111-unified-email-communications-tests.mjs',
   'scripts/migration/run-g112-communication-completion-tests.mjs',
+  'scripts/migration/run-g125-delivery-live-activity-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

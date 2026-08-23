@@ -18,8 +18,38 @@
 		8E1A4B1D2D7C4AF49D64E501 /* AppBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E1A4B1C2D7C4AF49D64E501 /* AppBridgeViewController.swift */; };
 		8E1A4B1F2D7C4AF49D64E501 /* NativeApplePayPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E1A4B1E2D7C4AF49D64E501 /* NativeApplePayPlugin.swift */; };
 		8E1A4B222D7C4AF49D64E501 /* StripeApplePay in Frameworks */ = {isa = PBXBuildFile; productRef = 8E1A4B212D7C4AF49D64E501 /* StripeApplePay */; };
+		A10000000000000000000001 /* NativeDeliveryLiveActivityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* NativeDeliveryLiveActivityPlugin.swift */; };
+		A10000000000000000000002 /* NuViraDeliveryAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* NuViraDeliveryAttributes.swift */; };
+		A10000000000000000000003 /* NuViraDeliveryAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* NuViraDeliveryAttributes.swift */; };
+		A10000000000000000000004 /* NuViraDeliveryActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* NuViraDeliveryActivityBundle.swift */; };
+		A10000000000000000000005 /* NuViraDeliveryActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* NuViraDeliveryActivityWidget.swift */; };
+		A10000000000000000000006 /* NuViraDeliveryActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* NuViraDeliveryActivity.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		C5A8D1022DE6823400123450 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = C5A8D1012DE6823400123450 /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A60000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A50000000000000000000001;
+			remoteInfo = NuViraDeliveryActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A30000000000000000000004 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A10000000000000000000006 /* NuViraDeliveryActivity.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -34,6 +64,12 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		8E1A4B1C2D7C4AF49D64E501 /* AppBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBridgeViewController.swift; sourceTree = "<group>"; };
 		8E1A4B1E2D7C4AF49D64E501 /* NativeApplePayPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeApplePayPlugin.swift; sourceTree = "<group>"; };
+		A20000000000000000000001 /* NativeDeliveryLiveActivityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeDeliveryLiveActivityPlugin.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* NuViraDeliveryAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuViraDeliveryAttributes.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* NuViraDeliveryActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuViraDeliveryActivityBundle.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* NuViraDeliveryActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuViraDeliveryActivityWidget.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000006 /* NuViraDeliveryActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NuViraDeliveryActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		C5A8D1012DE6823400123450 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -48,6 +84,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A30000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -56,6 +99,8 @@
 			children = (
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
+				A40000000000000000000001 /* Shared */,
+				A40000000000000000000002 /* NuViraDeliveryActivity */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -64,6 +109,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				A20000000000000000000006 /* NuViraDeliveryActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -75,6 +121,7 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				8E1A4B1C2D7C4AF49D64E501 /* AppBridgeViewController.swift */,
 				8E1A4B1E2D7C4AF49D64E501 /* NativeApplePayPlugin.swift */,
+				A20000000000000000000001 /* NativeDeliveryLiveActivityPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -87,6 +134,24 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		A40000000000000000000001 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000002 /* NuViraDeliveryAttributes.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000002 /* NuViraDeliveryActivity */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000003 /* NuViraDeliveryActivityBundle.swift */,
+				A20000000000000000000004 /* NuViraDeliveryActivityWidget.swift */,
+				A20000000000000000000005 /* Info.plist */,
+			);
+			path = NuViraDeliveryActivity;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -97,10 +162,12 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				A30000000000000000000004 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A60000000000000000000002 /* PBXTargetDependency */,
 			);
 			name = App;
 			packageProductDependencies = (
@@ -110,6 +177,25 @@
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A50000000000000000000001 /* NuViraDeliveryActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70000000000000000000003 /* Build configuration list for PBXNativeTarget "NuViraDeliveryActivity" */;
+			buildPhases = (
+				A30000000000000000000001 /* Sources */,
+				A30000000000000000000002 /* Frameworks */,
+				A30000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NuViraDeliveryActivity;
+			packageProductDependencies = (
+			);
+			productName = NuViraDeliveryActivity;
+			productReference = A20000000000000000000006 /* NuViraDeliveryActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -123,6 +209,10 @@
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
+						ProvisioningStyle = Automatic;
+					};
+					A50000000000000000000001 = {
+						CreatedOnToolsVersion = 26.0;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -145,6 +235,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				A50000000000000000000001 /* NuViraDeliveryActivity */,
 			);
 		};
 /* End PBXProject section */
@@ -164,6 +255,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A30000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -174,10 +272,30 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				8E1A4B1D2D7C4AF49D64E501 /* AppBridgeViewController.swift in Sources */,
 				8E1A4B1F2D7C4AF49D64E501 /* NativeApplePayPlugin.swift in Sources */,
+				A10000000000000000000001 /* NativeDeliveryLiveActivityPlugin.swift in Sources */,
+				A10000000000000000000002 /* NuViraDeliveryAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000003 /* NuViraDeliveryAttributes.swift in Sources */,
+				A10000000000000000000004 /* NuViraDeliveryActivityBundle.swift in Sources */,
+				A10000000000000000000005 /* NuViraDeliveryActivityWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A60000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000000000000000000001 /* NuViraDeliveryActivity */;
+			targetProxy = A60000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -360,6 +478,59 @@
 			};
 			name = Release;
 		};
+		A70000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 41;
+				DEVELOPMENT_TEAM = JPFWU38MTS;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NuViraDeliveryActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.117917.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.base69d48d0c39891f7945481152.app.NuViraDeliveryActivity;
+				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A70000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 41;
+				DEVELOPMENT_TEAM = JPFWU38MTS;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NuViraDeliveryActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.117917.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.base69d48d0c39891f7945481152.app.NuViraDeliveryActivity;
+				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -377,6 +548,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A70000000000000000000003 /* Build configuration list for PBXNativeTarget "NuViraDeliveryActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A70000000000000000000001 /* Debug */,
+				A70000000000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

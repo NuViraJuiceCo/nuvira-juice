@@ -1,0 +1,113 @@
+{
+  "name": "DeliveryLiveActivity",
+  "type": "object",
+  "properties": {
+    "customer_email": {
+      "type": "string",
+      "description": "Authenticated customer that owns this native delivery activity registration"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["installation", "activity"],
+      "description": "Installation capability or an order-specific live activity"
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["ios", "android"],
+      "description": "Native platform providing the live delivery surface"
+    },
+    "installation_id": {
+      "type": "string",
+      "description": "Opaque app-install identifier generated on the customer device"
+    },
+    "order_id": {
+      "type": "string",
+      "description": "Customer-owned Order entity id for an order-specific activity"
+    },
+    "order_number": {
+      "type": "string",
+      "description": "Safe customer-visible order number"
+    },
+    "activity_id": {
+      "type": "string",
+      "description": "Native activity identifier; never accepted as authorization"
+    },
+    "push_to_start_token": {
+      "type": "string",
+      "description": "ActivityKit push-to-start token for this iOS installation"
+    },
+    "activity_push_token": {
+      "type": "string",
+      "description": "ActivityKit update token for one iOS Live Activity"
+    },
+    "apns_environment": {
+      "type": "string",
+      "enum": ["unknown", "sandbox", "production"],
+      "default": "unknown"
+    },
+    "app_bundle_id": {
+      "type": "string"
+    },
+    "app_version": {
+      "type": "string"
+    },
+    "build_number": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "enum": ["registered", "active", "ended", "revoked"],
+      "default": "registered"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "last_sequence": {
+      "type": "number"
+    },
+    "last_snapshot_hash": {
+      "type": "string",
+      "description": "Hash of the last privacy-safe snapshot sent to this activity"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "last_updated_at": {
+      "type": "string"
+    },
+    "ended_at": {
+      "type": "string"
+    },
+    "revoked_at": {
+      "type": "string"
+    }
+  },
+  "required": ["customer_email", "scope", "platform", "installation_id"],
+  "rls": {
+    "create": {
+      "$or": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "owner" } }
+      ]
+    },
+    "read": {
+      "$or": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "owner" } }
+      ]
+    },
+    "update": {
+      "$or": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "owner" } }
+      ]
+    },
+    "delete": {
+      "$or": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "owner" } }
+      ]
+    }
+  }
+}

@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g125-delivery-live-activity-20260822.
 // Bundle revision: g104-program-shot-pairing-and-sandbox-safety-20260810.
 // Bundle revision: g103-premium-program-journey-20260809 (retained regression provenance).
 // Bundle revision: g101-delivery-only-customer-order-copy-20260809 (retained regression provenance).
@@ -24,6 +25,7 @@ import handler19 from './handlers/createZone3SubscriptionReviewRequest/entry.ts'
 import handler20 from './handlers/createSubscriptionPaymentElementIntent/entry.ts';
 import handler21 from './handlers/manageProgramJourney/entry.ts';
 import handler22 from './handlers/submitCustomerInquiry/entry.ts';
+import handler23 from './handlers/manageDeliveryLiveActivity/entry.ts';
 
 const HANDLERS = {
   "addressSuggest": handler0,
@@ -48,6 +50,7 @@ const HANDLERS = {
   "createSubscriptionPaymentElementIntent": handler20,
   "manageProgramJourney": handler21,
   "submitCustomerInquiry": handler22,
+  "manageDeliveryLiveActivity": handler23,
 };
 
 const DEFAULT_ACTION = 'getCustomerAccountDashboardData';
