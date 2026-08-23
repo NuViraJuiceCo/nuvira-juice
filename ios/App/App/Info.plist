@@ -37,6 +37,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>FirebaseMessagingAutoInitEnabled</key>
 	<false/>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>NuVira Juice uses the camera so you can take a profile photo for your account.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

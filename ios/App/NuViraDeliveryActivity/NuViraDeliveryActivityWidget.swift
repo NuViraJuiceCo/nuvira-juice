@@ -1,0 +1,215 @@
+import ActivityKit
+import SwiftUI
+import WidgetKit
+
+@available(iOSApplicationExtension 16.2, *)
+struct NuViraDeliveryActivityWidget: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: NuViraDeliveryAttributes.self) { context in
+            DeliveryLockScreenView(context: context)
+                .activityBackgroundTint(Color.nuviraInk)
+                .activitySystemActionForegroundColor(.white)
+                .widgetURL(deepLinkURL(context.attributes.deepLink))
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    NuViraMark()
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    EtaCompactView(state: context.state)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    Text(context.state.statusLabel)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    VStack(spacing: 8) {
+                        ProgressView(value: progress(context.state))
+                            .tint(Color.nuviraLime)
+                        HStack {
+                            Label(stopsLabel(context.state), systemImage: "truck.box.fill")
+                            Spacer()
+                            Text("Order \(context.attributes.orderNumber)")
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.7))
+                    }
+                }
+            } compactLeading: {
+                Image(systemName: "leaf.fill")
+                    .foregroundStyle(Color.nuviraLime)
+            } compactTrailing: {
+                Text(compactStopLabel(context.state))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            } minimal: {
+                Image(systemName: context.state.status == "delivered" ? "checkmark.circle.fill" : "truck.box.fill")
+                    .foregroundStyle(Color.nuviraLime)
+            }
+            .widgetURL(deepLinkURL(context.attributes.deepLink))
+            .keylineTint(Color.nuviraLime)
+        }
+    }
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private struct DeliveryLockScreenView: View {
+    let context: ActivityViewContext<NuViraDeliveryAttributes>
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .top) {
+                NuViraMark()
+                Spacer()
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("ORDER \(context.attributes.orderNumber)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.48))
+                    Text(context.state.statusLabel)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.nuviraLime)
+                }
+            }
+
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("EXPECTED ARRIVAL")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.48))
+                    EtaWindowView(state: context.state)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("STOPS AHEAD")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.48))
+                    Text("\(context.state.stopsAhead)")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+            }
+
+            VStack(spacing: 7) {
+                ProgressView(value: progress(context.state))
+                    .tint(Color.nuviraLime)
+                HStack {
+                    Label(context.state.message, systemImage: "location.fill")
+                        .lineLimit(1)
+                    Spacer()
+                    Text("Updated \(relativeUpdate(context.state.updatedAtEpoch))")
+                }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white.opacity(0.55))
+            }
+        }
+        .padding(16)
+    }
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private struct NuViraMark: View {
+    var body: some View {
+        HStack(spacing: 7) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(Color.nuviraLime.opacity(0.16))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "leaf.fill")
+                    .foregroundStyle(Color.nuviraLime)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                Text("nuVira")
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("LIVE DELIVERY")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.48))
+            }
+        }
+    }
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private struct EtaWindowView: View {
+    let state: NuViraDeliveryAttributes.ContentState
+
+    var body: some View {
+        if state.status == "delivered" {
+            Text("Delivered")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+        } else if state.etaStartEpoch > 0 && state.etaEndEpoch > 0 {
+            Text("\(time(state.etaStartEpoch))-\(time(state.etaEndEpoch))")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+        } else {
+            Text("Updating")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+        }
+    }
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private struct EtaCompactView: View {
+    let state: NuViraDeliveryAttributes.ContentState
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(state.status == "delivered" ? "Complete" : compactStopLabel(state))
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.nuviraLime)
+            Text(state.status == "delivered" ? "Delivered" : "stops ahead")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.white.opacity(0.5))
+        }
+    }
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private func progress(_ state: NuViraDeliveryAttributes.ContentState) -> Double {
+    min(1, max(0, Double(state.progressPercent) / 100))
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private func compactStopLabel(_ state: NuViraDeliveryAttributes.ContentState) -> String {
+    state.status == "delivered" ? "Done" : "\(state.stopsAhead)"
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private func stopsLabel(_ state: NuViraDeliveryAttributes.ContentState) -> String {
+    state.status == "delivered"
+        ? "Delivery complete"
+        : state.stopsAhead == 0
+            ? "Your stop is next"
+            : "\(state.stopsAhead) stop\(state.stopsAhead == 1 ? "" : "s") ahead"
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private func time(_ epoch: Int) -> String {
+    guard epoch > 0 else { return "--" }
+    return Date(timeIntervalSince1970: TimeInterval(epoch)).formatted(date: .omitted, time: .shortened)
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private func relativeUpdate(_ epoch: Int) -> String {
+    guard epoch > 0 else { return "now" }
+    let seconds = max(0, Int(Date().timeIntervalSince1970) - epoch)
+    if seconds < 60 { return "now" }
+    return "\(seconds / 60)m ago"
+}
+
+@available(iOSApplicationExtension 16.2, *)
+private func deepLinkURL(_ path: String) -> URL? {
+    var components = URLComponents()
+    components.scheme = "nuvira"
+    components.host = "open"
+    components.queryItems = [URLQueryItem(name: "path", value: path)]
+    return components.url
+}
+
+private extension Color {
+    static let nuviraInk = Color(red: 0.02, green: 0.18, blue: 0.13)
+    static let nuviraLime = Color(red: 0.67, green: 0.91, blue: 0.34)
+}

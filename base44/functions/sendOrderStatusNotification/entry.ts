@@ -141,6 +141,32 @@ function customerPushNotificationsEnabled() {
   return envEnabled('ENABLE_CUSTOMER_PUSH_NOTIFICATIONS');
 }
 
+async function refreshDeliveryLiveActivity(base44: any, orderId: string, status: string) {
+  if (!['out_for_delivery', 'arriving_soon', 'delivered'].includes(status)) {
+    return { attempted: false, sent: false, reason: 'status_not_live_activity_eligible' };
+  }
+  try {
+    const response = await base44.asServiceRole.functions.invoke('sendCustomerPushNotification', {
+      operation: 'refresh_delivery_live_activity',
+      order_id: orderId,
+      refresh_route: status === 'delivered',
+      source: 'order_status_automation',
+    });
+    const data = response?.data || response || {};
+    return {
+      attempted: data.live_activity_attempted === true,
+      sent: data.live_activity_sent === true,
+      reason: data.reason || null,
+      sent_count: Number(data.sent_count || 0),
+      failed_count: Number(data.failed_count || 0),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || 'unknown');
+    console.warn(`[sendOrderStatusNotification] Delivery Live Activity refresh failed: ${message.slice(0, 160)}`);
+    return { attempted: true, sent: false, reason: 'live_activity_refresh_failed' };
+  }
+}
+
 function allowedDeliveryStatuses() {
   const configured = Deno.env.get('CUSTOMER_DELIVERY_STATUS_NOTIFICATION_STATUSES');
   const rawValues = configured ? configured.split(',') : ['out_for_delivery', 'delivered'];
@@ -348,6 +374,11 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, skipped: true, reason: `No notification configured for status: ${new_status}` });
     }
 
+    const dryRun = body.dry_run === true || body.mode === 'dry_run';
+    const deliveryLiveActivity = dryRun
+      ? { attempted: false, sent: false, reason: 'dry_run' }
+      : await refreshDeliveryLiveActivity(base44, order_id, new_status);
+
     if (elevatedTransactionalEnabled()) {
       const event = ELEVATED_EVENT_MAP[new_status];
       if (!event) {
@@ -367,7 +398,6 @@ Deno.serve(async (req) => {
       return elevatedResponse || Response.json({ error: 'elevated_transactional_handler_unavailable' }, { status: 500 });
     }
 
-    const dryRun = body.dry_run === true || body.mode === 'dry_run';
     const enabledForStatus = statusNotificationsEnabledFor(new_status);
 
     if (!enabledForStatus && !dryRun) {
@@ -437,6 +467,7 @@ Deno.serve(async (req) => {
           deliveredProofDetailsEmailEnabled(),
         idempotency_key: idempotencyKey,
         deep_link: deepLink,
+        delivery_live_activity: deliveryLiveActivity,
       });
     }
 
@@ -525,7 +556,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    return Response.json({ success: true, order_number: orderNum, status: new_status });
+    return Response.json({
+      success: true,
+      order_number: orderNum,
+      status: new_status,
+      delivery_live_activity: deliveryLiveActivity,
+    });
 
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error || 'unknown');

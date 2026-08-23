@@ -22,6 +22,10 @@ import {
   ensureAuthenticatedNativePushRegistration,
   installNativePushListeners,
 } from '@/lib/pushNotifications';
+import {
+  ensureDeliveryLiveActivityRegistration,
+  installDeliveryLiveActivityListeners,
+} from '@/lib/deliveryLiveActivity';
 
 const ProductDetail = React.lazy(() => import('@/pages/ProductDetail'));
 const LocalSeoLanding = React.lazy(() => import('@/pages/LocalSeoLanding'));
@@ -218,6 +222,21 @@ const AuthenticatedApp = () => {
   }, [navigate]);
 
   React.useEffect(() => {
+    let active = true;
+    let removeListeners = null;
+    installDeliveryLiveActivityListeners({ onNavigate: (route) => navigate(route) })
+      .then((remove) => {
+        if (active) removeListeners = remove;
+        else remove();
+      })
+      .catch(() => null);
+    return () => {
+      active = false;
+      removeListeners?.();
+    };
+  }, [navigate]);
+
+  React.useEffect(() => {
     if (!user?.email) return undefined;
 
     let active = true;
@@ -236,7 +255,9 @@ const AuthenticatedApp = () => {
       }
     };
 
-    reconcilePushRegistration();
+    reconcilePushRegistration().finally(() => {
+      if (active) ensureDeliveryLiveActivityRegistration().catch(() => null);
+    });
     return () => {
       active = false;
       if (retryTimer) window.clearTimeout(retryTimer);
