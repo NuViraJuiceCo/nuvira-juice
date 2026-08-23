@@ -43,6 +43,8 @@
 	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>NuVira Juice uses the camera so you can take a profile photo for your account.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>NuVira uses your location only while you are actively delivering, to calculate customer arrival estimates without sharing your precise location.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>NuVira Juice uses your photo library so you can choose a profile photo for your account.</string>
 	<key>LSRequiresIPhoneOS</key>
@@ -59,6 +61,7 @@
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>location</string>
 		<string>remote-notification</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>

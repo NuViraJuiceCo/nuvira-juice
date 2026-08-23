@@ -278,6 +278,49 @@ test('clean delivered one-time tracker receives safe delivered context', async (
   const result = await invoke({ scenario: { orders: [makeOrder({ id: 'ca_NV-MPZNKGNT', order_number: 'NV-MPZNKGNT', status: 'delivered', created_date: '2026-06-01T00:00:00Z' })], nativeOrders: [makeNativeOrder({ id: 'native_NV-MPZNKGNT', base44_order_id: 'ca_NV-MPZNKGNT', shopify_order_number: 'NV-MPZNKGNT', production_status: 'delivered', fulfillment_status: 'delivered', assigned_delivery_date: '2026-06-20', requested_delivery_date: '2026-06-20' })], tasks: [makeTask({ id: 'task_NV-MPZNKGNT', base44_order_id: 'ca_NV-MPZNKGNT', native_shopify_order_id: 'native_NV-MPZNKGNT', order_number: 'NV-MPZNKGNT', status: 'delivered', delivery_status: 'delivered', production_status: 'delivered' })] }, body: { order_number: 'NV-MPZNKGNT', source: 'order_history' } });
   assert.equal(result.json.order.production_status, 'delivered');
   assert.equal(result.json.order.delivery_status, 'delivered');
+  assert.equal(result.json.delivery_status.status, 'delivered');
+  assert.equal(result.json.is_terminal, true);
+});
+
+test('completed production cannot complete a delivery order before delivery', async () => {
+  const result = await invoke({
+    scenario: {
+      orders: [makeOrder({ status: 'delivered', production_status: 'completed', fulfillment_status: 'fulfilled' })],
+      nativeOrders: [makeNativeOrder({ production_status: 'completed', fulfillment_status: 'fulfilled' })],
+      tasks: [makeTask({ status: 'packed', delivery_status: 'pending', production_status: 'completed' })],
+    },
+  });
+  assert.equal(result.json.delivery_status.status, 'bottled_packed');
+  assert.equal(result.json.customer_visible_status, 'Bottled & Packed');
+  assert.equal(result.json.is_terminal, false);
+});
+
+test('route start becomes out for delivery and remains nonterminal', async () => {
+  const result = await invoke({
+    scenario: {
+      orders: [makeOrder({ status: 'delivered', production_status: 'completed', fulfillment_status: 'fulfilled' })],
+      nativeOrders: [makeNativeOrder({ production_status: 'completed', fulfillment_status: 'fulfilled' })],
+      tasks: [makeTask({ status: 'out_for_delivery', delivery_status: 'out_for_delivery', production_status: 'completed' })],
+    },
+  });
+  assert.equal(result.json.delivery_status.status, 'out_for_delivery');
+  assert.equal(result.json.customer_visible_status, 'Out for Delivery');
+  assert.equal(result.json.is_terminal, false);
+});
+
+test('all linked delivery tasks must be delivered before the order is terminal', async () => {
+  const result = await invoke({
+    scenario: {
+      orders: [makeOrder({ status: 'delivered', production_status: 'completed', fulfillment_status: 'fulfilled' })],
+      nativeOrders: [makeNativeOrder({ production_status: 'completed', fulfillment_status: 'fulfilled' })],
+      tasks: [
+        makeTask({ id: 'task_delivered', status: 'delivered', delivery_status: 'delivered', production_status: 'completed' }),
+        makeTask({ id: 'task_pending', status: 'packed', delivery_status: 'pending', production_status: 'completed' }),
+      ],
+    },
+  });
+  assert.equal(result.json.delivery_status.status, 'bottled_packed');
+  assert.equal(result.json.is_terminal, false);
 });
 
 test('refund remains Hub/payment source-of-truth', async () => {

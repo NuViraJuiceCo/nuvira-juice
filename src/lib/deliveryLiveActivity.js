@@ -7,6 +7,8 @@ const INSTALLATION_ID_KEY = 'nuvira_delivery_live_activity_installation_v1';
 const IOS_BUNDLE_ID = 'com.base69d48d0c39891f7945481152.app';
 const ANDROID_APP_ID = 'com.nuvirajuice.app';
 const ALLOWED_DEEP_LINK = /^\/(order-tracker\/[^/?#]+|account\/orders)(?:[/?#].*)?$/;
+const PENDING_NATIVE_ROUTE_KEY = 'nuvira_pending_native_route_v1';
+const PENDING_NATIVE_ROUTE_TTL_MS = 60 * 1000;
 const CAPABILITY_REFRESH_MS = 15 * 60 * 1000;
 let capabilityRegistrationPromise = null;
 let capabilityRegisteredAt = 0;
@@ -27,6 +29,32 @@ function safeInteger(value, fallback = 0) {
 function safeDeepLink(value) {
   const path = normalizeSingleLine(value, 400);
   return ALLOWED_DEEP_LINK.test(path) ? path : '/account/orders';
+}
+
+function preserveNativeRoute(route) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(PENDING_NATIVE_ROUTE_KEY, JSON.stringify({
+      route,
+      expires_at: Date.now() + PENDING_NATIVE_ROUTE_TTL_MS,
+    }));
+  } catch {
+    // The native pending-navigation store remains the fallback when storage is unavailable.
+  }
+}
+
+function consumePreservedNativeRoute() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_NATIVE_ROUTE_KEY);
+    window.sessionStorage.removeItem(PENDING_NATIVE_ROUTE_KEY);
+    if (!raw) return null;
+    const pending = JSON.parse(raw);
+    if (!Number.isFinite(pending?.expires_at) || pending.expires_at < Date.now()) return null;
+    return safeDeepLink(pending.route);
+  } catch {
+    return null;
+  }
 }
 
 function installationId() {
@@ -65,7 +93,7 @@ function sanitizeSnapshot(snapshot = {}) {
     orderNumber,
     deepLink: safeDeepLink(snapshot.deep_link || `/order-tracker/${encodeURIComponent(orderNumber)}`),
     status: normalizeSingleLine(snapshot.status || 'out_for_delivery', 40),
-    statusLabel: normalizeSingleLine(snapshot.status_label || 'On the way', 80),
+    statusLabel: normalizeSingleLine(snapshot.status_label || 'Out for Delivery', 80),
     etaStartEpoch: safeInteger(snapshot.eta_start_epoch),
     etaEndEpoch: safeInteger(snapshot.eta_end_epoch),
     stopsAhead: safeInteger(snapshot.stops_ahead),
@@ -202,13 +230,18 @@ export async function installDeliveryLiveActivityListeners({ onNavigate } = {}) 
   await add(DeliveryLiveActivity.addListener('deliveryLiveActivityEnded', async (event) => {
     await endServerActivity(event).catch(() => null);
   }));
-  await add(CapacitorApp.addListener('appUrlOpen', (event) => {
+  await add(CapacitorApp.addListener('appUrlOpen', async (event) => {
     const route = nativeRouteFromUrl(event?.url);
-    if (route) onNavigate?.(route);
+    if (!route) return;
+    preserveNativeRoute(route);
+    onNavigate?.(route);
+    await DeliveryLiveActivity.consumePendingNavigation().catch(() => null);
   }));
 
+  const preservedRoute = consumePreservedNativeRoute();
+  const pendingNavigation = await DeliveryLiveActivity.consumePendingNavigation().catch(() => null);
   const launchUrl = await CapacitorApp.getLaunchUrl().catch(() => null);
-  const launchRoute = nativeRouteFromUrl(launchUrl?.url);
+  const launchRoute = preservedRoute || nativeRouteFromUrl(pendingNavigation?.url) || nativeRouteFromUrl(launchUrl?.url);
   if (launchRoute) onNavigate?.(launchRoute);
 
   return () => handles.forEach((handle) => handle.remove().catch(() => {}));

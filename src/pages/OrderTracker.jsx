@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Truck, Package, Check, AlertCircle, XCircle, Clock3, ChevronDown, CircleCheckBig, Sparkles, Navigation, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Truck, Car, Package, Check, AlertCircle, XCircle, Clock3, ChevronDown, CircleCheckBig, Sparkles, Navigation, ShieldCheck } from 'lucide-react';
 import { SAFE_TOP_PADDING } from '@/components/layout/MobilePageHeader';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
@@ -58,6 +58,79 @@ function formatStatusTimestamp(value) {
   const date = parseLocalDate(value);
   if (!date || Number.isNaN(date.getTime())) return null;
   return format(date, 'MMM d · h:mm a');
+}
+
+function LiveDeliveryPanel({ etaData }) {
+  const progress = Math.max(0, Math.min(100, Number(etaData?.progress_percent ?? 8)));
+  const markerProgress = Math.max(3, Math.min(97, progress));
+  const stopsAhead = Math.max(0, Number(etaData?.stops_ahead ?? 0));
+  const statusLabel = etaData?.status_label || 'Out for delivery';
+  const message = etaData?.message || 'Your NuVira delivery is moving your way.';
+
+  return (
+    <section className="mx-auto -mt-6 w-[calc(100%-2rem)] max-w-5xl overflow-hidden rounded-2xl border border-emerald-300/25 bg-[#062d21] text-white shadow-[0_20px_50px_rgba(0,0,0,0.28)]">
+      <div className="p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-lime-300 text-[#063b2a]">
+              <Navigation className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-lime-300" />
+                <p className="text-[10px] font-black uppercase tracking-normal text-emerald-200">Live delivery</p>
+              </div>
+              <p className="mt-1 text-sm font-semibold text-white/85">{statusLabel}</p>
+            </div>
+          </div>
+          <Truck className="h-5 w-5 text-emerald-200/80" />
+        </div>
+
+        <div className="mt-6 grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-normal text-white/50">Expected arrival</p>
+            <p className="mt-1 font-heading text-3xl font-bold leading-none tracking-normal text-white sm:text-4xl">
+              {etaData?.eta_window || 'Calculating now'}
+            </p>
+          </div>
+          <div className="min-w-40 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 sm:text-right">
+            <p className="text-[9px] font-bold uppercase tracking-normal text-white/45">Route position</p>
+            <p className="mt-1 font-heading text-xl font-bold text-white">
+              {stopsAhead === 0 ? "You're next" : `${stopsAhead} stop${stopsAhead === 1 ? '' : 's'} ahead`}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 px-3">
+          <div className="relative h-2 rounded-full bg-white/10">
+            <motion.div
+              className="absolute inset-y-0 left-0 rounded-full bg-lime-300"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ duration: 0.55, ease: 'easeOut' }}
+            />
+            <motion.div
+              aria-label={`Delivery route ${Math.round(progress)} percent complete`}
+              className="absolute top-1/2 z-10 flex h-6 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-lg border-2 border-[#062d21] bg-lime-300 text-[#063b2a] shadow-[0_3px_12px_rgba(0,0,0,0.35)]"
+              initial={{ left: '3%' }}
+              animate={{ left: `${markerProgress}%` }}
+              transition={{ duration: 0.55, ease: 'easeOut' }}
+            >
+              <Car className="h-3.5 w-4" strokeWidth={2.5} />
+            </motion.div>
+          </div>
+        </div>
+        <div className="mt-3 flex items-start justify-between gap-4 text-[11px] text-emerald-50/55">
+          <p className="leading-relaxed">{message}</p>
+          <span className="shrink-0">Updated live</span>
+        </div>
+        <div className="mt-4 flex items-center gap-2 border-t border-white/10 pt-3 text-[10px] text-emerald-100/55">
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-300" />
+          <span>ETA updates automatically. Precise driver location stays private.</span>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export default function OrderTracker() {
@@ -397,10 +470,11 @@ export default function OrderTracker() {
   const hasDeliveredProgram = journey.normalizedStatus === 'delivered' && orderContainsProgram(displayOrder);
 
   return (
-    <div className="pb-10 min-h-screen bg-background">
+    <div className="min-h-screen bg-[#07130f] pb-10 text-[#f3f7f2]">
       <BrowserAppPrompt pageRoute={`/order-tracker/${displayNum || ''}`} />
-      <div className="bg-nuvira-gradient px-4 pb-10" style={{ paddingTop: SAFE_TOP_PADDING }}>
-        <div className="flex items-center justify-between mb-7 mt-3">
+      <div className="border-b border-emerald-300/10 bg-[#063b2a] px-4 pb-12" style={{ paddingTop: SAFE_TOP_PADDING }}>
+        <div className="mx-auto max-w-5xl">
+        <div className="mb-8 mt-3 flex items-center justify-between">
           <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white/15 border border-white/15 rounded-full flex items-center justify-center active:scale-95 transition-transform" aria-label="Back">
             <ArrowLeft className="w-4 h-4 text-white" />
           </button>
@@ -411,191 +485,131 @@ export default function OrderTracker() {
         </div>
 
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
-              <span className={`w-1.5 h-1.5 rounded-full ${journey.isTerminal ? 'bg-white' : 'bg-lime-300 animate-pulse'}`} />
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-lime-300/25 bg-lime-300/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-lime-200">
+              <span className={`w-1.5 h-1.5 rounded-full bg-lime-300 ${journey.isTerminal ? '' : 'animate-pulse'}`} />
               {journey.isTerminal ? 'Complete' : 'Live status'}
             </span>
             {lastUpdatedLabel && <span className="text-[10px] text-white/55">Updated {lastUpdatedLabel}</span>}
           </div>
-          <h1 className="font-heading text-[2rem] leading-tight font-bold text-white">{journey.statusLabel}</h1>
-          <p className="text-sm leading-relaxed text-white/75 mt-2 max-w-sm">{journey.statusDescription}</p>
+          <h1 className="max-w-2xl font-heading text-[2.15rem] font-bold leading-[1.05] text-white sm:text-[2.75rem]">{journey.statusLabel}</h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-emerald-50/70 sm:text-base">{journey.statusDescription}</p>
         </motion.div>
 
-        <div className="mt-6 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
-            {isDelivery ? <Truck className="w-5 h-5 text-white" /> : <Package className="w-5 h-5 text-white" />}
+        {!isOnRoute && <div className="mt-8 flex items-center gap-4 border-t border-white/10 pt-5">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-lime-300 text-[#063b2a] shadow-[0_8px_24px_rgba(163,230,53,0.16)]">
+            {isDelivery ? <Truck className="w-5 h-5" /> : <Package className="w-5 h-5" />}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-wider text-white/60">{fulfillmentMomentLabelTitle}</p>
-            <p className="font-heading text-lg font-bold text-white leading-snug">{fulfillmentMomentLabel}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-100/55">{fulfillmentMomentLabelTitle}</p>
+            <p className="font-heading text-xl font-bold leading-snug text-white sm:text-2xl">{fulfillmentMomentLabel}</p>
             {displayOrder.delivery_window_label && !isOnRoute && !journey.isTerminal && (
-              <p className="text-xs text-white/65 mt-0.5">{displayOrder.delivery_window_label}</p>
+              <p className="mt-1 text-xs text-emerald-50/60">{displayOrder.delivery_window_label}</p>
             )}
           </div>
+        </div>}
         </div>
       </div>
 
-      <section className="mx-4 -mt-5 rounded-3xl border border-border/50 bg-card p-5 shadow-[0_18px_50px_rgba(9,56,36,0.10)]">
+      {isOnRoute && <LiveDeliveryPanel etaData={etaData} />}
+
+      <section className={`mx-auto w-[calc(100%-2rem)] max-w-5xl rounded-2xl border border-[#1d4635] bg-[#0b1d16] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.24)] sm:p-6 ${isOnRoute ? 'mt-4' : '-mt-6'}`}>
         <div className="flex items-end justify-between gap-3 mb-5">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground font-bold">Freshness journey</p>
-            <p className="font-heading text-lg font-bold mt-0.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200/55">Freshness journey</p>
+            <p className="mt-0.5 font-heading text-xl font-bold text-white">
               {currentIndex >= 0 ? `Step ${currentIndex + 1} of ${stages.length}` : 'Processing your order'}
             </p>
           </div>
-          <span className="text-xs font-bold text-primary">{journey.progressPercent}%</span>
+          <span className="text-sm font-bold text-lime-300">{journey.progressPercent}%</span>
         </div>
 
-        <div className="relative px-2">
-          <div className="absolute left-5 right-5 top-3 h-1 rounded-full bg-secondary" />
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
           <motion.div
-            className="absolute left-5 top-3 h-1 rounded-full bg-nuvira-gradient"
+            className="h-full rounded-full bg-lime-300"
             initial={{ width: 0 }}
-            animate={{ width: `calc((100% - 2.5rem) * ${journey.progressPercent / 100})` }}
+            animate={{ width: `${journey.progressPercent}%` }}
             transition={{ duration: 0.55, ease: 'easeOut' }}
           />
-          <div className="relative grid gap-1" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
+        </div>
+        <div className="mt-4 grid gap-1" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
             {stages.map(stage => {
               const isCurrent = stage.state === 'current';
               const isComplete = stage.state === 'complete';
               return (
                 <div key={stage.key} className="flex min-w-0 flex-col items-center text-center">
-                  <div className={`z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all ${
-                    isCurrent ? 'border-primary bg-primary text-primary-foreground ring-4 ring-primary/15'
-                      : isComplete ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-card text-muted-foreground'
+                  <div className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all ${
+                    isCurrent ? 'border-lime-300 bg-lime-300 text-[#063b2a] ring-4 ring-lime-300/10'
+                      : isComplete ? 'border-emerald-300/70 bg-emerald-300/15 text-emerald-200'
+                      : 'border-white/10 bg-white/[0.04] text-white/30'
                   }`}>
                     {isComplete || (isCurrent && journey.isTerminal)
                       ? <Check className="h-3.5 w-3.5" />
-                      : <span className={`h-1.5 w-1.5 rounded-full ${isCurrent ? 'bg-primary-foreground' : 'bg-muted-foreground/35'}`} />}
+                      : <span className={`h-1.5 w-1.5 rounded-full ${isCurrent ? 'bg-[#063b2a]' : 'bg-white/25'}`} />}
                   </div>
-                  <p className={`mt-2 text-[9px] leading-tight font-semibold ${isCurrent ? 'text-primary' : isComplete ? 'text-foreground/75' : 'text-muted-foreground/65'}`}>{stage.label}</p>
+                  <p className={`mt-2 text-[9px] font-semibold leading-tight ${isCurrent ? 'text-lime-200' : isComplete ? 'text-emerald-50/70' : 'text-white/35'}`}>{stage.label}</p>
                 </div>
               );
             })}
-          </div>
         </div>
 
-        <div className="mt-5 rounded-2xl bg-primary/[0.07] p-4 flex gap-3">
-          <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            {journey.isTerminal ? <CircleCheckBig className="w-4 h-4 text-primary" /> : <Sparkles className="w-4 h-4 text-primary" />}
+        <div className="mt-5 flex gap-3 border-t border-white/10 pt-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-300/10">
+            {journey.isTerminal ? <CircleCheckBig className="w-4 h-4 text-emerald-200" /> : <Sparkles className="w-4 h-4 text-emerald-200" />}
           </div>
           <div>
-            <p className="text-xs font-bold text-primary uppercase tracking-wide">{journey.isTerminal ? 'Journey complete' : "What's happening now"}</p>
-            <p className="text-sm text-foreground/75 mt-1 leading-relaxed">{journey.statusDescription}</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-emerald-200">{journey.isTerminal ? 'Journey complete' : "What's happening now"}</p>
+            <p className="mt-1 text-sm leading-relaxed text-emerald-50/65">{journey.statusDescription}</p>
           </div>
         </div>
       </section>
 
-      {isOnRoute && etaData?.on_route && (
-        <section className="mx-4 mt-4 overflow-hidden rounded-3xl border border-emerald-300/25 bg-[#062d21] text-white shadow-[0_18px_45px_rgba(1,45,31,0.22)]">
-          <div className="relative p-5">
-            <div className="relative flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-200">
-                  <Navigation className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-300" />
-                    <p className="text-[10px] font-black uppercase tracking-normal text-emerald-200">Live delivery</p>
-                  </div>
-                  <p className="mt-1 text-sm font-semibold text-white/85">{etaData.status_label || etaData.message}</p>
-                </div>
-              </div>
-              <Truck className="h-5 w-5 text-emerald-200/80" />
-            </div>
-
-            <div className="relative mt-5">
-              <p className="text-[10px] font-bold uppercase tracking-normal text-white/50">Expected arrival</p>
-              <p className="mt-1 font-heading text-3xl font-bold leading-none tracking-normal text-white">
-                {etaData.eta_window || 'Updating now'}
-              </p>
-              <p className="mt-2 text-xs leading-relaxed text-emerald-100/70">{etaData.message}</p>
-            </div>
-
-          {etaData.stops_total > 1 && (
-            <div className="relative mt-5">
-              <div className="flex gap-1.5">
-                {Array.from({ length: etaData.stops_total }).map((_, i) => {
-                  const isDone = i < etaData.stops_delivered;
-                  const isYours = i === etaData.stops_total - etaData.stops_remaining + etaData.stops_ahead;
-                  return (
-                    <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${isDone ? 'bg-emerald-300' : isYours ? 'bg-white animate-pulse' : 'bg-white/15'}`} />
-                  );
-                })}
-              </div>
-              <div className="flex justify-between mt-1">
-                <p className="text-[9px] text-white/40">Route started</p>
-                <p className="text-[9px] text-emerald-200">Your stop</p>
-              </div>
-            </div>
-          )}
-          <div className="relative mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-3">
-              <p className="font-heading text-2xl font-bold text-white">{etaData.stops_ahead ?? 0}</p>
-              <p className="text-[10px] font-medium text-white/50">Stops ahead</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-3">
-              <p className="font-heading text-2xl font-bold text-white">{etaData.stops_delivered ?? 0}</p>
-              <p className="text-[10px] font-medium text-white/50">Completed stops</p>
-            </div>
-          </div>
-          <div className="relative mt-4 flex items-center gap-2 border-t border-white/10 pt-3 text-[10px] text-emerald-100/55">
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-300" />
-            <span>ETA updates automatically. Precise driver location stays private.</span>
-          </div>
-          </div>
-        </section>
-      )}
-
       {journey.normalizedStatus === 'delivered' && (deliveryStatus?.delivery_photo_url || deliveryStatus?.delivery_drop_location) && (
-        <section className="mx-4 mt-4 rounded-3xl border border-border/50 bg-card p-4">
+        <section className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-5xl rounded-2xl border border-[#1d4635] bg-[#0b1d16] p-4 sm:p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-foreground/55">Delivery confirmation</h2>
-            <Check className="w-4 h-4 text-primary" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-200/60">Delivery confirmation</h2>
+            <Check className="w-4 h-4 text-lime-300" />
           </div>
           {deliveryStatus?.delivery_photo_url && <div className="rounded-2xl overflow-hidden border border-border/40">
-            <img src={deliveryStatus.delivery_photo_url} alt="Delivery proof" className="w-full object-cover max-h-56" />
+            <img src={deliveryStatus.delivery_photo_url} alt="Delivery proof" className="max-h-[28rem] w-full object-cover" />
           </div>}
           {deliveryStatus?.delivery_drop_location && (
-            <p className="mt-3 text-sm text-muted-foreground">Left at <span className="font-semibold text-foreground">{deliveryStatus.delivery_drop_location}</span></p>
+            <p className="mt-3 text-sm text-emerald-50/60">Left at <span className="font-semibold text-white">{deliveryStatus.delivery_drop_location}</span></p>
           )}
         </section>
       )}
 
-      <div className="mx-4 mt-4 space-y-3">
-        <details className="group rounded-2xl border border-border/50 bg-card overflow-hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between p-4 active:bg-secondary/40">
+      <div className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-5xl space-y-3 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0">
+        <details className="group overflow-hidden rounded-2xl border border-[#1d4635] bg-[#0b1d16]">
+          <summary className="flex cursor-pointer list-none items-center justify-between p-4 active:bg-white/[0.04]">
             <div className="flex items-center gap-3">
-              <Clock3 className="w-4 h-4 text-primary" />
+              <Clock3 className="w-4 h-4 text-emerald-200" />
               <div>
                 <p className="text-sm font-semibold">Status history</p>
-                <p className="text-[11px] text-muted-foreground">See when each milestone was reached</p>
+                <p className="text-[11px] text-emerald-50/45">See when each milestone was reached</p>
               </div>
             </div>
-            <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform group-open:rotate-180" />
+            <ChevronDown className="w-4 h-4 text-emerald-50/45 transition-transform group-open:rotate-180" />
           </summary>
-          <div className="border-t border-border/40 px-4 py-2">
+          <div className="border-t border-white/10 px-4 py-2">
             {stages.filter(stage => stage.state !== 'upcoming').map((stage, index, visibleStages) => {
               const event = timelineByStage[stage.key];
               const timestamp = formatStatusTimestamp(event?.timestamp);
               return (
                 <div key={stage.key} className="flex gap-3">
                   <div className="flex flex-col items-center">
-                    <div className={`mt-3 w-6 h-6 rounded-full flex items-center justify-center ${stage.state === 'current' ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
+                    <div className={`mt-3 w-6 h-6 rounded-full flex items-center justify-center ${stage.state === 'current' ? 'bg-lime-300 text-[#063b2a]' : 'bg-emerald-300/10 text-emerald-200'}`}>
                       {stage.state === 'complete' ? <Check className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-current" />}
                     </div>
-                    {index < visibleStages.length - 1 && <div className="w-px flex-1 bg-border min-h-6" />}
+                    {index < visibleStages.length - 1 && <div className="min-h-6 w-px flex-1 bg-white/10" />}
                   </div>
                   <div className="py-3 flex-1 min-w-0">
                     <div className="flex items-baseline justify-between gap-3">
                       <p className="text-sm font-semibold">{stage.label}</p>
-                      <p className="text-[10px] text-muted-foreground shrink-0">{timestamp || (stage.state === 'current' ? 'Current' : 'Completed')}</p>
+                      <p className="shrink-0 text-[10px] text-emerald-50/40">{timestamp || (stage.state === 'current' ? 'Current' : 'Completed')}</p>
                     </div>
                     {(event?.message || stage.state === 'current') && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{event?.message || journey.statusDescription}</p>
+                      <p className="mt-0.5 text-xs text-emerald-50/50">{event?.message || journey.statusDescription}</p>
                     )}
                   </div>
                 </div>
@@ -604,29 +618,29 @@ export default function OrderTracker() {
           </div>
         </details>
 
-        <details className="group rounded-2xl border border-border/50 bg-card overflow-hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between p-4 active:bg-secondary/40">
+        <details className="group overflow-hidden rounded-2xl border border-[#1d4635] bg-[#0b1d16]">
+          <summary className="flex cursor-pointer list-none items-center justify-between p-4 active:bg-white/[0.04]">
             <div className="flex items-center gap-3">
-              <Package className="w-4 h-4 text-primary" />
+              <Package className="w-4 h-4 text-emerald-200" />
               <div>
                 <p className="text-sm font-semibold">Order details</p>
-                <p className="text-[11px] text-muted-foreground">{displayOrder.items?.length || 0} items · ${(displayOrder.total || 0).toFixed(2)}</p>
+                <p className="text-[11px] text-emerald-50/45">{displayOrder.items?.length || 0} items · ${(displayOrder.total || 0).toFixed(2)}</p>
               </div>
             </div>
-            <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform group-open:rotate-180" />
+            <ChevronDown className="w-4 h-4 text-emerald-50/45 transition-transform group-open:rotate-180" />
           </summary>
-          <div className="border-t border-border/40 divide-y divide-border/40">
+          <div className="divide-y divide-white/10 border-t border-white/10">
             {displayOrder.items?.map((item, i) => (
               <div key={i} className="flex items-center gap-3 p-4">
                 <OrderItemThumbnail item={item} />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold truncate">{item.title}</p>
-                  <p className="text-xs text-foreground/55">Qty: {item.quantity}</p>
+                  <p className="text-xs text-emerald-50/45">Qty: {item.quantity}</p>
                 </div>
                 <p className="text-sm font-bold">${((item.price || 0) * (item.quantity || 1)).toFixed(2)}</p>
               </div>
             ))}
-            <div className="px-4 py-3 flex justify-between bg-secondary/25">
+            <div className="flex justify-between bg-white/[0.035] px-4 py-3">
               <p className="text-sm font-bold">Total</p>
               <p className="text-sm font-bold">${(displayOrder.total || 0).toFixed(2)}</p>
             </div>
@@ -635,13 +649,13 @@ export default function OrderTracker() {
       </div>
 
       {hasDeliveredProgram && (
-        <section className="mx-4 mt-4 overflow-hidden rounded-3xl border border-primary/25 bg-gradient-to-br from-primary/12 via-card to-accent/10 p-5">
+        <section className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-5xl overflow-hidden rounded-2xl border border-lime-300/20 bg-[#0b1d16] p-5">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Sparkles className="h-4 w-4" /></div>
             <div className="flex-1">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-primary">Your next chapter</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-lime-300">Your next chapter</p>
               <h2 className="mt-1 font-heading text-xl font-bold">Your program journey is ready</h2>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Choose a start date that fits the refrigerated freshness window, then follow your private program guide.</p>
+              <p className="mt-1 text-xs leading-relaxed text-emerald-50/50">Choose a start date that fits the refrigerated freshness window, then follow your private program guide.</p>
             </div>
           </div>
           <button type="button" onClick={() => navigate('/account/programs')} className="nuvira-gradient-button mt-4 h-11 w-full rounded-xl text-xs font-black">Open My Program Journey</button>
@@ -649,19 +663,19 @@ export default function OrderTracker() {
       )}
 
       {journey.isTerminal && !['cancelled', 'refunded', 'failed'].includes(journey.normalizedStatus) && (
-        <section className="mx-4 mt-4 rounded-3xl bg-primary/[0.07] p-5 text-center">
-          <CircleCheckBig className="w-8 h-8 text-primary mx-auto" />
+        <section className="mx-auto mt-4 w-[calc(100%-2rem)] max-w-5xl rounded-2xl border border-[#1d4635] bg-[#0b1d16] p-5 text-center">
+          <CircleCheckBig className="mx-auto w-8 h-8 text-lime-300" />
           <h2 className="font-heading text-lg font-bold mt-2">Thank you for choosing NuVira</h2>
-          <p className="text-xs text-muted-foreground mt-1">Return your NuVira bags and earn rewards toward a future order.</p>
+          <p className="mt-1 text-xs text-emerald-50/50">Return your NuVira bags and earn rewards toward a future order.</p>
           <div className="grid grid-cols-2 gap-2 mt-4">
             <button onClick={() => navigate('/return-reward')} className="rounded-xl bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground active:scale-95 transition-transform">Return + Reward</button>
-            <button onClick={() => navigate('/account/orders')} className="rounded-xl bg-card border border-border px-3 py-2.5 text-xs font-bold active:scale-95 transition-transform">View Orders</button>
+            <button onClick={() => navigate('/account/orders')} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-xs font-bold active:scale-95 transition-transform">View Orders</button>
           </div>
         </section>
       )}
 
-      <p className="mx-4 mt-6 text-center text-[11px] text-muted-foreground">
-        Need help? <a href="mailto:support@nuvirajuice.com" className="font-semibold text-primary">Contact NuVira Support</a>
+      <p className="mx-4 mt-6 text-center text-[11px] text-emerald-50/40">
+        Need help? <a href="mailto:support@nuvirajuice.com" className="font-semibold text-emerald-200">Contact NuVira Support</a>
       </p>
     </div>
   );

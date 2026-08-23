@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g126-distance-aware-driver-route-telemetry-20260823.
 // Bundle revision: g124-event-welcome-timing-and-admin-new-member-push-20260822.
 // Bundle revision: g116b-preisolated-event-location-scope-20260820.
 // Bundle revision: g116-verified-event-production-shopify-pos-inventory-20260820.
@@ -80,6 +81,7 @@ import handler62 from './handlers/executeNativeSafeSyncOrderUpdate/entry.ts';
 import handler63 from './handlers/notifyOrderProcessed/entry.ts';
 import handler64 from './handlers/manageEventPosInventory/entry.ts';
 import handler65 from './handlers/notifyAdminNewMember/entry.ts';
+import handler66 from './handlers/manageDriverRouteTelemetry/entry.ts';
 
 const HANDLERS = {
   "appendAdminHubOrderNote": handler0,
@@ -150,6 +152,7 @@ const HANDLERS = {
   "notifyOrderProcessed": handler63,
   "manageEventPosInventory": handler64,
   "notifyAdminNewMember": handler65,
+  "manageDriverRouteTelemetry": handler66,
   "monitorComplianceExpiry": handler61,
 };
 

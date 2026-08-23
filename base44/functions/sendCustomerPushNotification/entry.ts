@@ -754,7 +754,7 @@ function normalizeHexToken(value: unknown): string {
 function liveActivityContentState(snapshot: Record<string, any>) {
   return {
     status: normalizeSingleLine(snapshot.status || 'out_for_delivery'),
-    statusLabel: normalizeSingleLine(snapshot.status_label || 'On the way'),
+    statusLabel: normalizeSingleLine(snapshot.status_label || 'Out for Delivery'),
     etaStartEpoch: Number(snapshot.eta_start_epoch || 0),
     etaEndEpoch: Number(snapshot.eta_end_epoch || 0),
     stopsAhead: Number(snapshot.stops_ahead || 0),

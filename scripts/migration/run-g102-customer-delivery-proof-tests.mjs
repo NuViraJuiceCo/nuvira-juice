@@ -48,7 +48,8 @@ const tests = [
     for (const marker of [
       'applyOwnedDeliveryProofToOrderHistory',
       "{ customer_email: customerEmail }",
-      "normalizeLower(order?.status) !== 'delivered'",
+      "const status = customerHistoryLifecycleStatus(order, linkedTasks)",
+      "status === 'delivered'",
       'task?.base44_order_id',
       'task?.order_id',
       'task?.shopify_order_number',

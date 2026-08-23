@@ -39,6 +39,7 @@ const ADMIN_GATEWAY_ACTIONS = new Set([
   'getAdminSyncHealthSummary',
   'manageAdminDiscountCode',
   'manageEventPosInventory',
+  'manageDriverRouteTelemetry',
   'maintainAdminOperationalNotices',
   'monitorLiveCheckoutTest',
   'monitorPostPaymentChain',

@@ -1,0 +1,168 @@
+{
+  "name": "DeliveryRouteTelemetry",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Opaque, short-lived active-route session identifier"
+    },
+    "token_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of the route-scoped ingest token; the raw token is never persisted"
+    },
+    "state": {
+      "type": "string",
+      "enum": ["active", "stopped", "expired"],
+      "default": "active"
+    },
+    "actor_email": {
+      "type": "string",
+      "description": "Authenticated operator that started the route"
+    },
+    "actor_role": {
+      "type": "string",
+      "description": "Authenticated operator role at route start"
+    },
+    "assigned_driver": {
+      "type": "string",
+      "description": "Safe internal driver label used to scope the route"
+    },
+    "anchor_fulfillment_task_id": {
+      "type": "string"
+    },
+    "route_id": {
+      "type": "string"
+    },
+    "delivery_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "task_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "order_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "baseline_distances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "order_id": { "type": "string" },
+          "distance_meters": { "type": "number" }
+        }
+      },
+      "default": [],
+      "description": "Distance remaining at the first accepted sample for each stop"
+    },
+    "snapshots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "schema_version": { "type": "number" },
+          "order_id": { "type": "string" },
+          "order_number": { "type": "string" },
+          "deep_link": { "type": "string" },
+          "status": { "type": "string" },
+          "activity_state": { "type": "string" },
+          "activity_eligible": { "type": "boolean" },
+          "on_route": { "type": "boolean" },
+          "status_label": { "type": "string" },
+          "message": { "type": "string" },
+          "eta_window": { "type": "string" },
+          "eta_start": { "type": "string" },
+          "eta_end": { "type": "string" },
+          "eta_start_epoch": { "type": "number" },
+          "eta_end_epoch": { "type": "number" },
+          "stops_ahead": { "type": "number" },
+          "stops_remaining": { "type": "number" },
+          "stops_total": { "type": "number" },
+          "stops_delivered": { "type": "number" },
+          "progress_percent": { "type": "number" },
+          "progress_source": { "type": "string" },
+          "updated_at": { "type": "string" },
+          "sequence": { "type": "number" },
+          "stale_at": { "type": "string" },
+          "stale_at_epoch": { "type": "number" },
+          "privacy_label": { "type": "string" }
+        }
+      },
+      "default": [],
+      "description": "Privacy-safe customer snapshots only; coordinates and addresses are prohibited"
+    },
+    "last_sequence": {
+      "type": "number",
+      "default": 0
+    },
+    "last_sample_at": {
+      "type": "string"
+    },
+    "last_accuracy_meters": {
+      "type": "number",
+      "description": "Location quality metadata only; no coordinates are stored"
+    },
+    "last_provider_status": {
+      "type": "string",
+      "enum": ["pending", "ok", "unavailable", "invalid_sample"],
+      "default": "pending"
+    },
+    "last_activity_refresh_at": {
+      "type": "string"
+    },
+    "last_snapshot_hash": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": "string"
+    },
+    "stopped_at": {
+      "type": "string"
+    },
+    "stop_reason": {
+      "type": "string"
+    },
+    "audit_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event": { "type": "string" },
+          "timestamp": { "type": "string" },
+          "actor_role": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      },
+      "default": []
+    }
+  },
+  "required": ["session_id", "token_hash", "state", "anchor_fulfillment_task_id", "started_at", "expires_at"],
+  "rls": {
+    "create": {
+      "$or": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "owner" } }
+      ]
+    },
+    "read": {
+      "$or": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "owner" } }
+      ]
+    },
+    "update": {
+      "$or": [
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "owner" } }
+      ]
+    },
+    "delete": false
+  }
+}

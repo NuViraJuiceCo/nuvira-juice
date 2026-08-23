@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
 const functionPath = path.join(repoRoot, 'base44/functions/getCustomerAccountDashboardData/handlers/getCustomerAccountDashboardData/entry.ts');
+const orderHistoryPagePath = path.join(repoRoot, 'src/pages/OrderHistory.jsx');
 
 const ENABLE_ENV = {
   ENABLE_CUSTOMER_ORDER_HISTORY_LIMITED_NATIVE_FIRST: 'true',
@@ -456,6 +457,53 @@ test('missing Hub fulfillment metadata defaults to delivery instead of inventing
   assert.equal(json.all_orders_raw[0].status, 'delivered');
 });
 
+test('order history keeps completed production active until its delivery task is delivered', async () => {
+  const order = makeOrder({ status: 'delivered', production_status: 'completed', fulfillment_status: 'fulfilled' });
+  const { json } = await invoke({
+    storeArgs: {
+      orders: [order],
+      tasks: [makeTask({ customer_email: 'customer', status: 'packed', delivery_status: 'pending', production_status: 'completed' })],
+    },
+  });
+  assert.equal(json.all_orders_raw[0].status, 'bottled_packed');
+});
+
+test('order history exposes route start as out for delivery', async () => {
+  const order = makeOrder({ status: 'delivered', production_status: 'completed', fulfillment_status: 'fulfilled' });
+  const { json } = await invoke({
+    storeArgs: {
+      orders: [order],
+      tasks: [makeTask({ customer_email: 'customer', status: 'out_for_delivery', delivery_status: 'out_for_delivery', production_status: 'completed' })],
+    },
+  });
+  assert.equal(json.all_orders_raw[0].status, 'out_for_delivery');
+});
+
+test('order history completes only after every linked delivery task is delivered', async () => {
+  const order = makeOrder({ status: 'delivered', production_status: 'completed', fulfillment_status: 'fulfilled' });
+  const partial = await invoke({
+    storeArgs: {
+      orders: [order],
+      tasks: [
+        makeTask({ id: 'task_delivered', customer_email: 'customer', status: 'delivered', delivery_status: 'delivered', delivered_at: '2026-06-20T18:00:00Z' }),
+        makeTask({ id: 'task_packed', customer_email: 'customer', status: 'packed', delivery_status: 'pending', production_status: 'completed' }),
+      ],
+    },
+  });
+  assert.equal(partial.json.all_orders_raw[0].status, 'bottled_packed');
+
+  const complete = await invoke({
+    storeArgs: {
+      orders: [order],
+      tasks: [
+        makeTask({ id: 'task_delivered_1', customer_email: 'customer', status: 'delivered', delivery_status: 'delivered', delivered_at: '2026-06-20T18:00:00Z' }),
+        makeTask({ id: 'task_delivered_2', customer_email: 'customer', status: 'delivered', delivery_status: 'delivered', delivered_at: '2026-06-20T18:05:00Z' }),
+      ],
+    },
+  });
+  assert.equal(complete.json.all_orders_raw[0].status, 'delivered');
+});
+
 test('authoritative source merge deduplicates an owned Shopify or POS mirror by order number', async () => {
   const current = makeOrder({ order_number: '1058' });
   const { json } = await invoke({
@@ -532,6 +580,11 @@ test('existing links/routes remain compatible', async () => {
   const row = json.all_orders_raw[0];
   assert.equal(row.order_number, 'NV-MQHJR3V2');
   assert.ok(`/order-tracker/${row.order_number}?source=order_history`.includes('NV-MQHJR3V2'));
+});
+
+test('order history uses the canonical Out for Delivery customer label', () => {
+  const pageSource = fs.readFileSync(orderHistoryPagePath, 'utf8');
+  assert.ok(pageSource.includes("out_for_delivery: 'Out for Delivery'"));
 });
 
 test('no customer-visible diagnostic metadata', async () => {
