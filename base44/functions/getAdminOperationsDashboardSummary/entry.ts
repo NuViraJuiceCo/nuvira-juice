@@ -1,5 +1,6 @@
 // @ts-nocheck
 // Bundle revision: g127-product-date-batching-multi-event-pos-allocation-20260824.
+// Bundle revision: g127b-hide-superseded-product-batches-20260824.
 // Bundle revision: g126-distance-aware-driver-route-telemetry-20260823.
 // Bundle revision: g124-event-welcome-timing-and-admin-new-member-push-20260822.
 // Bundle revision: g116b-preisolated-event-location-scope-20260820.
