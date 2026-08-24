@@ -76,6 +76,10 @@ assert.match(localSeo, /8- or 12-bottle structure/);
 assert.doesNotMatch(sitemap, /['"]\/subscribe['"]/);
 assert.match(about, /Subscriptions will be introduced only when the recurring fulfillment experience is ready/);
 assert.doesNotMatch(whyNuvira, /subscription deliveries arrive|active subscription/i);
+for (const publicStoryPage of [about, whyNuvira]) {
+  assert.match(publicStoryPage, /min-w-0 max-w-[45]xl break-words font-heading text-\[2rem\]/);
+  assert.match(publicStoryPage, /min-w-0 max-w-2xl break-words text-base/);
+}
 
 const partner = read('src/pages/Partner.jsx');
 assert.doesNotMatch(partner, /age_confirmation|placeholder="Age"|form\.age/);
