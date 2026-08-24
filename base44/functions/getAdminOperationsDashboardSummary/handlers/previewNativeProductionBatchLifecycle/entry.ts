@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { eventPosInventoryEligibility } from '../executeNativeProductionBatchLifecycle/eventPosInventory.ts';
+import { eventPosInventoryEligibility } from './eventPosInventoryEligibility.ts';
 
 const ENABLE_TEST_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_TEST_LIFECYCLE_WRITES';
 const TEST_ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_ALLOWED_EMAILS';
