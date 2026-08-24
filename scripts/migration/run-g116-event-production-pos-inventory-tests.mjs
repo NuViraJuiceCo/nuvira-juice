@@ -41,6 +41,7 @@ for (const field of ['shopify_pos_product_id', 'shopify_pos_variant_id']) {
 for (const field of [
   'shopify_pos_inventory_sync_status',
   'shopify_pos_inventory_sync_quantity',
+  'shopify_pos_inventory_allocations',
   'shopify_pos_inventory_synced_at',
   'shopify_pos_inventory_command_id',
   'shopify_pos_location_id',
@@ -49,7 +50,8 @@ for (const field of [
 
 assert.match(helperSource, /mixed_event_and_customer_demand_requires_allocation/);
 assert.match(helperSource, /event_pos_inventory_requires_future_event_date/);
-assert.match(helperSource, /single_event_product_batch_required/);
+assert.match(helperSource, /single_product_date_batch_required/);
+assert.match(helperSource, /verified_output_must_equal_event_allocation_total/);
 assert.match(helperSource, /fulfillsOnlineOrders: false/);
 assert.match(helperSource, /inventoryPolicy: 'CONTINUE'/);
 assert.match(helperSource, /@idempotent\(key: \$idempotencyKey\)/);
@@ -59,10 +61,13 @@ assert.match(helperSource, /compareQuantity: 0/);
 assert.match(helperSource, /customer_notifications_sent: false/);
 assert.doesNotMatch(helperSource, /entities\.InventoryItem\.(create|update)/);
 assert.match(lifecycleSource, /syncVerifiedEventBatchToShopifyPos/);
-assert.match(lifecycleSource, /event_final_usable_quantity_required_for_pos/);
+assert.match(previewSource, /eventPosInventoryEligibility/);
+assert.match(previewSource, /event_pos_inventory_allocation_not_ready/);
 assert.match(previewSource, /Shopify\.POS\.available_quantity/);
 assert.match(queueSource, /shopify_pos_inventory_sync_quantity/);
+assert.match(queueSource, /event_allocation_count/);
 assert.match(uiSource, /Shopify POS opening stock/);
+assert.match(uiSource, /One physical batch/);
 assert.match(uiSource, /Retry POS Stock Sync/);
 assert.match(manageSource, /previewEventPosInventoryReadiness/);
 assert.match(manageSource, /retry_verified_event_pos_inventory/);
@@ -70,6 +75,7 @@ assert.match(clientSource, /'manageEventPosInventory'/);
 assert.match(gatewaySource, /"manageEventPosInventory"/);
 assert.match(gatewaySource, /g116b-preisolated-event-location-scope/);
 assert.match(gatewaySource, /g116-verified-event-production-shopify-pos-inventory-20260820/);
+assert.match(gatewaySource, /g127-product-date-batching-multi-event-pos-allocation-20260824/);
 assert.match(criticalSource, /run-g116-event-production-pos-inventory-tests\.mjs/);
 
 let moduleSource = helperSource
@@ -124,6 +130,15 @@ const event = {
   shopify_pos_location_name: 'S2 Customer Appreciation BBQ - Aug 22',
   shopify_pos_inventory_mode: 'verified_event_production',
 };
+const secondEvent = {
+  id: 'event_freedom',
+  title: 'Freedom Fitness Event',
+  date: '2099-08-23',
+  shopify_pos_inventory_sync_enabled: true,
+  shopify_pos_location_id: 'gid://shopify/Location/86197370971',
+  shopify_pos_location_name: 'Freedom Fitness Event - Aug 23',
+  shopify_pos_inventory_mode: 'verified_event_production',
+};
 const batch = {
   id: 'batch_oasis',
   batch_id: 'EVENT-20990821-S2-OASIS',
@@ -151,6 +166,8 @@ assert.equal(eventPosInventoryEligibility({
   order_sources: [...batch.order_sources, { order_id: 'customer_order', source_type: 'direct', quantity: 1 }],
 }).blocker, 'mixed_event_and_customer_demand_requires_allocation');
 assert.equal(eventPosInventoryEligibility(batch).quantity, 40);
+assert.deepEqual(eventPosInventoryEligibility(batch).allocations, [{ event_id: event.id, quantity: 40 }]);
+assert.equal(eventPosInventoryEligibility({ ...batch, final_usable_quantity: 39 }).blocker, 'verified_output_must_equal_event_allocation_total');
 
 const originalFetch = globalThis.fetch;
 const originalDeno = globalThis.Deno;
@@ -184,6 +201,7 @@ globalThis.fetch = async (url, options) => {
     } } }), { status: 200 });
   }
   if (/EventPosInventoryTarget/.test(request.query)) {
+    const requestedEvent = request.variables.locationId === secondEvent.shopify_pos_location_id ? secondEvent : event;
     return new Response(JSON.stringify({ data: {
       product: { id: 'gid://shopify/Product/7868010987610', title: 'OASIS', handle: 'oasis', status: 'ACTIVE' },
       productVariant: {
@@ -192,15 +210,16 @@ globalThis.fetch = async (url, options) => {
         inventoryItem: { id: 'gid://shopify/InventoryItem/oasis', tracked: false, inventoryLevels: { nodes: [] } },
       },
       location: {
-        id: event.shopify_pos_location_id, name: event.shopify_pos_location_name,
+        id: requestedEvent.shopify_pos_location_id, name: requestedEvent.shopify_pos_location_name,
         isActive: true, fulfillsOnlineOrders: locationFulfillsOnlineOrders, fulfillmentService: null,
       },
     } }), { status: 200 });
   }
   if (/IsolateEventPosLocation/.test(request.query)) {
     assert.equal(request.variables.input.fulfillsOnlineOrders, false);
+    const requestedEvent = request.variables.id === secondEvent.shopify_pos_location_id ? secondEvent : event;
     return new Response(JSON.stringify({ data: { locationEdit: {
-      location: { id: event.shopify_pos_location_id, name: event.shopify_pos_location_name, isActive: true, fulfillsOnlineOrders: false, fulfillmentService: null },
+      location: { id: requestedEvent.shopify_pos_location_id, name: requestedEvent.shopify_pos_location_name, isActive: true, fulfillsOnlineOrders: false, fulfillmentService: null },
       userErrors: [],
     } } }), { status: 200 });
   }
@@ -224,10 +243,10 @@ globalThis.fetch = async (url, options) => {
   }
   assert.match(request.query, /ActivateVerifiedEventInventory/);
   assert.match(request.query, /inventoryActivate[\s\S]*@idempotent\(key: \$idempotencyKey\)/);
-  assert.equal(request.variables.available, 40);
-  assert.equal(request.variables.idempotencyKey, 'event-pos:event_s2:batch_oasis:available-v1');
+  assert.ok(request.variables.available > 0);
+  assert.match(request.variables.idempotencyKey, /^event-pos:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:available-v1$/);
   return new Response(JSON.stringify({ data: { inventoryActivate: {
-    inventoryLevel: { id: 'level_oasis', quantities: [{ name: 'available', quantity: 40 }] },
+    inventoryLevel: { id: 'level_oasis', quantities: [{ name: 'available', quantity: request.variables.available }] },
     userErrors: [],
   } } }), { status: 200 });
 };
@@ -283,11 +302,80 @@ assert.equal(result.status, 'in_sync');
 assert.equal(result.quantity, 40);
 assert.equal(result.customer_notifications_sent, false);
 assert.equal(providerCalls.length, 6);
+assert.equal(providerCalls.at(-1).variables.available, 40);
+assert.equal(providerCalls.at(-1).variables.idempotencyKey, 'event-pos:event_s2:batch_oasis:available-v1');
 assert.equal(state.rows.get('ProductionBatch')[0].shopify_pos_inventory_sync_status, 'in_sync');
 assert.equal(state.rows.get('ProductionBatch')[0].shopify_pos_inventory_sync_quantity, 40);
+assert.equal(state.rows.get('ProductionBatch')[0].shopify_pos_inventory_allocations.length, 1);
 assert.equal(state.rows.get('CommandLog')[0].status, 'success');
 assert.equal(state.rows.get('Product')[0].shopify_pos_variant_id, 'gid://shopify/ProductVariant/43220774944858');
 assert.equal(state.writes.filter(write => write.entity === 'InventoryItem').length, 0);
+
+providerCalls = [];
+const sharedBatch = {
+  ...batch,
+  id: 'batch_shared',
+  batch_id: 'BATCH-20990821-OASIS',
+  planned_units: 10,
+  final_usable_quantity: 10,
+  order_sources: [
+    { order_id: event.id, source_type: 'event_stock', source_item: 'OASIS', quantity: 5 },
+    { order_id: secondEvent.id, source_type: 'event_stock', source_item: 'OASIS', quantity: 5 },
+  ],
+};
+assert.deepEqual(eventPosInventoryEligibility(sharedBatch).allocations, [
+  { event_id: secondEvent.id, quantity: 5 },
+  { event_id: event.id, quantity: 5 },
+].sort((left, right) => left.event_id.localeCompare(right.event_id)));
+const sharedState = store({
+  Event: [event, secondEvent],
+  ProductionBatch: [sharedBatch],
+  Product: [product],
+  CommandLog: [],
+});
+const sharedPreview = await previewEventPosInventoryReadiness({
+  base44: sharedState.base44,
+  eventId: event.id,
+  batchKeys: [sharedBatch.id],
+});
+assert.equal(sharedPreview.ready, true);
+assert.equal(sharedPreview.rows[0].planned_quantity, 5);
+assert.equal(sharedPreview.rows[0].batch_planned_quantity, 10);
+providerCalls = [];
+const sharedResult = await syncVerifiedEventBatchToShopifyPos({
+  base44: sharedState.base44,
+  batch: sharedBatch,
+  requestId: 'verify_shared_oasis',
+  user: { email: 'admin@example.test', role: 'admin' },
+});
+assert.equal(sharedResult.success, true);
+assert.equal(sharedResult.quantity, 10);
+assert.equal(sharedResult.allocation_count, 2);
+assert.equal(sharedResult.allocations.length, 2);
+assert.equal(providerCalls.length, 12);
+assert.deepEqual(providerCalls.filter(call => /ActivateVerifiedEventInventory/.test(call.query)).map(call => ({
+  key: call.variables.idempotencyKey,
+  quantity: call.variables.available,
+})).sort((left, right) => left.key.localeCompare(right.key)), [
+  { key: 'event-pos:event_freedom:batch_shared:available-v1', quantity: 5 },
+  { key: 'event-pos:event_s2:batch_shared:available-v1', quantity: 5 },
+]);
+assert.equal(sharedState.rows.get('ProductionBatch')[0].shopify_pos_inventory_sync_status, 'in_sync');
+assert.equal(sharedState.rows.get('ProductionBatch')[0].shopify_pos_inventory_sync_quantity, 10);
+assert.equal(sharedState.rows.get('ProductionBatch')[0].shopify_pos_inventory_allocations.length, 2);
+assert.equal(sharedState.rows.get('ProductionBatch')[0].shopify_pos_location_id, null);
+assert.equal(sharedState.rows.get('CommandLog').length, 2);
+
+providerCalls = [];
+const sharedReplay = await syncVerifiedEventBatchToShopifyPos({
+  base44: sharedState.base44,
+  batch: sharedState.rows.get('ProductionBatch')[0],
+  requestId: 'verify_shared_oasis_replay',
+  user: { email: 'admin@example.test', role: 'admin' },
+});
+assert.equal(sharedReplay.success, true);
+assert.equal(sharedReplay.idempotent, true);
+assert.equal(providerCalls.length, 0, 'multi-event replay performs no provider request');
 
 providerCalls = [];
 shopifyFailure = {
@@ -354,8 +442,8 @@ const duplicateResult = await syncVerifiedEventBatchToShopifyPos({
   requestId: 'verify_duplicate',
   user: { email: 'admin@example.test', role: 'admin' },
 });
-assert.equal(duplicateResult.status, 'error');
-assert.equal(duplicateResult.error_code, 'single_event_product_batch_required');
+assert.equal(duplicateResult.status, 'blocked');
+assert.equal(duplicateResult.error_code, 'single_product_date_batch_required');
 assert.equal(providerCalls.length, 0);
 
 globalThis.fetch = originalFetch;
@@ -364,7 +452,7 @@ globalThis.Deno = originalDeno;
 console.log(JSON.stringify({
   success: true,
   suite: 'g116-event-production-pos-inventory',
-  cases: 21,
+  cases: 30,
   live_provider_calls_performed: false,
   production_writes_performed: false,
   customer_notifications_sent: false,

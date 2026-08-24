@@ -516,6 +516,13 @@ function nativeSourceTypeCounts(orderSources) {
   return counts;
 }
 
+function eventAllocationCount(orderSources) {
+  return new Set((Array.isArray(orderSources) ? orderSources : [])
+    .filter(source => normalizeText(source?.source_type).toLowerCase() === 'event_stock')
+    .map(source => normalizeText(source?.order_id))
+    .filter(Boolean)).size;
+}
+
 async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, testBatchMode = 'exclude') {
   try {
     const entity = base44.asServiceRole?.entities?.ProductionBatch;
@@ -543,6 +550,7 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, test
           order_count: orderSources.length,
           order_numbers: safeStringArray(orderSources.map(source => source?.order_number), 50),
           source_type_counts: nativeSourceTypeCounts(orderSources),
+          event_allocation_count: eventAllocationCount(orderSources),
           source: 'customer_app_native',
         });
 
@@ -583,6 +591,7 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, test
           shopify_pos_inventory_synced_at: normalizeText(batch.shopify_pos_inventory_synced_at),
           shopify_pos_location_id: normalizeText(batch.shopify_pos_location_id),
           shopify_pos_inventory_sync_error: normalizeText(batch.shopify_pos_inventory_sync_error),
+          event_allocation_count: eventAllocationCount(orderSources),
         };
       });
 

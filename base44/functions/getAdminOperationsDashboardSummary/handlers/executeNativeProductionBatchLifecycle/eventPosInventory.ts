@@ -98,6 +98,19 @@ function nonEventSources(batch) {
     .filter(source => lower(source?.source_type) !== EVENT_STOCK_SOURCE);
 }
 
+function eventAllocations(batch) {
+  const allocations = new Map();
+  for (const source of eventSources(batch)) {
+    const eventId = safeId(source?.order_id);
+    const quantity = integerQuantity(source?.quantity);
+    if (!eventId || quantity === null) continue;
+    allocations.set(eventId, (allocations.get(eventId) || 0) + quantity);
+  }
+  return [...allocations.entries()]
+    .map(([event_id, quantity]) => ({ event_id, quantity }))
+    .sort((left, right) => left.event_id.localeCompare(right.event_id));
+}
+
 export function eventPosInventoryEligibility(batch) {
   const sources = eventSources(batch);
   const sourceSystem = lower(batch?.source_system);
@@ -113,15 +126,27 @@ export function eventPosInventoryEligibility(batch) {
   if (sources.length === 0) {
     return { applicable: true, ready: false, blocker: 'event_stock_source_missing' };
   }
-  const eventIds = [...new Set(sources.map(source => safeId(source?.order_id)).filter(Boolean))];
-  if (eventIds.length !== 1) {
-    return { applicable: true, ready: false, blocker: 'single_event_link_required' };
+  if (sources.some(source => !safeId(source?.order_id) || integerQuantity(source?.quantity) === null)) {
+    return { applicable: true, ready: false, blocker: 'event_stock_allocation_quantity_required' };
   }
+  const allocations = eventAllocations(batch);
+  if (allocations.length === 0) return { applicable: true, ready: false, blocker: 'event_stock_allocation_required' };
   const quantity = integerQuantity(batch?.final_usable_quantity);
   if (quantity === null) {
     return { applicable: true, ready: false, blocker: 'verified_final_usable_quantity_required' };
   }
-  return { applicable: true, ready: true, event_id: eventIds[0], quantity };
+  const allocatedQuantity = allocations.reduce((sum, allocation) => sum + allocation.quantity, 0);
+  if (allocatedQuantity !== quantity) {
+    return {
+      applicable: true,
+      ready: false,
+      blocker: 'verified_output_must_equal_event_allocation_total',
+      quantity,
+      allocated_quantity: allocatedQuantity,
+      allocations,
+    };
+  }
+  return { applicable: true, ready: true, quantity, allocations };
 }
 
 function shopifyHost() {
@@ -342,13 +367,13 @@ async function loadBatch(base44, key) {
   return byBatchId.length === 1 ? byBatchId[0] : null;
 }
 
-async function ensureSingleEventProductBatch(base44, batch, eventId) {
+async function ensureSingleProductDateBatch(base44, batch) {
   const rows = await base44.asServiceRole.entities.ProductionBatch
     .filter({ production_date: batch.production_date, product_name: batch.product_name }, '-created_date', 50)
     .catch(() => []);
-  const sameEvent = rows.filter(row => eventSources(row).some(source => safeId(source?.order_id) === eventId));
-  if (sameEvent.length !== 1 || sameEvent[0]?.id !== batch.id) {
-    throw codedError('single_event_product_batch_required');
+  const physicalBatches = rows.filter(row => lower(row?.status) !== 'archived' && row?.is_test_batch !== true);
+  if (physicalBatches.length !== 1 || physicalBatches[0]?.id !== batch.id) {
+    throw codedError('single_product_date_batch_required');
   }
 }
 
@@ -444,13 +469,16 @@ export async function previewEventPosInventoryReadiness({ base44, eventId, batch
         rowBlockers.push('event_stock_provenance_required');
       }
       if (nonEventSources(batch).length > 0) rowBlockers.push('mixed_event_and_customer_demand_requires_allocation');
-      const linkedEventIds = [...new Set(sourceRows.map(source => safeId(source?.order_id)).filter(Boolean))];
-      if (linkedEventIds.length !== 1 || linkedEventIds[0] !== safeEventId) rowBlockers.push('batch_event_link_mismatch');
+      if (sourceRows.some(source => !safeId(source?.order_id) || integerQuantity(source?.quantity) === null)) {
+        rowBlockers.push('event_stock_allocation_quantity_required');
+      }
+      const allocation = eventAllocations(batch).find(row => row.event_id === safeEventId) || null;
+      if (!allocation) rowBlockers.push('batch_event_link_mismatch');
 
       let product = null;
       let target = null;
       if (rowBlockers.length === 0) {
-        await ensureSingleEventProductBatch(base44, batch, safeEventId);
+        await ensureSingleProductDateBatch(base44, batch);
         product = await loadProduct(base44, batch.product_name);
         target = await readTarget({ product, locationId, provider });
         if (target.location?.fulfillmentService?.id) rowBlockers.push('shopify_fulfillment_service_location_not_allowed');
@@ -469,7 +497,8 @@ export async function previewEventPosInventoryReadiness({ base44, eventId, batch
         production_batch_id: safeId(batch.id),
         batch_id: safeId(batch.batch_id),
         product_name: text(batch.product_name).slice(0, 120),
-        planned_quantity: integerQuantity(batch.planned_units),
+        planned_quantity: allocation?.quantity || null,
+        batch_planned_quantity: integerQuantity(batch.planned_units),
         ready: rowBlockers.length === 0,
         blockers: rowBlockers,
         warnings: rowWarnings,
@@ -600,6 +629,134 @@ async function initializeQuantity({ target, quantity, providerIdempotencyKey, pr
   return { quantity, already_applied: false };
 }
 
+async function loadAllocationEvent(base44, allocation) {
+  const eventRows = await base44.asServiceRole.entities.Event
+    .filter({ id: allocation.event_id }, '-created_date', 2)
+    .catch(() => []);
+  if (eventRows.length !== 1) throw codedError('single_event_record_required');
+  const event = eventRows[0];
+  if (event.shopify_pos_inventory_sync_enabled !== true) throw codedError('event_pos_inventory_sync_not_enabled');
+  if (lower(event.shopify_pos_inventory_mode) !== EVENT_INVENTORY_MODE) throw codedError('event_pos_inventory_mode_invalid');
+  const locationId = shopifyGid(event.shopify_pos_location_id, 'Location');
+  if (!locationId) throw codedError('event_shopify_pos_location_required');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text(event.date)) || text(event.date) <= chicagoDate()) {
+    throw codedError('event_pos_inventory_requires_future_event_date');
+  }
+  return { event, locationId, quantity: allocation.quantity };
+}
+
+function safeAllocationResult({ event, locationId, quantity, commandId = null, syncedAt = null, status, errorCode = null }) {
+  return {
+    event_id: safeId(event?.id),
+    event_name: text(event?.title || event?.name).slice(0, 160) || null,
+    location_id: locationId || null,
+    location_name: text(event?.shopify_pos_location_name).slice(0, 160) || null,
+    planned_quantity: quantity,
+    synced_quantity: status === 'in_sync' ? quantity : null,
+    status,
+    command_id: commandId || null,
+    synced_at: syncedAt,
+    error_code: errorCode,
+  };
+}
+
+async function syncEventAllocation({ base44, batch, event, locationId, quantity, requestId, user, product, provider }) {
+  let command = null;
+  const callsBefore = provider.calls;
+  const writesBefore = provider.writes;
+  try {
+    const claim = await claimCommand({ base44, batch, event, requestId, user, quantity });
+    command = claim.command;
+    if (claim.state === 'success') {
+      const completedAt = text(command?.completed_at) || null;
+      return {
+        success: true,
+        skipped: true,
+        idempotent: true,
+        quantity,
+        command_id: command?.id || null,
+        synced_at: completedAt,
+        location_id: locationId,
+        location_name: text(event.shopify_pos_location_name).slice(0, 160) || null,
+        provider_calls_performed: false,
+        inventory_mutation: false,
+      };
+    }
+    if (claim.state === 'running') {
+      return {
+        success: false,
+        skipped: true,
+        status: 'syncing',
+        error_code: 'event_pos_inventory_command_in_progress',
+        command_id: command?.id || null,
+        provider_calls_performed: false,
+        inventory_mutation: false,
+      };
+    }
+
+    const target = await readTarget({ product, locationId, provider });
+    target.batchId = batch.id;
+    target.location = await ensureLocationIsPosOnly(target, provider);
+    await ensureDemandBasedOnlinePolicy(target, provider);
+    await ensureTracking(target, provider);
+    const providerIdempotencyKey = `event-pos:${safeId(event.id)}:${safeId(batch.id)}:available-v1`;
+    const initialized = await initializeQuantity({ target, quantity, providerIdempotencyKey, provider });
+    const now = new Date().toISOString();
+    await base44.asServiceRole.entities.Product.update(product.id, {
+      shopify_pos_product_id: target.productId,
+      shopify_pos_variant_id: target.variantId,
+      shopify_product_id: target.productId,
+      shopify_variant_id: target.variantId,
+      shopify_handle: text(target.shopifyProduct?.handle) || product.shopify_handle || null,
+    });
+    await base44.asServiceRole.entities.CommandLog.update(command.id, {
+      status: 'success',
+      completed_at: now,
+      error_code: null,
+      error_message: null,
+      result: {
+        provider_write_completed: provider.writes > writesBefore,
+        native_projection_completed: true,
+        quantity: initialized.quantity,
+        location_id: locationId,
+        product_id: target.productId,
+        variant_id: target.variantId,
+        inventory_item_id: target.inventoryItem.id,
+        already_applied: initialized.already_applied === true,
+        online_fulfillment_disabled: true,
+        online_inventory_policy: 'continue',
+        customer_notifications_sent: false,
+      },
+    });
+    return {
+      success: true,
+      skipped: initialized.already_applied === true,
+      idempotent: initialized.already_applied === true,
+      quantity: initialized.quantity,
+      command_id: command.id,
+      synced_at: now,
+      location_id: locationId,
+      location_name: text(target.location?.name).slice(0, 160) || null,
+      provider_calls_performed: provider.calls > callsBefore,
+      inventory_mutation: provider.writes > writesBefore,
+    };
+  } catch (error) {
+    const failure = await failCommand({
+      base44,
+      commandId: command?.id,
+      batch,
+      code: error?.code || error?.message,
+      detail: error?.safeDetail,
+      provider: {
+        ...provider,
+        calls: provider.calls - callsBefore,
+        writes: provider.writes - writesBefore,
+      },
+    });
+    return { ...failure, command_id: command?.id || null };
+  }
+}
+
 export async function syncVerifiedEventBatchToShopifyPos({ base44, batch, requestId, user }) {
   const eligibility = eventPosInventoryEligibility(batch);
   if (!eligibility.applicable) {
@@ -615,134 +772,93 @@ export async function syncVerifiedEventBatchToShopifyPos({ base44, batch, reques
   }
   if (!eligibility.ready) return blockBatchSync(base44, batch, eligibility.blocker);
 
-  const eventRows = await base44.asServiceRole.entities.Event
-    .filter({ id: eligibility.event_id }, '-created_date', 2)
-    .catch(() => []);
-  if (eventRows.length !== 1) return blockBatchSync(base44, batch, 'single_event_record_required');
-  const event = eventRows[0];
-  if (event.shopify_pos_inventory_sync_enabled !== true) return blockBatchSync(base44, batch, 'event_pos_inventory_sync_not_enabled');
-  if (lower(event.shopify_pos_inventory_mode) !== EVENT_INVENTORY_MODE) return blockBatchSync(base44, batch, 'event_pos_inventory_mode_invalid');
-  const locationId = shopifyGid(event.shopify_pos_location_id, 'Location');
-  if (!locationId) return blockBatchSync(base44, batch, 'event_shopify_pos_location_required');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text(event.date)) || text(event.date) <= chicagoDate()) {
-    return blockBatchSync(base44, batch, 'event_pos_inventory_requires_future_event_date');
-  }
-
   const provider = { calls: 0, writes: 0, host: '', token: '' };
-  let command = null;
+  const allocationResults = [];
   try {
-    await ensureSingleEventProductBatch(base44, batch, event.id);
+    await ensureSingleProductDateBatch(base44, batch);
+    const eventAllocationsWithRecords = [];
+    for (const allocation of eligibility.allocations) {
+      eventAllocationsWithRecords.push(await loadAllocationEvent(base44, allocation));
+    }
     const product = await loadProduct(base44, batch.product_name);
-    const claim = await claimCommand({ base44, batch, event, requestId, user, quantity: eligibility.quantity });
-    command = claim.command;
-    if (claim.state === 'success') {
-      await updateBatchSync(base44, batch.id, {
-        shopify_pos_inventory_sync_status: 'in_sync',
-        shopify_pos_inventory_sync_quantity: eligibility.quantity,
-        shopify_pos_inventory_command_id: command?.id || null,
-        shopify_pos_location_id: locationId,
-        shopify_pos_inventory_sync_error: null,
-      });
-      return {
-        applicable: true,
-        success: true,
-        skipped: true,
-        idempotent: true,
-        status: 'in_sync',
-        quantity: eligibility.quantity,
-        location_name: text(event.shopify_pos_location_name).slice(0, 160) || null,
-        provider_calls_performed: false,
-        inventory_mutation: false,
-        customer_notifications_sent: false,
-      };
-    }
-    if (claim.state === 'running') {
-      return {
-        applicable: true,
-        success: false,
-        skipped: true,
-        status: 'syncing',
-        error_code: 'event_pos_inventory_command_in_progress',
-        provider_calls_performed: false,
-        inventory_mutation: false,
-        customer_notifications_sent: false,
-      };
-    }
-
     await updateBatchSync(base44, batch.id, {
       shopify_pos_inventory_sync_status: 'syncing',
-      shopify_pos_inventory_command_id: command?.id || null,
-      shopify_pos_location_id: locationId,
       shopify_pos_inventory_sync_error: null,
     });
 
-    const target = await readTarget({ product, locationId, provider });
-    target.batchId = batch.id;
-    target.location = await ensureLocationIsPosOnly(target, provider);
-    await ensureDemandBasedOnlinePolicy(target, provider);
-    await ensureTracking(target, provider);
-    const providerIdempotencyKey = `event-pos:${safeId(event.id)}:${safeId(batch.id)}:available-v1`;
-    const initialized = await initializeQuantity({
-      target,
-      quantity: eligibility.quantity,
-      providerIdempotencyKey,
-      provider,
-    });
-    const now = new Date().toISOString();
-    await base44.asServiceRole.entities.Product.update(product.id, {
-      shopify_pos_product_id: target.productId,
-      shopify_pos_variant_id: target.variantId,
-      shopify_product_id: target.productId,
-      shopify_variant_id: target.variantId,
-      shopify_handle: text(target.shopifyProduct?.handle) || product.shopify_handle || null,
-    });
+    for (const allocation of eventAllocationsWithRecords) {
+      const result = await syncEventAllocation({
+        base44,
+        batch,
+        event: allocation.event,
+        locationId: allocation.locationId,
+        quantity: allocation.quantity,
+        requestId,
+        user,
+        product,
+        provider,
+      });
+      allocationResults.push({ allocation, result });
+      if (!result.success) {
+        const projectedAllocations = allocationResults.map(row => safeAllocationResult({
+          event: row.allocation.event,
+          locationId: row.allocation.locationId,
+          quantity: row.allocation.quantity,
+          commandId: row.result.command_id,
+          syncedAt: row.result.synced_at || null,
+          status: row.result.success ? 'in_sync' : row.result.status || 'error',
+          errorCode: row.result.error_code || null,
+        }));
+        await updateBatchSync(base44, batch.id, { shopify_pos_inventory_allocations: projectedAllocations });
+        return {
+          applicable: true,
+          success: false,
+          status: result.status || 'error',
+          error_code: result.error_code || 'event_pos_inventory_sync_failed',
+          quantity: eligibility.quantity,
+          allocations: projectedAllocations,
+          provider_calls_performed: provider.calls > 0,
+          inventory_mutation: provider.writes > 0,
+          customer_notifications_sent: false,
+        };
+      }
+    }
+
+    const syncedAt = new Date().toISOString();
+    const projectedAllocations = allocationResults.map(row => safeAllocationResult({
+      event: row.allocation.event,
+      locationId: row.allocation.locationId,
+      quantity: row.allocation.quantity,
+      commandId: row.result.command_id,
+      syncedAt: row.result.synced_at || syncedAt,
+      status: 'in_sync',
+    }));
+    const commandIds = projectedAllocations.map(row => row.command_id).filter(Boolean);
     await updateBatchSync(base44, batch.id, {
       shopify_pos_inventory_sync_status: 'in_sync',
-      shopify_pos_inventory_sync_quantity: initialized.quantity,
-      shopify_pos_inventory_synced_at: now,
-      shopify_pos_inventory_command_id: command?.id || null,
-      shopify_pos_location_id: locationId,
+      shopify_pos_inventory_sync_quantity: eligibility.quantity,
+      shopify_pos_inventory_synced_at: syncedAt,
+      shopify_pos_inventory_command_id: commandIds.length === 1 ? commandIds[0] : null,
+      shopify_pos_location_id: projectedAllocations.length === 1 ? projectedAllocations[0].location_id : null,
+      shopify_pos_inventory_allocations: projectedAllocations,
       shopify_pos_inventory_sync_error: null,
-    });
-    await base44.asServiceRole.entities.CommandLog.update(command.id, {
-      status: 'success',
-      completed_at: now,
-      error_code: null,
-      error_message: null,
-      result: {
-        provider_write_completed: provider.writes > 0,
-        native_projection_completed: true,
-        quantity: initialized.quantity,
-        location_id: locationId,
-        product_id: target.productId,
-        variant_id: target.variantId,
-        inventory_item_id: target.inventoryItem.id,
-        already_applied: initialized.already_applied === true,
-        online_fulfillment_disabled: true,
-        online_inventory_policy: 'continue',
-        customer_notifications_sent: false,
-      },
+      command_log_ids: [...new Set([...(Array.isArray(batch.command_log_ids) ? batch.command_log_ids : []), ...commandIds])],
     });
     return {
       applicable: true,
       success: true,
-      skipped: initialized.already_applied === true,
-      idempotent: initialized.already_applied === true,
+      skipped: allocationResults.every(row => row.result.skipped === true),
+      idempotent: allocationResults.every(row => row.result.idempotent === true),
       status: 'in_sync',
-      quantity: initialized.quantity,
-      location_name: text(target.location?.name).slice(0, 160) || null,
+      quantity: eligibility.quantity,
+      allocation_count: projectedAllocations.length,
+      allocations: projectedAllocations,
+      location_name: projectedAllocations.length === 1 ? projectedAllocations[0].location_name : `${projectedAllocations.length} event locations`,
       provider_calls_performed: provider.calls > 0,
       inventory_mutation: provider.writes > 0,
       customer_notifications_sent: false,
     };
   } catch (error) {
-    return failCommand({
-      base44,
-      commandId: command?.id,
-      batch,
-      code: error?.code || error?.message,
-      detail: error?.safeDetail,
-      provider,
-    });
+    return blockBatchSync(base44, batch, error?.code || error?.message);
   }
 }
