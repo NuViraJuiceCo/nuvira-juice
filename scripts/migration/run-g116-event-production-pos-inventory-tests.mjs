@@ -9,6 +9,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const helperPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/executeNativeProductionBatchLifecycle/eventPosInventory.ts';
 const lifecyclePath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/executeNativeProductionBatchLifecycle/entry.ts';
 const previewPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/previewNativeProductionBatchLifecycle/entry.ts';
+const previewEligibilityPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/previewNativeProductionBatchLifecycle/eventPosInventoryEligibility.ts';
 const queuePath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionQueueSummary/entry.ts';
 const managePath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/manageEventPosInventory/entry.ts';
 const uiPath = 'src/pages/admin/ProductionQueueSummary.jsx';
@@ -19,6 +20,7 @@ const criticalPath = 'scripts/ci/run-critical-regressions.mjs';
 const helperSource = read(helperPath);
 const lifecycleSource = read(lifecyclePath);
 const previewSource = read(previewPath);
+const previewEligibilitySource = read(previewEligibilityPath);
 const queueSource = read(queuePath);
 const manageSource = read(managePath);
 const uiSource = read(uiPath);
@@ -62,6 +64,10 @@ assert.match(helperSource, /customer_notifications_sent: false/);
 assert.doesNotMatch(helperSource, /entities\.InventoryItem\.(create|update)/);
 assert.match(lifecycleSource, /syncVerifiedEventBatchToShopifyPos/);
 assert.match(previewSource, /eventPosInventoryEligibility/);
+assert.match(previewSource, /\.\/eventPosInventoryEligibility\.ts/);
+assert.doesNotMatch(previewSource, /\.\.\/executeNativeProductionBatchLifecycle/);
+assert.match(previewEligibilitySource, /verified_output_must_equal_event_allocation_total/);
+assert.match(previewEligibilitySource, /mixed_event_and_customer_demand_requires_allocation/);
 assert.match(previewSource, /event_pos_inventory_allocation_not_ready/);
 assert.match(previewSource, /Shopify\.POS\.available_quantity/);
 assert.match(queueSource, /shopify_pos_inventory_sync_quantity/);
@@ -84,6 +90,8 @@ let moduleSource = helperSource
 moduleSource += '\nexport { eventPosInventoryEligibility, previewEventPosInventoryReadiness, syncVerifiedEventBatchToShopifyPos };\n';
 const helperModule = await import(`data:text/javascript;base64,${Buffer.from(moduleSource).toString('base64')}`);
 const { eventPosInventoryEligibility, previewEventPosInventoryReadiness, syncVerifiedEventBatchToShopifyPos } = helperModule;
+const previewEligibilityModule = await import(`data:text/javascript;base64,${Buffer.from(previewEligibilitySource).toString('base64')}`);
+const previewEventPosInventoryEligibility = previewEligibilityModule.eventPosInventoryEligibility;
 
 function matches(row, filter) {
   return Object.entries(filter || {}).every(([key, value]) => row?.[key] === value);
@@ -168,6 +176,19 @@ assert.equal(eventPosInventoryEligibility({
 assert.equal(eventPosInventoryEligibility(batch).quantity, 40);
 assert.deepEqual(eventPosInventoryEligibility(batch).allocations, [{ event_id: event.id, quantity: 40 }]);
 assert.equal(eventPosInventoryEligibility({ ...batch, final_usable_quantity: 39 }).blocker, 'verified_output_must_equal_event_allocation_total');
+for (const candidate of [
+  { product_name: 'OASIS' },
+  { ...batch, final_usable_quantity: null },
+  { ...batch, order_sources: [...batch.order_sources, { order_id: 'customer_order', source_type: 'direct', quantity: 1 }] },
+  batch,
+  { ...batch, final_usable_quantity: 39 },
+]) {
+  assert.deepEqual(
+    previewEventPosInventoryEligibility(candidate),
+    eventPosInventoryEligibility(candidate),
+    'preview and execution event-allocation eligibility must remain identical',
+  );
+}
 
 const originalFetch = globalThis.fetch;
 const originalDeno = globalThis.Deno;
