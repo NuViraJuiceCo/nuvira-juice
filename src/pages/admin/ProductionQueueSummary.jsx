@@ -121,14 +121,16 @@ function isEventOnlyBatch(batch) {
 function eventPosSyncMessage(batch) {
   if (!isEventOnlyBatch(batch)) return null;
   const status = batch?.shopify_pos_inventory_sync_status || 'pending_verification';
+  const allocationCount = Math.max(1, Number(batch?.event_allocation_count) || 0);
+  const destinationLabel = allocationCount === 1 ? 'the linked event location' : `${allocationCount} linked event locations`;
   if (status === 'in_sync') {
-    return `Shopify POS opening stock: ${formatNumber(batch.shopify_pos_inventory_sync_quantity)} verified units.`;
+    return `Shopify POS opening stock: ${formatNumber(batch.shopify_pos_inventory_sync_quantity)} verified units across ${destinationLabel}.`;
   }
   if (status === 'error' || status === 'blocked') {
     return `Shopify POS stock needs review: ${formatLabel(batch.shopify_pos_inventory_sync_error || status)}.`;
   }
-  if (status === 'syncing') return 'Shopify POS opening stock is syncing from the verified final quantity.';
-  return 'Shopify POS opening stock will use the final usable quantity after verification.';
+  if (status === 'syncing') return `Shopify POS opening stock is syncing across ${destinationLabel}.`;
+  return `Shopify POS opening stock will allocate the verified final quantity across ${destinationLabel}.`;
 }
 
 function batchSourceLabel(batch) {
@@ -1422,7 +1424,7 @@ function NativeLifecyclePreviewPanel({ batch, onActionSuccess }) {
     const suppressCustomerProjection = customerProjectionSuppressed(batch);
     const warning = action === 'verify'
       ? isEventOnlyBatch(batch)
-        ? 'This creates one batch compliance log and uses the verified final usable quantity to initialize this event\'s dedicated Shopify POS stock. Online juice sales remain demand-based. It will not update customer orders, delivery tasks, or send notifications.'
+        ? 'This creates one batch compliance log and allocates the verified final usable quantity across each linked event\'s Shopify POS stock. Online juice sales remain demand-based. It will not update customer orders, delivery tasks, or send notifications.'
         : 'This may create one batch compliance log and link it to this exact ProductionBatch. It will not deduct inventory, update orders, update delivery tasks, send notifications, or call providers.'
       : action === 'start'
         ? suppressCustomerProjection
@@ -1908,6 +1910,11 @@ function BatchCard({ batch, onActionSuccess }) {
       <div className="space-y-1.5">
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Source mix</p>
         <p className="text-xs text-foreground">{sourceTypeSummary(batch.source_type_counts)}</p>
+        {Number(batch.event_allocation_count) > 1 ? (
+          <p className="text-[11px] font-semibold text-cyan-700 dark:text-cyan-300">
+            One physical batch · allocated to {batch.event_allocation_count} events after verification
+          </p>
+        ) : null}
       </div>
 
       {batch.updated_date && (

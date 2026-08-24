@@ -385,7 +385,26 @@
     },
     "shopify_pos_inventory_sync_quantity": {
       "type": "number",
-      "description": "Verified final usable quantity initialized at the linked event POS location"
+      "description": "Total verified final usable quantity initialized across linked event POS locations"
+    },
+    "shopify_pos_inventory_allocations": {
+      "type": "array",
+      "description": "Per-event allocation and Shopify POS synchronization results for a product/date production batch",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_id": { "type": "string" },
+          "event_name": { "type": "string" },
+          "location_id": { "type": "string" },
+          "location_name": { "type": "string" },
+          "planned_quantity": { "type": "number" },
+          "synced_quantity": { "type": "number" },
+          "status": { "type": "string" },
+          "command_id": { "type": "string" },
+          "synced_at": { "type": "string" },
+          "error_code": { "type": "string" }
+        }
+      }
     },
     "shopify_pos_inventory_synced_at": {
       "type": "string",

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { eventPosInventoryEligibility } from '../executeNativeProductionBatchLifecycle/eventPosInventory.ts';
 
 const ENABLE_TEST_WRITES_FLAG = 'ENABLE_NATIVE_PRODUCTION_BATCH_TEST_LIFECYCLE_WRITES';
 const TEST_ALLOWED_EMAILS_FLAG = 'NATIVE_PRODUCTION_BATCH_LIFECYCLE_TEST_ALLOWED_EMAILS';
@@ -840,7 +841,12 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
   if (!labelsApplied) blockers.push('labels_not_confirmed');
   if (pHStatus === 'failed' && passedFailed === 'passed') blockers.push('batch_cannot_pass_when_ph_fails');
   if (!isPositiveNumber(quantityProduced)) blockers.push('missing_quantity_produced_for_compliance_log');
-  if (eventOnlyBatch && !isPositiveNumber(batch.final_usable_quantity)) blockers.push('event_final_usable_quantity_required_for_pos');
+  if (eventOnlyBatch) {
+    const eventPosEligibility = eventPosInventoryEligibility(batch);
+    if (!eventPosEligibility.ready) {
+      blockers.push(eventPosEligibility.blocker || 'event_pos_inventory_allocation_not_ready');
+    }
+  }
   if (staffOnDuty.length === 0) warnings.push('staff_on_duty_not_provided');
   if (correctiveActionRequired) {
     warnings.push('corrective_action_present_requires_admin_review');
