@@ -539,9 +539,10 @@ async function loadNativeProductionBatches(base44, dateFrom, dateTo, limit, test
     const filtered = rows
       .filter(batch => {
         const productionDate = normalizeText(batch.production_date);
+        const operational = normalizeText(batch.status).toLowerCase() !== 'archived';
         const isTestBatch = isInternalTestBatch(batch);
         const modeMatches = testBatchMode === 'only' ? isTestBatch : !isTestBatch;
-        return modeMatches && productionDate && productionDate >= dateFrom && productionDate <= dateTo;
+        return operational && modeMatches && productionDate && productionDate >= dateFrom && productionDate <= dateTo;
       })
       .map(batch => {
         const orderSources = Array.isArray(batch.order_sources) ? batch.order_sources : [];

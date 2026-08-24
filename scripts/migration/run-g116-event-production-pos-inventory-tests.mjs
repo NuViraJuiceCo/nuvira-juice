@@ -72,6 +72,7 @@ assert.match(previewSource, /event_pos_inventory_allocation_not_ready/);
 assert.match(previewSource, /Shopify\.POS\.available_quantity/);
 assert.match(queueSource, /shopify_pos_inventory_sync_quantity/);
 assert.match(queueSource, /event_allocation_count/);
+assert.match(queueSource, /normalizeText\(batch\.status\)\.toLowerCase\(\) !== 'archived'/);
 assert.match(uiSource, /Shopify POS opening stock/);
 assert.match(uiSource, /One physical batch/);
 assert.match(uiSource, /Retry POS Stock Sync/);
@@ -82,6 +83,7 @@ assert.match(gatewaySource, /"manageEventPosInventory"/);
 assert.match(gatewaySource, /g116b-preisolated-event-location-scope/);
 assert.match(gatewaySource, /g116-verified-event-production-shopify-pos-inventory-20260820/);
 assert.match(gatewaySource, /g127-product-date-batching-multi-event-pos-allocation-20260824/);
+assert.match(gatewaySource, /g127b-hide-superseded-product-batches-20260824/);
 assert.match(criticalSource, /run-g116-event-production-pos-inventory-tests\.mjs/);
 
 let moduleSource = helperSource
