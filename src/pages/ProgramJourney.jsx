@@ -590,26 +590,26 @@ function JourneyDetail({ journey, onBack, onStart, onToggle, onSetReminders, pen
   return (
     <PageShell>
       <SEO title={`${journey.program_name} Program Journey`} description="Your private NuVira program guide and progress." noindex />
-      <header className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-4 pb-3 md:left-60" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
+      <header className="fixed inset-x-0 top-0 z-40 flex min-w-0 items-center justify-between gap-3 px-4 pb-3 md:left-60" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <button type="button" onClick={onBack} aria-label="Back" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/25 text-white backdrop-blur-xl">
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <span className="rounded-full border border-white/20 bg-black/25 px-3 py-2 text-[10px] font-black uppercase tracking-[0.15em] text-white backdrop-blur-xl">Private journey</span>
+        <span className="max-w-[calc(100%-3.25rem)] truncate rounded-full border border-white/20 bg-black/25 px-3 py-2 text-[10px] font-black uppercase tracking-[0.15em] text-white backdrop-blur-xl">Private journey</span>
       </header>
 
-      <section className="relative min-h-[29rem] overflow-hidden">
+      <section className="relative min-h-[29rem] min-w-0 overflow-hidden">
         <img src={journey.program_image_url || program.image} alt={`${journey.program_name} program`} className={`absolute inset-0 h-full w-full object-cover ${program.imagePosition}`} />
         <div className="absolute inset-0" style={{ background: `linear-gradient(0deg, ${program.palette.ink} 0%, ${program.palette.ink}D8 38%, ${program.palette.ink}3A 72%, transparent 100%)` }} />
         <div className="absolute inset-x-0 bottom-0 mx-auto max-w-4xl p-5 pb-7 text-white md:p-8">
-          <div className="flex items-end justify-between gap-5">
-            <div className="min-w-0">
+          <div className="flex min-w-0 items-end justify-between gap-3 sm:gap-5">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white/65"><Sparkles className="h-3.5 w-3.5" /> {ready ? 'Ready to begin' : completed ? 'Journey complete' : `Your ${programDays}-day ritual`}</div>
-              <h1 className="mt-3 font-heading text-5xl font-bold leading-[0.9] md:text-6xl">{journey.program_name}</h1>
-              <p className="mt-3 text-sm font-medium text-white/75">{program.tagline}</p>
+              <h1 className="mt-3 break-words font-heading text-4xl font-bold leading-[0.92] sm:text-5xl md:text-6xl">{journey.program_name}</h1>
+              <p className="mt-3 break-words text-sm font-medium text-white/75">{program.tagline}</p>
             </div>
-            <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-full" style={{ background: `conic-gradient(${program.palette.glow} ${progress * 3.6}deg, rgba(255,255,255,.16) 0deg)` }}>
-              <div className="flex h-[4.15rem] w-[4.15rem] flex-col items-center justify-center rounded-full bg-black/45 backdrop-blur">
-                <span className="text-lg font-black">{progress}%</span>
+            <div className="relative flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center rounded-full sm:h-20 sm:w-20" style={{ background: `conic-gradient(${program.palette.glow} ${progress * 3.6}deg, rgba(255,255,255,.16) 0deg)` }}>
+              <div className="flex h-[3.7rem] w-[3.7rem] flex-col items-center justify-center rounded-full bg-black/45 backdrop-blur sm:h-[4.15rem] sm:w-[4.15rem]">
+                <span className="text-base font-black sm:text-lg">{progress}%</span>
                 <span className="text-[8px] font-bold uppercase tracking-wide text-white/60">complete</span>
               </div>
             </div>
@@ -617,13 +617,13 @@ function JourneyDetail({ journey, onBack, onStart, onToggle, onSetReminders, pen
           {!ready && (
             <div className="mt-5 flex items-center gap-3 rounded-2xl border border-white/15 bg-black/20 p-3 backdrop-blur-sm">
               <CircleCheckBig className="h-5 w-5" style={{ color: program.palette.glow }} />
-              <div><p className="text-sm font-bold">{journey.completed_steps} of {journey.total_steps} moments enjoyed</p><p className="text-[10px] text-white/60">Small check-ins, no pressure. Your schedule remains flexible.</p></div>
+              <div className="min-w-0"><p className="break-words text-sm font-bold">{journey.completed_steps} of {journey.total_steps} moments enjoyed</p><p className="break-words text-[10px] text-white/60">Small check-ins, no pressure. Your schedule remains flexible.</p></div>
             </div>
           )}
         </div>
       </section>
 
-      <main className="mx-auto max-w-4xl space-y-4 px-4 pt-4 md:px-6">
+      <main className="mx-auto min-w-0 max-w-4xl space-y-4 px-4 pt-4 md:px-6">
         <FreshnessCard journey={journey} />
 
         {ready && (

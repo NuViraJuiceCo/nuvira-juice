@@ -272,6 +272,9 @@ assert.match(page, /5–7 day refrigerated shelf life/);
 assert.match(page, /future_program_step_cannot_be_completed/);
 for (const marker of ['AnimatePresence', 'useReducedMotion', 'aria-live="polite"', "previewCelebration === 'complete'", "previewCelebration === 'step'"]) assert.match(page, new RegExp(marker));
 assert.match(page, /previewProgramKey/);
+assert.match(page, /break-words font-heading text-4xl font-bold leading-\[0\.92\] sm:text-5xl md:text-6xl/);
+assert.match(page, /h-\[4\.5rem\] w-\[4\.5rem\].*sm:h-20 sm:w-20/);
+assert.match(page, /max-w-\[calc\(100%-3\.25rem\)\] truncate/);
 pass('customer_experience_includes_storage_time_temperature_label_and_wellness_guardrails');
 
 assert.match(page, /resolveOrderItemImage\(\{ title: step\.product_name/);

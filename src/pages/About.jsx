@@ -188,10 +188,10 @@ export default function About() {
               </div>
               <img src={LOGO_URL} alt="NuVira Juice Co." className="mt-5 h-10 w-auto md:mt-10 md:h-12" />
               <p className="mt-7 text-sm font-bold text-[#C8E86A] md:mt-10">{aboutContent.hero.eyebrow}</p>
-              <h1 className="mt-3 max-w-5xl font-heading text-4xl font-bold leading-[1.05] sm:text-5xl lg:text-6xl">
+              <h1 className="mt-3 min-w-0 max-w-5xl break-words font-heading text-[2rem] font-bold leading-[1.05] sm:text-5xl lg:text-6xl">
                 {aboutContent.hero.title}
               </h1>
-              <p className="mt-5 max-w-2xl text-base leading-7 text-white/72 md:text-lg md:leading-8">
+              <p className="mt-5 min-w-0 max-w-2xl break-words text-base leading-7 text-white/72 md:text-lg md:leading-8">
                 {aboutContent.hero.body}
               </p>
             </div>
