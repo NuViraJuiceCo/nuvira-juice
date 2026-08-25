@@ -57,6 +57,11 @@ for (const source of [xmlFeed, contentApi]) {
   assert.doesNotMatch(source, /<g:shipping>|shipping:\s*\[\{/);
   assert.doesNotMatch(source, /<g:price>0\.00 USD<\/g:price>|price:\s*\{\s*value:\s*'0\.00'/);
   assert.match(source, /account-level Merchant Center|account policy/);
+  assert.match(source, /juice:\s*'2887'/);
+  assert.match(source, /tote:\s*'5608'/);
+  assert.match(source, /getGoogleProductCategory\(product\)/);
+  assert.doesNotMatch(source, /Beverages > Juices/);
+  assert.doesNotMatch(source, /product\.secondary_images\.map\(absoluteImageUrl\)/);
 }
 
 assert.match(xmlFeed, /<g:additional_image_link>/);
