@@ -17,6 +17,54 @@ const PRODUCT_TYPE_MAP = {
   merch: 'Merchandise',
 };
 
+const MERCHANT_IMAGE_SETS = {
+  aura: {
+    primary: `${SITE_URL}/images/products/aura-main.jpg`,
+    additional: [`${SITE_URL}/images/products/aura-lifestyle.jpg`],
+  },
+  oasis: {
+    primary: `${SITE_URL}/images/products/oasis-main.jpg`,
+    additional: [`${SITE_URL}/images/products/oasis-lifestyle.jpg`],
+  },
+  're-nu': {
+    primary: `${SITE_URL}/images/products/re-nu-main.jpg`,
+    additional: [`${SITE_URL}/images/products/re-nu-lifestyle.jpg`],
+  },
+  'the nuvira trio': {
+    primary: `${SITE_URL}/images/products/nuvira-trio-main.jpg`,
+    additional: [`${SITE_URL}/images/products/nuvira-trio-lifestyle.jpg`],
+  },
+  'pineapple juice': { primary: `${SITE_URL}/images/products/pineapple-juice-main.jpg` },
+  'orange juice': { primary: `${SITE_URL}/images/products/orange-juice-main.jpg` },
+  'watermelon juice': { primary: `${SITE_URL}/images/products/watermelon-juice-main.jpg` },
+  'reset shot': { primary: `${SITE_URL}/images/products/reset-shot-main.jpg` },
+  'hydration shot': { primary: `${SITE_URL}/images/products/hydration-shot-main.jpg` },
+  'radiance shot': { primary: `${SITE_URL}/images/products/radiance-shot-main.jpg` },
+  'large nuvira tote bag': {
+    primary: `${SITE_URL}/assets/large-nuvira-tote-bag.jpg`,
+    additional: [`${SITE_URL}/images/brand/nuvira-tote-bag.jpg`],
+  },
+};
+
+function absoluteImageUrl(value) {
+  const url = String(value || '').trim();
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) return `${SITE_URL}${url}`;
+  return '';
+}
+
+function getMerchantImages(product) {
+  const titleKey = String(product.title || '').trim().toLowerCase();
+  const curated = MERCHANT_IMAGE_SETS[titleKey];
+  const primary = curated?.primary || absoluteImageUrl(product.image_url);
+  const candidates = [
+    ...(curated?.additional || []),
+    ...(Array.isArray(product.secondary_images) ? product.secondary_images.map(absoluteImageUrl) : []),
+  ];
+  const additional = [...new Set(candidates.filter(url => url && url !== primary))].slice(0, 9);
+  return { primary, additional };
+}
+
 function escapeXml(str) {
   if (!str) return '';
   return String(str)
@@ -42,7 +90,8 @@ function buildProductEntry(product) {
     `${product.title} — fresh cold-pressed juice from NuVira Juice Co., delivered in the St. Louis, MO area.`
   );
   const link = `${SITE_URL}/shop/${id}`;
-  const imageLink = product.image_url || '';
+  const images = getMerchantImages(product);
+  const imageLink = images.primary;
   const availability = getAvailability(product);
   const price = product.price ? `${product.price.toFixed(2)} USD` : null;
   const productType = PRODUCT_TYPE_MAP[product.category] || 'Cold-Pressed Juice';
@@ -78,11 +127,9 @@ function buildProductEntry(product) {
   }
 
   // Additional images
-  if (product.secondary_images && product.secondary_images.length > 0) {
-    product.secondary_images.slice(0, 9).forEach(imgUrl => {
-      if (imgUrl) entry += `\n      <g:additional_image_link>${escapeXml(imgUrl)}</g:additional_image_link>`;
-    });
-  }
+  images.additional.forEach(imgUrl => {
+    entry += `\n      <g:additional_image_link>${escapeXml(imgUrl)}</g:additional_image_link>`;
+  });
 
   // Size if present
   if (product.size) {
@@ -99,14 +146,9 @@ function buildProductEntry(product) {
     entry += `\n      <g:availability_date>${escapeXml(product.preorder_ship_date)}T00:00:00-06:00</g:availability_date>`;
   }
 
-  // Shipping — local delivery within MO
-  entry += `
-      <g:shipping>
-        <g:country>US</g:country>
-        <g:region>MO</g:region>
-        <g:service>Local Delivery</g:service>
-        <g:price>0.00 USD</g:price>
-      </g:shipping>`;
+  // Delivery cost and timing are account-level Merchant Center settings.
+  // Do not submit offer-level shipping here: it overrides the account policy,
+  // and NuVira's distance-based local delivery is not free parcel shipping.
 
   entry += `\n    </item>`;
   return entry;

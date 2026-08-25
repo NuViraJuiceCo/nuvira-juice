@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const MERCHANT_ID = Deno.env.get('GOOGLE_MERCHANT_ID');
+const MERCHANT_DATA_SOURCE_ID = Deno.env.get('GOOGLE_MERCHANT_DATA_SOURCE_ID');
+const MERCHANT_API_BASE = 'https://merchantapi.googleapis.com';
 const SITE_URL = 'https://www.nuvirajuice.com';
 const BRAND = 'NuVira Juice Co.';
 const GOOGLE_PRODUCT_CATEGORY = 'Food, Beverages & Tobacco > Beverages > Juices';
@@ -14,6 +16,54 @@ const PRODUCT_TYPE_MAP = {
   apparel: 'Apparel',
   merch: 'Merchandise',
 };
+
+const MERCHANT_IMAGE_SETS = {
+  aura: {
+    primary: `${SITE_URL}/images/products/aura-main.jpg`,
+    additional: [`${SITE_URL}/images/products/aura-lifestyle.jpg`],
+  },
+  oasis: {
+    primary: `${SITE_URL}/images/products/oasis-main.jpg`,
+    additional: [`${SITE_URL}/images/products/oasis-lifestyle.jpg`],
+  },
+  're-nu': {
+    primary: `${SITE_URL}/images/products/re-nu-main.jpg`,
+    additional: [`${SITE_URL}/images/products/re-nu-lifestyle.jpg`],
+  },
+  'the nuvira trio': {
+    primary: `${SITE_URL}/images/products/nuvira-trio-main.jpg`,
+    additional: [`${SITE_URL}/images/products/nuvira-trio-lifestyle.jpg`],
+  },
+  'pineapple juice': { primary: `${SITE_URL}/images/products/pineapple-juice-main.jpg` },
+  'orange juice': { primary: `${SITE_URL}/images/products/orange-juice-main.jpg` },
+  'watermelon juice': { primary: `${SITE_URL}/images/products/watermelon-juice-main.jpg` },
+  'reset shot': { primary: `${SITE_URL}/images/products/reset-shot-main.jpg` },
+  'hydration shot': { primary: `${SITE_URL}/images/products/hydration-shot-main.jpg` },
+  'radiance shot': { primary: `${SITE_URL}/images/products/radiance-shot-main.jpg` },
+  'large nuvira tote bag': {
+    primary: `${SITE_URL}/assets/large-nuvira-tote-bag.jpg`,
+    additional: [`${SITE_URL}/images/brand/nuvira-tote-bag.jpg`],
+  },
+};
+
+function absoluteImageUrl(value) {
+  const url = String(value || '').trim();
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) return `${SITE_URL}${url}`;
+  return '';
+}
+
+function getMerchantImages(product) {
+  const titleKey = String(product.title || '').trim().toLowerCase();
+  const curated = MERCHANT_IMAGE_SETS[titleKey];
+  const primary = curated?.primary || absoluteImageUrl(product.image_url);
+  const candidates = [
+    ...(curated?.additional || []),
+    ...(Array.isArray(product.secondary_images) ? product.secondary_images.map(absoluteImageUrl) : []),
+  ];
+  const additional = [...new Set(candidates.filter(url => url && url !== primary))].slice(0, 9);
+  return { primary, additional };
+}
 
 // Get a Google OAuth2 access token using the service account JWT flow
 async function getAccessToken() {
@@ -67,94 +117,159 @@ async function getAccessToken() {
 
   const tokenData = await tokenRes.json();
   if (!tokenData.access_token) {
-    throw new Error(`Failed to get access token: ${JSON.stringify(tokenData)}`);
+    throw new Error(`Merchant API authentication failed (${tokenRes.status})`);
   }
   return tokenData.access_token;
 }
 
-function buildGMCProduct(product) {
-  if (!product.title || !product.image_url || !product.price) return null;
+function merchantDataSourceName() {
+  const configured = String(MERCHANT_DATA_SOURCE_ID || '').trim();
+  if (!configured) throw new Error('GOOGLE_MERCHANT_DATA_SOURCE_ID is not configured');
+  return configured.startsWith('accounts/')
+    ? configured
+    : `accounts/${MERCHANT_ID}/dataSources/${configured}`;
+}
+
+function priceMicros(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) throw new Error('Invalid Merchant product price');
+  return String(Math.round(amount * 1_000_000));
+}
+
+function encodeProductInputId(offerId) {
+  const raw = `en~US~${String(offerId || '')}`;
+  const bytes = new TextEncoder().encode(raw);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function buildMerchantProductInput(product) {
+  const images = getMerchantImages(product);
+  if (!product.title || !images.primary || !product.price) return null;
 
   const offerId = product.id;
-  const gmcProduct: Record<string, any> = {
-    offerId,
+  const productAttributes: Record<string, any> = {
     title: product.title,
     description: product.description || product.short_description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co., delivered in the St. Louis, MO area.`,
     link: `${SITE_URL}/shop/${product.id}`,
-    imageLink: product.image_url,
-    contentLanguage: 'en',
-    targetCountry: 'US',
-    channel: 'online',
-    availability: product.is_available === false ? 'out of stock' : product.is_preorder ? 'preorder' : 'in stock',
-    condition: 'new',
+    imageLink: images.primary,
+    availability: product.is_available === false ? 'OUT_OF_STOCK' : product.is_preorder ? 'PREORDER' : 'IN_STOCK',
+    condition: 'NEW',
     brand: BRAND,
     googleProductCategory: GOOGLE_PRODUCT_CATEGORY,
     productTypes: [PRODUCT_TYPE_MAP[product.category] || 'Cold-Pressed Juice'],
+    identifierExists: false,
     price: {
-      value: String(product.price.toFixed(2)),
-      currency: 'USD',
+      amountMicros: priceMicros(product.price),
+      currencyCode: 'USD',
     },
-    shipping: [{
-      country: 'US',
-      service: 'Local Delivery',
-      price: { value: '0.00', currency: 'USD' },
-    }],
   };
+
+  const merchantProductInput: Record<string, any> = {
+    offerId,
+    contentLanguage: 'en',
+    feedLabel: 'US',
+    productAttributes,
+  };
+
+  // Delivery cost and timing are intentionally omitted here. Offer-level
+  // shipping overrides Merchant Center's account policy, while NuVira uses
+  // scheduled, distance-priced local delivery rather than free parcel shipping.
 
   // Sale price
   if (product.compare_at_price && product.compare_at_price > product.price) {
-    gmcProduct.price = { value: String(product.compare_at_price.toFixed(2)), currency: 'USD' };
-    gmcProduct.salePrice = { value: String(product.price.toFixed(2)), currency: 'USD' };
+    productAttributes.price = { amountMicros: priceMicros(product.compare_at_price), currencyCode: 'USD' };
+    productAttributes.salePrice = { amountMicros: priceMicros(product.price), currencyCode: 'USD' };
   }
 
-  if (product.size) gmcProduct.sizes = [product.size];
+  if (product.size) productAttributes.size = product.size;
 
   // Additional images
-  if (product.secondary_images?.length > 0) {
-    gmcProduct.additionalImageLinks = product.secondary_images.slice(0, 9).filter(Boolean);
-  }
+  if (images.additional.length > 0) productAttributes.additionalImageLinks = images.additional;
 
   // Preorder availability date
   if (product.is_preorder && product.preorder_ship_date) {
-    gmcProduct.availabilityDate = `${product.preorder_ship_date}T00:00:00-06:00`;
+    productAttributes.availabilityDate = `${product.preorder_ship_date}T00:00:00-06:00`;
   }
 
   // Custom labels
-  if (product.is_best_seller) gmcProduct.customLabel0 = 'best_seller';
-  else if (product.is_seasonal) gmcProduct.customLabel0 = 'seasonal';
-  else if (product.is_featured) gmcProduct.customLabel0 = 'featured';
+  if (product.is_best_seller) productAttributes.customLabel0 = 'best_seller';
+  else if (product.is_seasonal) productAttributes.customLabel0 = 'seasonal';
+  else if (product.is_featured) productAttributes.customLabel0 = 'featured';
 
-  return gmcProduct;
+  return merchantProductInput;
 }
 
-// Upsert a single product to GMC
-async function upsertProduct(accessToken, gmcProduct) {
-  const url = `https://shoppingcontent.googleapis.com/content/v2.1/${MERCHANT_ID}/products`;
+// Merchant API productInputs.insert replaces the prior input for the same
+// language, feed label, offer ID, and API data source.
+async function upsertProduct(accessToken, merchantProductInput) {
+  const dataSource = merchantDataSourceName();
+  const url = `${MERCHANT_API_BASE}/products/v1/accounts/${MERCHANT_ID}/productInputs:insert?dataSource=${encodeURIComponent(dataSource)}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(gmcProduct),
+    body: JSON.stringify(merchantProductInput),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(JSON.stringify(data));
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Merchant API product upsert failed (${res.status})`);
   return data;
 }
 
 // Delete a single product from GMC
 async function deleteProduct(accessToken, offerId) {
-  const productId = `online:en:US:${offerId}`;
-  const url = `https://shoppingcontent.googleapis.com/content/v2.1/${MERCHANT_ID}/products/${encodeURIComponent(productId)}`;
+  const dataSource = merchantDataSourceName();
+  const productInputId = encodeProductInputId(offerId);
+  const url = `${MERCHANT_API_BASE}/products/v1/accounts/${MERCHANT_ID}/productInputs/${productInputId}?dataSource=${encodeURIComponent(dataSource)}`;
   const res = await fetch(url, {
     method: 'DELETE',
     headers: { 'Authorization': `Bearer ${accessToken}` },
   });
   if (!res.ok && res.status !== 404) {
-    const data = await res.text();
-    throw new Error(`Delete failed: ${data}`);
+    throw new Error(`Merchant API product delete failed (${res.status})`);
   }
+}
+
+async function fetchMerchantApiStatus(accessToken) {
+  const registrationUrl = `${MERCHANT_API_BASE}/accounts/v1/accounts/${MERCHANT_ID}/developerRegistration`;
+  const dataSourceUrl = `${MERCHANT_API_BASE}/datasources/v1/accounts/${MERCHANT_ID}/dataSources?pageSize=1000`;
+  const [registrationRes, dataSourceRes] = await Promise.all([
+    fetch(registrationUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+    fetch(dataSourceUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+  ]);
+  const registration = await registrationRes.json().catch(() => ({}));
+  const dataSources = await dataSourceRes.json().catch(() => ({}));
+  const configuredDataSource = merchantDataSourceName();
+  const names = Array.isArray(dataSources.dataSources)
+    ? dataSources.dataSources.map(source => source?.name).filter(Boolean)
+    : [];
+  return {
+    registered: registrationRes.ok,
+    registration_status: registrationRes.status,
+    configured_data_source: configuredDataSource,
+    configured_data_source_found: names.includes(configuredDataSource),
+    data_source_status: dataSourceRes.status,
+    data_source_count: names.length,
+    migration_ready: registrationRes.ok && dataSourceRes.ok && names.includes(configuredDataSource),
+  };
+}
+
+async function registerMerchantApi(accessToken, developerEmail) {
+  const url = `${MERCHANT_API_BASE}/accounts/v1/accounts/${MERCHANT_ID}/developerRegistration:registerGcp`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ developerEmail }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Merchant API registration failed (${res.status})`);
+  return { name: data.name || null, gcp_project_count: Array.isArray(data.gcpIds) ? data.gcpIds.length : 0 };
 }
 
 async function readJsonBody(req) {
@@ -176,6 +291,47 @@ async function readJsonBody(req) {
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ success: false, error: 'method_not_allowed' }, { status: 405 });
+    }
+
+    const base44 = createClientFromRequest(req);
+    const caller = await base44.auth.me().catch(() => null);
+    if (!caller) {
+      return Response.json({ success: false, error: 'unauthorized' }, { status: 401 });
+    }
+    if (!['admin', 'owner'].includes(String(caller.role || '').trim().toLowerCase())) {
+      return Response.json({ success: false, error: 'forbidden' }, { status: 403 });
+    }
+
+    const parsedBody = await readJsonBody(req);
+    if (!parsedBody.ok) {
+      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
+    }
+    const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
+
+    // If triggered by entity automation, handle single product.
+    const { action, product_id } = body;
+
+    if (!MERCHANT_ID || !MERCHANT_DATA_SOURCE_ID || !Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY')) {
+      return Response.json({ success: false, error: 'merchant_api_configuration_incomplete' }, { status: 503 });
+    }
+
+    if (action === 'merchant_api_status' || action === 'register_merchant_api') {
+      const accessToken = await getAccessToken();
+
+      if (action === 'merchant_api_status') {
+        return Response.json({ success: true, action, ...(await fetchMerchantApiStatus(accessToken)) });
+      }
+
+      const developerEmail = String(body.developer_email || '').trim().toLowerCase();
+      if (body.confirm !== 'REGISTER_GCP_PROJECT' || !/^\S+@\S+\.\S+$/.test(developerEmail)) {
+        return Response.json({ success: false, error: 'registration_confirmation_required' }, { status: 400 });
+      }
+      const registration = await registerMerchantApi(accessToken, developerEmail);
+      return Response.json({ success: true, action, registration });
+    }
+
     if (Deno.env.get('ENABLE_GOOGLE_MERCHANT_PRODUCT_SYNC') !== 'true') {
       return Response.json({
         success: true,
@@ -185,16 +341,6 @@ Deno.serve(async (req) => {
         message: 'Google Merchant product sync is disabled by the current integration safety gate.',
       });
     }
-
-    const base44 = createClientFromRequest(req);
-    const parsedBody = await readJsonBody(req);
-    if (!parsedBody.ok) {
-      return Response.json({ success: false, error: 'malformed_json', error_code: 'malformed_json' }, { status: 400 });
-    }
-    const body = parsedBody.body && typeof parsedBody.body === 'object' && !Array.isArray(parsedBody.body) ? parsedBody.body : {};
-
-    // If triggered by entity automation, handle single product
-    const { action, product_id } = body;
 
     const accessToken = await getAccessToken();
 
@@ -213,13 +359,13 @@ Deno.serve(async (req) => {
         return Response.json({ success: false, error: 'Product not found' }, { status: 404 });
       }
       console.log(`[GMC Sync] Upserting single product: ${product.title}`);
-      const gmcProduct = buildGMCProduct(product);
-      if (!gmcProduct) {
+      const merchantProductInput = buildMerchantProductInput(product);
+      if (!merchantProductInput) {
         return Response.json({ success: false, error: 'Product missing required fields' });
       }
-      const result = await upsertProduct(accessToken, gmcProduct);
-      console.log(`[GMC Sync] Upserted: ${result.id}`);
-      return Response.json({ success: true, action: 'upsert', product_id, gmc_id: result.id });
+      const result = await upsertProduct(accessToken, merchantProductInput);
+      console.log(`[Merchant API] Upserted: ${result.name || product_id}`);
+      return Response.json({ success: true, action: 'upsert', product_id, merchant_product_input: result.name || null });
     }
 
     // Full bulk sync — fetch all available products
@@ -242,14 +388,14 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const gmcProduct = buildGMCProduct(product);
-      if (!gmcProduct) {
+      const merchantProductInput = buildMerchantProductInput(product);
+      if (!merchantProductInput) {
         console.warn(`[GMC Sync] Skipping ${product.title} — missing required fields`);
         continue;
       }
 
       try {
-        await upsertProduct(accessToken, gmcProduct);
+        await upsertProduct(accessToken, merchantProductInput);
         synced++;
         console.log(`[GMC Sync] ✓ ${product.title}`);
       } catch (e) {

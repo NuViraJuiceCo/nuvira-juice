@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ShieldCheck, FileText, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const LAST_UPDATED = 'April 12, 2026';
+const LAST_UPDATED = 'August 25, 2026';
 
 const sections = [
   {
@@ -87,7 +87,7 @@ Contact: support@nuvirajuice.com`,
 
 • Our products are not intended to diagnose, treat, cure, or prevent any disease or health condition.
 
-• Juices should be refrigerated at all times and consumed within 3–5 days of delivery for optimal freshness and safety.
+• Keep juices refrigerated at 40°F or below. Follow the use-by date printed on each bottle; NuVira juices typically have a 5–7 day refrigerated shelf life from production.
 
 • Nutritional content may vary depending on seasonal ingredient availability.`,
   },
