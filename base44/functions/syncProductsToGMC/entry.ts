@@ -3,6 +3,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const MERCHANT_ID = Deno.env.get('GOOGLE_MERCHANT_ID');
 const MERCHANT_DATA_SOURCE_ID = Deno.env.get('GOOGLE_MERCHANT_DATA_SOURCE_ID');
 const MERCHANT_API_BASE = 'https://merchantapi.googleapis.com';
+const MERCHANT_API_SERVICE = 'merchantapi.googleapis.com';
+const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const SITE_URL = 'https://www.nuvirajuice.com';
 const BRAND = 'NuVira Juice Co.';
 const GOOGLE_PRODUCT_CATEGORY = 'Food, Beverages & Tobacco > Beverages > Juices';
@@ -65,16 +67,21 @@ function getMerchantImages(product) {
   return { primary, additional };
 }
 
-// Get a Google OAuth2 access token using the service account JWT flow
-async function getAccessToken() {
+function getServiceAccountKey() {
   const keyJson = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY');
-  const key = JSON.parse(keyJson);
+  if (!keyJson) throw new Error('Google service account is not configured');
+  return JSON.parse(keyJson);
+}
+
+// Get a Google OAuth2 access token using the service account JWT flow.
+async function getAccessToken(scope = 'https://www.googleapis.com/auth/content') {
+  const key = getServiceAccountKey();
 
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'RS256', typ: 'JWT' };
   const payload = {
     iss: key.client_email,
-    scope: 'https://www.googleapis.com/auth/content',
+    scope,
     aud: 'https://oauth2.googleapis.com/token',
     iat: now,
     exp: now + 3600,
@@ -249,11 +256,61 @@ async function fetchMerchantApiStatus(accessToken) {
   return {
     registered: registrationRes.ok,
     registration_status: registrationRes.status,
+    registration_reason: providerErrorReason(registration),
     configured_data_source: configuredDataSource,
     configured_data_source_found: names.includes(configuredDataSource),
     data_source_status: dataSourceRes.status,
+    data_source_reason: providerErrorReason(dataSources),
     data_source_count: names.length,
     migration_ready: registrationRes.ok && dataSourceRes.ok && names.includes(configuredDataSource),
+  };
+}
+
+function providerErrorReason(payload) {
+  const error = payload?.error && typeof payload.error === 'object' ? payload.error : {};
+  const details = Array.isArray(error.details) ? error.details : [];
+  const detailReason = details.map(detail => detail?.reason).find(Boolean);
+  return detailReason || error.status || null;
+}
+
+async function merchantApiServiceStatus() {
+  const projectId = String(getServiceAccountKey().project_id || '').trim();
+  if (!projectId) throw new Error('Google service account project is not configured');
+  const accessToken = await getAccessToken(CLOUD_PLATFORM_SCOPE);
+  const url = `https://serviceusage.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/services/${MERCHANT_API_SERVICE}`;
+  const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+  const data = await res.json().catch(() => ({}));
+  return {
+    service: MERCHANT_API_SERVICE,
+    service_account_project: projectId,
+    accessible: res.ok,
+    status: res.status,
+    state: data.state || null,
+    enabled: res.ok && data.state === 'ENABLED',
+    reason: providerErrorReason(data),
+  };
+}
+
+async function enableMerchantApiService() {
+  const projectId = String(getServiceAccountKey().project_id || '').trim();
+  if (!projectId) throw new Error('Google service account project is not configured');
+  const accessToken = await getAccessToken(CLOUD_PLATFORM_SCOPE);
+  const url = `https://serviceusage.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/services/${MERCHANT_API_SERVICE}:enable`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: '{}',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Merchant API service activation failed (${res.status})`);
+  return {
+    service: MERCHANT_API_SERVICE,
+    service_account_project: projectId,
+    activation_requested: true,
+    operation: data.name || null,
   };
 }
 
@@ -315,6 +372,17 @@ Deno.serve(async (req) => {
 
     if (!MERCHANT_ID || !MERCHANT_DATA_SOURCE_ID || !Deno.env.get('GOOGLE_SERVICE_ACCOUNT_KEY')) {
       return Response.json({ success: false, error: 'merchant_api_configuration_incomplete' }, { status: 503 });
+    }
+
+    if (action === 'merchant_api_service_status') {
+      return Response.json({ success: true, action, ...(await merchantApiServiceStatus()) });
+    }
+
+    if (action === 'enable_merchant_api_service') {
+      if (body.confirm !== 'ENABLE_MERCHANT_API_SERVICE') {
+        return Response.json({ success: false, error: 'service_activation_confirmation_required' }, { status: 400 });
+      }
+      return Response.json({ success: true, action, ...(await enableMerchantApiService()) });
     }
 
     if (action === 'merchant_api_status' || action === 'register_merchant_api') {
