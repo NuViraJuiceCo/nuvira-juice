@@ -10,6 +10,10 @@ import { CheckCircle, Truck, ArrowRight, Home, Clock, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
+import {
+  ANALYTICS_CONSENT_EVENT,
+  trackGooglePurchase,
+} from '@/lib/googleAnalytics';
 
 const POLLING_TIMEOUT_MS = 60000;
 const POLL_INTERVAL_MS = 3000;
@@ -118,6 +122,17 @@ export default function OrderConfirmation() {
       clearTimeout(timeoutRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!order || (lookupMode !== 'session_id' && lookupMode !== 'order_number')) return undefined;
+
+    const trackPurchase = () => {
+      void trackGooglePurchase(order);
+    };
+    trackPurchase();
+    window.addEventListener(ANALYTICS_CONSENT_EVENT, trackPurchase);
+    return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, trackPurchase);
+  }, [lookupMode, order]);
 
   // ── Case 1: No params ──────────────────────────────────────────────────────
   if (lookupMode === 'none') {
