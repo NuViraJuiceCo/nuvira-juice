@@ -83,6 +83,7 @@ const harnesses = [
   'scripts/migration/run-g125-delivery-live-activity-tests.mjs',
   'scripts/migration/run-g126-distance-aware-delivery-progress-tests.mjs',
   'scripts/migration/run-g128-google-merchant-quality-tests.mjs',
+  'scripts/migration/run-g131-google-analytics-consent-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

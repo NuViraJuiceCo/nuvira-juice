@@ -15,6 +15,7 @@ import SplashScreen from '@/components/SplashScreen';
 import ScrollToTop from '@/components/ScrollToTop';
 import LowercaseRedirect from '@/components/LowercaseRedirect';
 import SeoHeadSanitizer from '@/components/SeoHeadSanitizer';
+import AnalyticsConsent from '@/components/AnalyticsConsent';
 import { base44 } from '@/api/base44Client';
 import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { isAdminUser } from '@/lib/admin-access';
@@ -559,6 +560,7 @@ function App() {
         <QueryClientProvider client={queryClientInstance}>
           <Router>
             <AuthenticatedApp />
+            <AnalyticsConsent />
           </Router>
           <AppToaster />
           <SonnerToaster position="top-center" richColors />

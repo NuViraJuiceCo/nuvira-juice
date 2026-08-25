@@ -3,6 +3,8 @@ import SEO from '@/components/SEO';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ShieldCheck, FileText, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
+import { resetAnalyticsConsent } from '@/lib/googleAnalytics';
 
 const LAST_UPDATED = 'August 25, 2026';
 
@@ -19,16 +21,21 @@ INFORMATION WE COLLECT
 • Order data: items purchased, order history, delivery preferences
 • Payment data: processed securely via Stripe — we never store card numbers
 • App usage: crash logs and page views (for app performance only)
+• Optional website analytics: pages visited and non-personal purchase totals/item details, only after you allow analytics
 
 HOW WE USE YOUR INFORMATION
 • To process and fulfill your orders
 • To send order status updates and notifications
 • To improve our products and service
-• We do NOT sell or share your data with third parties for advertising
+• We do NOT sell your personal information or use Google Analytics for personalized advertising
 
 THIRD-PARTY SERVICES
 • Stripe — payment processing (stripe.com/privacy)
 • Base44 — app infrastructure (base44.com/privacy)
+• Google Analytics — optional, consent-based website and purchase measurement (policies.google.com/privacy)
+
+ANALYTICS PRIVACY
+Google Analytics remains off until you choose “Allow analytics.” We do not send Google your name, email, phone number, street address, or payment details. Advertising storage, signals, and personalization remain disabled. You can reopen your analytics choice from this page at any time.
 
 DATA RETENTION
 Your data is retained as long as your account is active. You may request deletion at any time.
@@ -192,6 +199,15 @@ export default function Legal() {
 
       {/* Footer note */}
       <div className="mx-4 mt-6 text-center space-y-1">
+        {!isNativeAppRuntime() && (
+          <button
+            type="button"
+            onClick={() => resetAnalyticsConsent()}
+            className="mb-3 inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-4 text-xs font-semibold text-foreground"
+          >
+            Review analytics choice
+          </button>
+        )}
         <p className="text-[10px] text-muted-foreground">
           Questions? Contact us at{' '}
           <a href="mailto:support@nuvirajuice.com" className="text-primary underline">support@nuvirajuice.com</a>
