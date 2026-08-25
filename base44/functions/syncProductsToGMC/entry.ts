@@ -22,22 +22,82 @@ const PRODUCT_TYPE_MAP = {
   merch: 'Merchandise',
 };
 
+const MERCHANT_COPY = {
+  aura: {
+    title: 'NuVira AURA Cold-Pressed Juice – 12 oz',
+    description: 'A 12 oz cold-pressed juice blend made with carrot, orange, pineapple, cucumber, ginger, sea salt, and coconut water. Keep refrigerated.',
+  },
+  oasis: {
+    title: 'NuVira OASIS Cold-Pressed Juice – 12 oz',
+    description: 'A 12 oz cold-pressed juice blend made with watermelon, pineapple, orange, lemon, ginger, sea salt, black pepper, and coconut water. Keep refrigerated.',
+  },
+  're-nu': {
+    title: 'NuVira RE-NU Cold-Pressed Green Juice – 12 oz',
+    description: 'A 12 oz cold-pressed green juice made with cucumber, apple, celery, and kale. Keep refrigerated.',
+  },
+  'the nuvira trio': {
+    title: 'NuVira Cold-Pressed Juice Trio – 3 × 12 oz',
+    description: 'One 12 oz bottle each of NuVira AURA, RE-NU, and OASIS cold-pressed juice. Keep refrigerated.',
+  },
+  'orange juice': {
+    title: 'NuVira Cold-Pressed Orange Juice – 32 oz',
+    description: 'A 32 oz bottle of cold-pressed orange juice made from oranges with no added sugar or preservatives. Keep refrigerated.',
+  },
+  'pineapple juice': {
+    title: 'NuVira Cold-Pressed Pineapple Juice – 32 oz',
+    description: 'A 32 oz bottle of cold-pressed pineapple juice made from whole pineapple with no added sugar or preservatives. Keep refrigerated.',
+  },
+  'watermelon juice': {
+    title: 'NuVira Cold-Pressed Watermelon Juice – 32 oz',
+    description: 'A 32 oz bottle of cold-pressed watermelon juice made from fresh watermelon with no added sugar or preservatives. Keep refrigerated.',
+  },
+  'radiance shot': {
+    title: 'NuVira Radiance Wellness Shot – 2 oz',
+    description: 'A 2 oz wellness shot made with beet, apple, and lemon. Keep refrigerated.',
+  },
+  'hydration shot': {
+    title: 'NuVira Hydration Wellness Shot – 2 oz',
+    description: 'A 2 oz wellness shot made with coconut water, pink Himalayan salt, lime, honey, and mint. Keep refrigerated.',
+  },
+  'reset shot': {
+    title: 'NuVira Reset Wellness Shot – 2 oz',
+    description: 'A 2 oz wellness shot made with pineapple, lemon, ginger, and black salt. Keep refrigerated.',
+  },
+  'large nuvira tote bag': {
+    title: 'NuVira Reusable Tote Bag – Large',
+    description: 'A large reusable NuVira tote bag for event days, juice runs, and everyday carry.',
+  },
+};
+
 const MERCHANT_IMAGE_SETS = {
   aura: {
     primary: `${SITE_URL}/images/products/aura-main.jpg`,
-    additional: [`${SITE_URL}/images/products/aura-lifestyle.jpg`],
+    additional: [
+      `${SITE_URL}/images/products/aura-lifestyle.jpg`,
+      `${SITE_URL}/images/brand/nuvira-bottles-cooler-wide.jpg`,
+    ],
   },
   oasis: {
     primary: `${SITE_URL}/images/products/oasis-main.jpg`,
-    additional: [`${SITE_URL}/images/products/oasis-lifestyle.jpg`],
+    additional: [
+      `${SITE_URL}/images/products/oasis-lifestyle.jpg`,
+      `${SITE_URL}/images/brand/nuvira-bottles-cooler-wide.jpg`,
+    ],
   },
   're-nu': {
     primary: `${SITE_URL}/images/products/re-nu-main.jpg`,
-    additional: [`${SITE_URL}/images/products/re-nu-lifestyle.jpg`],
+    additional: [
+      `${SITE_URL}/images/products/re-nu-lifestyle.jpg`,
+      `${SITE_URL}/images/brand/nuvira-bottles-cooler-wide.jpg`,
+    ],
   },
   'the nuvira trio': {
     primary: `${SITE_URL}/images/products/nuvira-trio-main.jpg`,
-    additional: [`${SITE_URL}/images/products/nuvira-trio-lifestyle.jpg`],
+    additional: [
+      `${SITE_URL}/images/products/nuvira-trio-lifestyle.jpg`,
+      `${SITE_URL}/images/brand/nuvira-bottles-cooler-wide.jpg`,
+      `${SITE_URL}/images/brand/nuvira-trio-outdoor-event.jpg`,
+    ],
   },
   'pineapple juice': { primary: `${SITE_URL}/images/products/pineapple-juice-main.jpg` },
   'orange juice': { primary: `${SITE_URL}/images/products/orange-juice-main.jpg` },
@@ -76,6 +136,17 @@ function getGoogleProductCategory(product) {
     return GOOGLE_PRODUCT_CATEGORIES.tote;
   }
   return GOOGLE_PRODUCT_CATEGORIES.juice;
+}
+
+function getMerchantCopy(product) {
+  const titleKey = String(product.title || '').trim().toLowerCase();
+  const curated = MERCHANT_COPY[titleKey];
+  if (curated) return curated;
+  const size = String(product.size || '').trim();
+  return {
+    title: `${String(product.title || '').trim()}${size ? ` – ${size}` : ''}`,
+    description: `${String(product.title || '').trim()} from NuVira Juice Co. See the product page for current ingredients, size, availability, and scheduled local-delivery details.`,
+  };
 }
 
 function getServiceAccountKey() {
@@ -165,11 +236,12 @@ function encodeProductInputId(offerId) {
 function buildMerchantProductInput(product) {
   const images = getMerchantImages(product);
   if (!product.title || !images.primary || !product.price) return null;
+  const copy = getMerchantCopy(product);
 
   const offerId = product.id;
   const productAttributes: Record<string, any> = {
-    title: product.title,
-    description: product.description || product.short_description || `${product.title} — fresh cold-pressed juice from NuVira Juice Co., delivered in the St. Louis, MO area.`,
+    title: copy.title,
+    description: copy.description,
     link: `${SITE_URL}/shop/${product.id}`,
     imageLink: images.primary,
     availability: product.is_available === false ? 'OUT_OF_STOCK' : product.is_preorder ? 'PREORDER' : 'IN_STOCK',
