@@ -106,7 +106,7 @@ export default function SEO({ title, description, image, type = 'website', keywo
       <title>{fullTitle}</title>
       <meta name="description" content={metaDesc} />
       <meta name="keywords" content={metaKeywords} />
-      <meta name="robots" content={noindex ? 'noindex, nofollow' : 'index, follow'} />
+      <meta name="robots" content={noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large'} />
       <link rel="canonical" href={canonicalUrl} />
 
       {/* Open Graph */}

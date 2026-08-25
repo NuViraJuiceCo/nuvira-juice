@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { format, addDays } from 'date-fns';
 
 const MERCHANT_ID = 5778700568;
 
@@ -17,12 +16,10 @@ export default function GoogleCustomerReviewsOptIn({ order }) {
     const orderId = order.order_number || order.id;
     const email = order.customer_email;
 
-    // Prefer assigned_delivery_date, fall back to estimated_delivery_date,
-    // then calculate ~3 business days out as a last resort
-    let deliveryDate = order.assigned_delivery_date || order.estimated_delivery_date;
-    if (!deliveryDate) {
-      deliveryDate = format(addDays(new Date(), 3), 'yyyy-MM-dd');
-    }
+    // Use only the authoritative delivery date selected and confirmed by NuVira.
+    // A fabricated fallback date could cause Google to request a review before
+    // the customer's scheduled local delivery has actually occurred.
+    const deliveryDate = order.assigned_delivery_date || order.estimated_delivery_date;
 
     // Guard: all required fields must be present
     if (!orderId || !email || !deliveryDate) return;
@@ -33,7 +30,8 @@ export default function GoogleCustomerReviewsOptIn({ order }) {
     if (order.is_test_order) return;
 
     // Ensure date is formatted as YYYY-MM-DD
-    const formattedDate = deliveryDate.slice(0, 10);
+    const formattedDate = String(deliveryDate).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) return;
 
     // Define renderOptIn globally so the platform.js onload callback can call it
     window.renderOptIn = function () {
