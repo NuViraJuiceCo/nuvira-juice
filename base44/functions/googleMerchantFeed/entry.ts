@@ -3,8 +3,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 const SITE_URL = 'https://www.nuvirajuice.com';
 const BRAND = 'NuVira Juice Co.';
 
-// Google product category for cold-pressed juice
-const GOOGLE_PRODUCT_CATEGORY = 'Food, Beverages & Tobacco > Beverages > Juices';
+const GOOGLE_PRODUCT_CATEGORIES = {
+  juice: '2887',
+  tote: '5608',
+};
 
 // Map Base44 category to product_type
 const PRODUCT_TYPE_MAP = {
@@ -57,12 +59,19 @@ function getMerchantImages(product) {
   const titleKey = String(product.title || '').trim().toLowerCase();
   const curated = MERCHANT_IMAGE_SETS[titleKey];
   const primary = curated?.primary || absoluteImageUrl(product.image_url);
-  const candidates = [
-    ...(curated?.additional || []),
-    ...(Array.isArray(product.secondary_images) ? product.secondary_images.map(absoluteImageUrl) : []),
-  ];
+  // Keep Google's additional images to the first-party set that is verified
+  // for supported file types and stable public delivery.
+  const candidates = curated?.additional || [];
   const additional = [...new Set(candidates.filter(url => url && url !== primary))].slice(0, 9);
   return { primary, additional };
+}
+
+function getGoogleProductCategory(product) {
+  const titleKey = String(product.title || '').trim().toLowerCase();
+  if (titleKey.includes('tote') || titleKey.includes('shopping bag')) {
+    return GOOGLE_PRODUCT_CATEGORIES.tote;
+  }
+  return GOOGLE_PRODUCT_CATEGORIES.juice;
 }
 
 function escapeXml(str) {
@@ -109,7 +118,7 @@ function buildProductEntry(product) {
       <g:price>${price}</g:price>
       <g:brand>${escapeXml(BRAND)}</g:brand>
       <g:condition>new</g:condition>
-      <g:google_product_category>${escapeXml(GOOGLE_PRODUCT_CATEGORY)}</g:google_product_category>
+      <g:google_product_category>${escapeXml(getGoogleProductCategory(product))}</g:google_product_category>
       <g:product_type>${escapeXml(productType)}</g:product_type>`;
 
   // Compare-at / sale price (original price shown as price, discounted as sale_price)

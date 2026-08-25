@@ -7,7 +7,10 @@ const MERCHANT_API_SERVICE = 'merchantapi.googleapis.com';
 const CLOUD_PLATFORM_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 const SITE_URL = 'https://www.nuvirajuice.com';
 const BRAND = 'NuVira Juice Co.';
-const GOOGLE_PRODUCT_CATEGORY = 'Food, Beverages & Tobacco > Beverages > Juices';
+const GOOGLE_PRODUCT_CATEGORIES = {
+  juice: '2887',
+  tote: '5608',
+};
 
 const PRODUCT_TYPE_MAP = {
   juice: 'Cold-Pressed Juice',
@@ -59,12 +62,20 @@ function getMerchantImages(product) {
   const titleKey = String(product.title || '').trim().toLowerCase();
   const curated = MERCHANT_IMAGE_SETS[titleKey];
   const primary = curated?.primary || absoluteImageUrl(product.image_url);
-  const candidates = [
-    ...(curated?.additional || []),
-    ...(Array.isArray(product.secondary_images) ? product.secondary_images.map(absoluteImageUrl) : []),
-  ];
+  // Only send the curated, first-party image set to Google. Product.secondary_images
+  // can contain provider URLs or formats that render in-app but Merchant Center
+  // rejects as unsupported additional images.
+  const candidates = curated?.additional || [];
   const additional = [...new Set(candidates.filter(url => url && url !== primary))].slice(0, 9);
   return { primary, additional };
+}
+
+function getGoogleProductCategory(product) {
+  const titleKey = String(product.title || '').trim().toLowerCase();
+  if (titleKey.includes('tote') || titleKey.includes('shopping bag')) {
+    return GOOGLE_PRODUCT_CATEGORIES.tote;
+  }
+  return GOOGLE_PRODUCT_CATEGORIES.juice;
 }
 
 function getServiceAccountKey() {
@@ -164,7 +175,7 @@ function buildMerchantProductInput(product) {
     availability: product.is_available === false ? 'OUT_OF_STOCK' : product.is_preorder ? 'PREORDER' : 'IN_STOCK',
     condition: 'NEW',
     brand: BRAND,
-    googleProductCategory: GOOGLE_PRODUCT_CATEGORY,
+    googleProductCategory: getGoogleProductCategory(product),
     productTypes: [PRODUCT_TYPE_MAP[product.category] || 'Cold-Pressed Juice'],
     identifierExists: false,
     price: {
