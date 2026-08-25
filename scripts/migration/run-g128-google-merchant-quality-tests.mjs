@@ -53,6 +53,11 @@ const highResolutionProductImages = [
   'watermelon-juice-main.jpg',
 ];
 
+const highResolutionMerchantLifestyleImages = [
+  'public/images/brand/nuvira-bottles-cooler-wide.jpg',
+  'public/images/brand/nuvira-trio-outdoor-event.jpg',
+];
+
 for (const source of [xmlFeed, contentApi]) {
   assert.doesNotMatch(source, /<g:shipping>|shipping:\s*\[\{/);
   assert.doesNotMatch(source, /<g:price>0\.00 USD<\/g:price>|price:\s*\{\s*value:\s*'0\.00'/);
@@ -62,6 +67,13 @@ for (const source of [xmlFeed, contentApi]) {
   assert.match(source, /getGoogleProductCategory\(product\)/);
   assert.doesNotMatch(source, /Beverages > Juices/);
   assert.doesNotMatch(source, /product\.secondary_images\.map\(absoluteImageUrl\)/);
+  assert.match(source, /MERCHANT_COPY/);
+  assert.match(source, /NuVira AURA Cold-Pressed Juice – 12 oz/);
+  assert.match(source, /NuVira Hydration Wellness Shot – 2 oz/);
+  assert.match(source, /NuVira Reusable Tote Bag – Large/);
+  assert.doesNotMatch(source, /boost energy|clear the body|detox-forward/i);
+  assert.match(source, /nuvira-bottles-cooler-wide\.jpg/);
+  assert.match(source, /nuvira-trio-outdoor-event\.jpg/);
 }
 
 assert.match(xmlFeed, /<g:additional_image_link>/);
@@ -110,6 +122,15 @@ for (const filename of highResolutionProductImages) {
   assert.ok(stats.size < 16 * 1024 * 1024, `${filename} must remain below Google's 16MB limit`);
 }
 
+for (const relativePath of highResolutionMerchantLifestyleImages) {
+  const filePath = path.join(repoRoot, relativePath);
+  const stats = fs.statSync(filePath);
+  const dimensions = jpegDimensions(filePath);
+  assert.ok(dimensions.width > 1024, `${relativePath} width must exceed Google's 1024px high-resolution threshold`);
+  assert.ok(dimensions.height > 1024, `${relativePath} height must exceed Google's 1024px high-resolution threshold`);
+  assert.ok(stats.size < 16 * 1024 * 1024, `${relativePath} must remain below Google's 16MB limit`);
+}
+
 assert.match(confirmation, /<GoogleCustomerReviewsOptIn order=\{order\}/);
 assert.match(reviewOptIn, /assigned_delivery_date \|\| order\.estimated_delivery_date/);
 assert.match(reviewOptIn, /\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/);
@@ -135,6 +156,7 @@ console.log(JSON.stringify({
   wallet_checkout_preserved: true,
   large_image_preview_enabled: true,
   exact_high_resolution_catalog_photos: highResolutionProductImages.length,
+  exact_high_resolution_lifestyle_photos: highResolutionMerchantLifestyleImages.length,
   merchant_api_product_sync: true,
   legacy_content_api_requests: false,
   shelf_life_policy_aligned: true,
