@@ -1186,20 +1186,16 @@ Deno.serve(async (req) => {
     const eligibility = validatedEligibility;
 
     // Metadata — centralized schedule fields from calculateNuViraFulfillmentSchedule
+    // Keep this provider projection deliberately compact. Stripe accepts at most
+    // 50 metadata keys; the complete checkout, eligibility, and audit payloads
+    // remain authoritative in CheckoutSession and Order.
     const intentMetadata = {
-      base44_app_id:            Deno.env.get('BASE44_APP_ID'),
-      source_app:               'customer_app',
       checkout_version:         '3.0_embedded',
       checkout_mode:            isGuestCheckout ? 'guest' : 'account',
       order_number:             orderNumber,
-      order_type:               'one_time',
-      fulfillment_mode:         'single_delivery',
       is_preorder:              'false',
       customer_email:           normalizedCustomerEmail,
       customer_name:            customer_name  || '',
-      customer_first_name:      customerIdentity.firstName,
-      customer_last_name:       customerIdentity.lastName,
-      customer_name_source:     customerIdentity.source,
       customer_phone:           normalizedPhone,
       delivery_method:          fulfillment_type || 'delivery',
       delivery_address_line1:   normalizedAddress.line1,
@@ -1207,15 +1203,11 @@ Deno.serve(async (req) => {
       delivery_city:            normalizedAddress.city,
       delivery_state:           normalizedAddress.state,
       delivery_postal_code:     normalizedAddress.postalCode,
-      requested_delivery_date:  deliveryDate,
       selected_delivery_date:   deliveryDate,
-      production_date:          resolvedProdDate,
       assigned_production_day:  resolvedProdDate,
       delivery_window_label:    resolvedWindowLabel,
       delivery_window_start:    resolvedWindowStart,
       delivery_window_end:      resolvedWindowEnd,
-      schedule_reason:          resolvedScheduleSrc,
-      scheduling_reason:        resolvedScheduleSrc,
       final_schedule_source:    canonicalSchedule.finalScheduleSource,
       cutoff_window_label:      canonicalSchedule.cutoffWindowLabel || '',
       delivery_window_timezone: canonicalSchedule.deliveryWindowTimezone,
@@ -1228,7 +1220,6 @@ Deno.serve(async (req) => {
       delivery_zone_minimum:    eligibility ? String(eligibility.minimum_order  ?? '') : '',
       estimated_distance_miles: eligibility ? String(eligibility.estimated_distance_miles ?? '') : '',
       distance_confidence:      eligibility?.distance_confidence || '',
-      zone_origin_address:      "619 N Main St, O'Fallon, MO 63366",
       eligibility_reason_code:  eligibility?.reason_code     || '',
       referral_code:            appliedReferralCode || '',
       referral_discount_amount: appliedReferralDiscountAmt.toFixed(2),
@@ -1245,6 +1236,10 @@ Deno.serve(async (req) => {
       is_test_order:              internalSandboxCheckout ? 'true' : 'false',
       sandbox_test_id:            internalSandboxCheckout ? sandboxTestId : '',
     };
+
+    if (Object.keys(intentMetadata).length > 50) {
+      throw new Error('CHECKOUT_PROVIDER_METADATA_LIMIT_EXCEEDED');
+    }
 
     // Account discounts are represented in the pre-code total. The checkout
     // code is resolved and subtracted exactly once on the server above.

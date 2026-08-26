@@ -29,6 +29,12 @@ assert.match(paymentIntent, /internal_sandbox_checkout:\s*internalSandboxCheckou
 assert.match(paymentIntent, /checkoutStripe\.paymentIntents\.confirm\(paymentIntent\.id,[\s\S]*payment_method: 'pm_card_visa'/);
 assert.match(paymentIntent, /no_money_moved: true/);
 assert.match(paymentIntent, /production_stripe_key_used: false/);
+const intentMetadataSource = paymentIntent.match(/const intentMetadata = \{([\s\S]*?)\n    \};/)?.[1] || '';
+const intentMetadataKeyCount = [...intentMetadataSource.matchAll(/^\s{6}([a-zA-Z_][a-zA-Z0-9_]*):/gm)].length;
+assert.ok(intentMetadataKeyCount > 0 && intentMetadataKeyCount <= 50,
+  `Stripe metadata must remain within the 50-key provider limit; found ${intentMetadataKeyCount}`);
+assert.match(paymentIntent, /Object\.keys\(intentMetadata\)\.length > 50/);
+assert.doesNotMatch(intentMetadataSource, /\b(?:base44_app_id|source_app|order_type|fulfillment_mode|customer_first_name|customer_last_name|customer_name_source|requested_delivery_date|production_date|schedule_reason|scheduling_reason|zone_origin_address):/);
 assert.doesNotMatch(
   paymentIntent,
   /console\.(?:log|warn|error)\([^\n]*(?:STRIPE_SANDBOX_SECRET_KEY|internal_sandbox_confirmation|guest_order_token)/,
