@@ -135,9 +135,7 @@ export default function HeroBanner({ banners = [] }) {
         </div>
 
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.55 }}
+          initial={false}
           className="max-w-3xl pb-4 md:pb-5"
         >
           <p

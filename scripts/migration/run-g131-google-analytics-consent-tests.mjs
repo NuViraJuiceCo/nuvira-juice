@@ -15,6 +15,7 @@ const programDetail = fs.readFileSync('src/pages/ProgramDetail.jsx', 'utf8');
 const checkout = fs.readFileSync('src/pages/Checkout.jsx', 'utf8');
 const embeddedPayment = fs.readFileSync('src/components/checkout/EmbeddedPayment.jsx', 'utf8');
 const indexHtml = fs.readFileSync('index.html', 'utf8');
+const indexCss = fs.readFileSync('src/index.css', 'utf8');
 const seo = fs.readFileSync('src/components/SEO.jsx', 'utf8');
 const contact = fs.readFileSync('src/pages/Contact.jsx', 'utf8');
 const heroBanner = fs.readFileSync('src/components/home/HeroBanner.jsx', 'utf8');
@@ -118,6 +119,13 @@ const checks = [
     assert.doesNotMatch(heroBanner, /new Image\(\)/);
     assert.match(heroBanner, /current !== 0/);
     assert.match(app, /isNativeAppRuntime\(\) && !hasSplashBeenShown\(\)/);
+  }],
+  ['homepage LCP heading uses a preloaded local font and renders without a mount delay', () => {
+    assert.match(indexHtml, /rel="preload" href="\/fonts\/playfair-display-latin\.woff2" as="font" type="font\/woff2" crossorigin/);
+    assert.match(indexCss, /font-family: 'Playfair Display'/);
+    assert.match(indexCss, /src: url\('\/fonts\/playfair-display-latin\.woff2'\) format\('woff2'\)/);
+    assert.ok(fs.existsSync('public/fonts/playfair-display-latin.woff2'));
+    assert.match(heroBanner, /<motion\.div\s+initial=\{false\}/);
   }],
 ];
 
