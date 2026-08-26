@@ -12,6 +12,10 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
 
+        <meta-data
+            android:name="com.google.android.gms.wallet.api.enabled"
+            android:value="true" />
+
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
@@ -49,6 +53,11 @@
             </intent-filter>
 
         </activity>
+
+        <activity
+            android:name=".NativeGooglePayActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme.NoActionBar" />
 
         <service
             android:name="io.capawesome.capacitorjs.plugins.firebase.messaging.MessagingService"
