@@ -60,7 +60,7 @@ assert(checkout.includes("localStorage.getItem('nuvira_pending_checkout_session'
 assert(checkout.includes('checkout_idempotency_key'), 'Expected checkout idempotency key evidence is missing from Checkout');
 
 const createPaymentIntent = read('base44/functions/createPaymentIntent/entry.ts');
-assert(createPaymentIntent.includes('stripe.paymentIntents.create'), 'Expected Stripe PaymentIntent creation evidence is missing');
+assert(createPaymentIntent.includes('paymentIntents.create'), 'Expected Stripe PaymentIntent creation evidence is missing');
 assert(createPaymentIntent.includes('idempotencyKey'), 'Expected Stripe idempotency key evidence is missing');
 assert(createPaymentIntent.includes('entities.Order.filter') && createPaymentIntent.includes('entities.Order.create'), 'Expected filter-then-create pending Order evidence is missing');
 

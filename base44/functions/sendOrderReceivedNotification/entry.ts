@@ -4,6 +4,7 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
 const APP_ORIGIN = 'https://www.nuvirajuice.com';
 const TRANSACTIONAL_FROM = Deno.env.get('TRANSACTIONAL_EMAIL_FROM') || 'NuVira Juice Co <orders@nuvirajuice.com>';
 const TRANSACTIONAL_REPLY_TO = Deno.env.get('TRANSACTIONAL_EMAIL_REPLY_TO') || 'support@nuvirajuice.com';
+const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 
 function cleanText(value, max = 500) {
   return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { order_id, customer_email, customer_name, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label, refund_notification } = await req.json();
+    const { order_id, customer_email, customer_name, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label, refund_notification, internal_sandbox_test, sandbox_test_id } = await req.json();
     const idempotencyKey = buildOrderConfirmationEmailKey(order_id, order_number);
     const safeOrderNumber = cleanText(order_number || order_id, 120) || 'your order';
 
@@ -92,6 +93,13 @@ Deno.serve(async (req) => {
 
     if (!customer_email) {
       return Response.json({ error: 'Missing customer_email' }, { status: 400 });
+    }
+
+    if (internal_sandbox_test === true && (
+      String(customer_email || '').trim().toLowerCase() !== CHECKOUT_PROVIDER_SANDBOX_RECIPIENT
+      || !/^[a-zA-Z0-9._:-]{8,80}$/.test(String(sandbox_test_id || ''))
+    )) {
+      return Response.json({ error: 'invalid_checkout_provider_sandbox_recipient' }, { status: 403 });
     }
 
     if (!RESEND_API_KEY) {
@@ -258,6 +266,8 @@ Deno.serve(async (req) => {
           error_message: errorMessage,
           metadata: {
             source_function: 'sendOrderReceivedNotification',
+            internal_sandbox_test: internal_sandbox_test === true,
+            sandbox_test_id: internal_sandbox_test === true ? sandbox_test_id : null,
           },
         });
       }
@@ -281,6 +291,8 @@ Deno.serve(async (req) => {
           source_function: 'sendOrderReceivedNotification',
           delivery_date: assigned_delivery_date || estimated_delivery_date || null,
           delivery_window_label: delivery_window_label || null,
+          internal_sandbox_test: internal_sandbox_test === true,
+          sandbox_test_id: internal_sandbox_test === true ? sandbox_test_id : null,
         },
       });
     }
