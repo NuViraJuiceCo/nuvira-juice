@@ -48,6 +48,7 @@ assert.ok(orderCreateIndex > -1 && sessionCreateIndex > orderCreateIndex && conf
   'Sandbox PaymentIntent must only be confirmed after isolated Order and CheckoutSession records exist');
 
 assert.match(webhook, /STRIPE_SANDBOX_WEBHOOK_SECRET/);
+assert.match(webhook, /stripe-webhook-runtime-g136-sandbox-signature-v1/);
 assert.match(webhook, /constructEventAsync\(body, signature, sandboxWebhookSecret\)/);
 assert.match(webhook, /live_webhook_rejected_test_event/);
 assert.match(webhook, /sandbox_webhook_rejected_unmarked_event/);
