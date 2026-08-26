@@ -1,4 +1,14 @@
-/* Fonts loaded via preload link in index.html to avoid render blocking */
+/* Keep the LCP heading font local so the homepage does not repaint after a
+   third-party font round trip. This single variable font covers weights 400-700. */
+@font-face {
+  font-family: 'Playfair Display';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/playfair-display-latin.woff2') format('woff2');
+}
+
+/* The body font is loaded asynchronously via index.html. */
 
 @tailwind base;
 @tailwind components;
