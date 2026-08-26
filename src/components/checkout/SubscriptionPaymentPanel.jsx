@@ -11,6 +11,7 @@ import {
 } from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Lock } from 'lucide-react';
+import { confirmNativeGooglePayPayment, getNativeGooglePayAvailability, isNativeGooglePayPlatform } from '@/lib/nativeGooglePay';
 
 /**
  * SubscriptionPaymentPanel
@@ -29,13 +30,26 @@ import { CheckCircle2, Lock } from 'lucide-react';
  *   onCancel: () => void
  */
 
-function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel }) {
+function PaymentForm({ amountDue, planName, clientSecret, publishableKey, onSuccess, onCancel }) {
   const stripe = useStripe();
   const elements = useElements();
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [expressReady, setExpressReady] = useState(false);
   const [expressAvailable, setExpressAvailable] = useState(false);
+  const [nativeGooglePayStatus, setNativeGooglePayStatus] = useState({ ready: false, available: false });
+
+  React.useEffect(() => {
+    let isMounted = true;
+    if (!isNativeGooglePayPlatform()) {
+      setNativeGooglePayStatus({ ready: true, available: false });
+      return () => { isMounted = false; };
+    }
+    getNativeGooglePayAvailability(publishableKey).then((status) => {
+      if (isMounted) setNativeGooglePayStatus({ ready: true, ...status });
+    });
+    return () => { isMounted = false; };
+  }, [publishableKey]);
 
   const cardElementStyle = {
     style: {
@@ -101,6 +115,24 @@ function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel })
     }
   };
 
+  const handleNativeGooglePay = async () => {
+    setSubmitting(true);
+    setErrorMsg('');
+    try {
+      const result = await confirmNativeGooglePayPayment({ clientSecret, publishableKey });
+      if (result?.status === 'success' && result?.paymentIntentId) {
+        onSuccess(result.paymentIntentId);
+        return;
+      }
+      throw new Error('Google Pay did not complete. Please try again.');
+    } catch (error) {
+      if (error?.code !== 'USER_CANCELED') {
+        setErrorMsg(error?.message || 'Google Pay failed. Please try again.');
+      }
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Plan summary */}
@@ -113,7 +145,21 @@ function PaymentForm({ amountDue, planName, clientSecret, onSuccess, onCancel })
       </div>
 
       {/* Express Checkout */}
-      {(!expressReady || expressAvailable) && (
+      {nativeGooglePayStatus.available && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Google Pay</p>
+          <button
+            type="button"
+            onClick={handleNativeGooglePay}
+            disabled={submitting}
+            className="w-full h-12 rounded-xl bg-black text-white font-semibold text-sm inline-flex items-center justify-center shadow disabled:pointer-events-none disabled:opacity-50"
+          >
+            {submitting ? 'Opening Google Pay…' : `Subscribe — $${amountDue.toFixed(2)} with Google Pay`}
+          </button>
+        </div>
+      )}
+
+      {(!isNativeGooglePayPlatform() && (!expressReady || expressAvailable)) && (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Wallet Checkout</p>
           <div style={{ minHeight: '48px' }}>
@@ -237,6 +283,7 @@ export default function SubscriptionPaymentPanel({ clientSecret, publishableKey,
           amountDue={safeAmount}
           planName={planName}
           clientSecret={clientSecret}
+          publishableKey={publishableKey}
           onSuccess={onSuccess}
           onCancel={onCancel}
         />

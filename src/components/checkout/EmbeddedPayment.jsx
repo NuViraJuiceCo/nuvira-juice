@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { loadStripe } from '@stripe/stripe-js';
 import { confirmNativeApplePayPayment, getNativeApplePayAvailability, isNativeApplePayPlatform, paymentIntentIdFromClientSecret } from '@/lib/nativeApplePay';
+import { confirmNativeGooglePayPayment, getNativeGooglePayAvailability, isNativeGooglePayPlatform } from '@/lib/nativeGooglePay';
 import {
   Elements,
   CardNumberElement,
@@ -42,6 +43,11 @@ function PaymentForm({
     canMakeCardPayments: false,
     merchantIdentifierConfigured: false,
   });
+  const [nativeGooglePayStatus, setNativeGooglePayStatus] = useState({
+    ready: false,
+    available: false,
+    reason: '',
+  });
 
   useEffect(() => {
     let isMounted = true;
@@ -65,6 +71,21 @@ function PaymentForm({
 
     return () => { isMounted = false; };
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!isNativeGooglePayPlatform()) {
+      setNativeGooglePayStatus({ ready: true, available: false, reason: 'not_android_native' });
+      return () => { isMounted = false; };
+    }
+
+    getNativeGooglePayAvailability(publishableKey).then((status) => {
+      if (!isMounted) return;
+      setNativeGooglePayStatus({ ready: true, ...status });
+    });
+
+    return () => { isMounted = false; };
+  }, [publishableKey]);
 
   // Handle Express Checkout (Apple Pay / Google Pay) confirmation
   // ExpressCheckoutElement calls this after the user authorizes in the wallet sheet.
@@ -168,6 +189,29 @@ function PaymentForm({
     }
   };
 
+  const handleNativeGooglePay = async () => {
+    setIsSubmitting(true);
+    setErrorMsg('');
+
+    try {
+      const result = await confirmNativeGooglePayPayment({ clientSecret, publishableKey });
+      if (result?.status === 'success' && result?.paymentIntentId) {
+        onSuccess(result.paymentIntentId);
+        return;
+      }
+      throw new Error('Google Pay did not complete. Please try again.');
+    } catch (error) {
+      if (error?.code === 'USER_CANCELED') {
+        setErrorMsg('');
+      } else {
+        const message = error?.message || 'Google Pay failed. Please try again.';
+        setErrorMsg(message);
+        onError(message);
+      }
+      setIsSubmitting(false);
+    }
+  };
+
   const cardElementStyle = {
     style: {
       base: {
@@ -199,8 +243,22 @@ function PaymentForm({
         </div>
       )}
 
+      {nativeGooglePayStatus.available && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Google Pay</p>
+          <button
+            type="button"
+            onClick={handleNativeGooglePay}
+            disabled={isSubmitting}
+            className="w-full h-12 rounded-xl bg-black text-white font-semibold text-sm inline-flex items-center justify-center shadow disabled:pointer-events-none disabled:opacity-50"
+          >
+            {isSubmitting ? 'Opening Google Pay…' : `Pay $${total.toFixed(2)} with Google Pay`}
+          </button>
+        </div>
+      )}
+
       {/* Express Checkout — Apple Pay / Google Pay. Collapse the section if Stripe reports no wallet methods. */}
-      {(!expressReady || expressAvailable) && (
+      {!isNativeGooglePayPlatform() && (!expressReady || expressAvailable) && (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Wallet Checkout</p>
           <div style={{ minHeight: '48px' }}>
@@ -261,8 +319,12 @@ function PaymentForm({
             <span>{formatDiagnosticBool(nativeApplePayStatus.canMakeCardPayments)}</span>
             <span>native_merchant</span>
             <span>{formatDiagnosticBool(nativeApplePayStatus.merchantIdentifierConfigured)}</span>
+            <span>native_google_pay</span>
+            <span>{nativeGooglePayStatus.ready ? formatDiagnosticBool(nativeGooglePayStatus.available) : 'checking'}</span>
+            <span>google_pay_reason</span>
+            <span>{formatDiagnosticText(nativeGooglePayStatus.reason)}</span>
           </div>
-          <p className="mt-2 text-amber-900/80">Card checkout remains active. Verify Stripe domain/mode and native WebView eligibility before releasing Apple Pay messaging.</p>
+          <p className="mt-2 text-amber-900/80">Card checkout remains active. Verify Stripe mode, wallet setup, and the eligible native or browser environment before releasing wallet messaging.</p>
         </div>
       )}
 
@@ -304,8 +366,8 @@ function PaymentForm({
         </button>
 
         <p className="text-center text-[10px] text-muted-foreground">
-          {nativeApplePayStatus.available || expressAvailable
-            ? 'Apple Pay · Card — Secured by Stripe'
+          {nativeApplePayStatus.available || nativeGooglePayStatus.available || expressAvailable
+            ? `${nativeApplePayStatus.available ? 'Apple Pay · ' : ''}${nativeGooglePayStatus.available ? 'Google Pay · ' : ''}Card — Secured by Stripe`
             : 'Card — Secured by Stripe'}
         </p>
         <p className="text-center text-[10px] text-muted-foreground opacity-60">
