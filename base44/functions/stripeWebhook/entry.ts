@@ -3,7 +3,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g136-sandbox-signature-v2';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g136-public-diagnostic-v1';
+const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
   'backend_cadence',
@@ -366,6 +367,8 @@ Deno.serve(async (req) => {
     const sandboxSecretExists = !!sandboxWebhookSecret;
     const signatureExists = !!signature;
     const requestPath = req.url;
+    const sandboxDiagnosticRequested = req.headers.get('x-nuvira-sandbox-signature-probe')
+      === CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION;
 
     console.error('Webhook signature verification failed');
     console.error('[stripeWebhook] invalid signature boundary', {
@@ -376,7 +379,17 @@ Deno.serve(async (req) => {
       runtime_build_id: STRIPE_WEBHOOK_RUNTIME_BUILD_ID,
     });
 
-    return Response.json({ error: 'Invalid signature' }, { status: 400 });
+    return Response.json({
+      error: 'Invalid signature',
+      ...(sandboxDiagnosticRequested ? {
+        sandbox_signature_diagnostic: {
+          runtime_build_id: STRIPE_WEBHOOK_RUNTIME_BUILD_ID,
+          signature_header_present: signatureExists,
+          live_secret_present: secretExists,
+          sandbox_secret_present: sandboxSecretExists,
+        },
+      } : {}),
+    }, { status: 400 });
     }
   }
 
