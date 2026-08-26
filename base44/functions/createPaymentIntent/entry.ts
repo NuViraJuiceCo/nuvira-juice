@@ -4,6 +4,11 @@ import Stripe from 'npm:stripe@14.21.0';
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
+const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
+  'nuvirajuice.com',
+  'www.nuvirajuice.com',
+]);
+const GOOGLE_PAY_DOMAIN_CONFIRMATION = 'ENSURE_GOOGLE_PAY_DOMAINS';
 const PROGRAM_SCHEDULE_VERSION = '2026-08-09.v2';
 const PROGRAM_ORDER_OPTIONS = Object.freeze({
   radiance: Object.freeze({
@@ -112,6 +117,63 @@ function normalizePromotionCode(value) {
 
 function normalizeCustomerEmail(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function isWalletConfigurationAdmin(user) {
+  return ['admin', 'owner'].includes(String(user?.role || '').trim().toLowerCase());
+}
+
+function paymentMethodDomainSummary(domainName, record) {
+  const googlePayStatus = String(record?.google_pay?.status || 'not_registered').trim().toLowerCase();
+  const applePayStatus = String(record?.apple_pay?.status || 'not_registered').trim().toLowerCase();
+  const enabled = record?.enabled === true;
+  return {
+    domain_name: domainName,
+    registered: Boolean(record),
+    enabled,
+    livemode: record?.livemode === true,
+    google_pay_status: googlePayStatus,
+    apple_pay_status: applePayStatus,
+    google_pay_ready: enabled && googlePayStatus === 'active',
+  };
+}
+
+async function requiredPaymentMethodDomainStatus() {
+  const response = await stripe.paymentMethodDomains.list({ limit: 100 });
+  const records = Array.isArray(response?.data) ? response.data : [];
+  const byName = new Map(records.map((record) => [String(record?.domain_name || '').trim().toLowerCase(), record]));
+  const domains = GOOGLE_PAY_REQUIRED_DOMAINS.map((domainName) => (
+    paymentMethodDomainSummary(domainName, byName.get(domainName))
+  ));
+  return {
+    required_domain_count: GOOGLE_PAY_REQUIRED_DOMAINS.length,
+    google_pay_ready: domains.every((domain) => domain.google_pay_ready),
+    domains,
+  };
+}
+
+async function ensureRequiredPaymentMethodDomains() {
+  const response = await stripe.paymentMethodDomains.list({ limit: 100 });
+  const records = Array.isArray(response?.data) ? response.data : [];
+  const byName = new Map(records.map((record) => [String(record?.domain_name || '').trim().toLowerCase(), record]));
+
+  for (const domainName of GOOGLE_PAY_REQUIRED_DOMAINS) {
+    let record = byName.get(domainName);
+    if (!record) {
+      record = await stripe.paymentMethodDomains.create(
+        { domain_name: domainName, enabled: true },
+        { idempotencyKey: `nuvira-google-pay-domain-${domainName.replace(/[^a-z0-9]/g, '-')}` },
+      );
+    } else if (record.enabled !== true) {
+      record = await stripe.paymentMethodDomains.update(record.id, { enabled: true });
+    }
+
+    if (String(record?.google_pay?.status || '').trim().toLowerCase() !== 'active') {
+      await stripe.paymentMethodDomains.validate(record.id);
+    }
+  }
+
+  return requiredPaymentMethodDomainStatus();
 }
 
 function rowUsesDiscountCode(row, code) {
@@ -558,6 +620,36 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'unauthorized' }, { status: 401 });
     }
 
+    if (mode === 'wallet_configuration_status' || mode === 'ensure_google_pay_domains') {
+      if (!isWalletConfigurationAdmin(authenticatedUser)) {
+        return Response.json({ error: 'forbidden' }, { status: 403 });
+      }
+
+      try {
+        if (mode === 'ensure_google_pay_domains') {
+          if (requestBody.confirmation !== GOOGLE_PAY_DOMAIN_CONFIRMATION) {
+            return Response.json({
+              ok: false,
+              error: 'Explicit Google Pay domain confirmation is required.',
+              error_code: 'GOOGLE_PAY_DOMAIN_CONFIRMATION_REQUIRED',
+            }, { status: 400 });
+          }
+          const status = await ensureRequiredPaymentMethodDomains();
+          return Response.json({ ok: true, mode, ...status });
+        }
+
+        const status = await requiredPaymentMethodDomainStatus();
+        return Response.json({ ok: true, mode, ...status });
+      } catch (walletError) {
+        console.error(`[PI] Google Pay domain readiness failed: ${walletError?.message || 'unknown provider error'}`);
+        return Response.json({
+          ok: false,
+          error: 'Google Pay domain readiness could not be confirmed. Please try again.',
+          error_code: 'GOOGLE_PAY_DOMAIN_READINESS_UNAVAILABLE',
+        }, { status: 502 });
+      }
+    }
+
     if (mode === 'validate_discount_code') {
       const discount = await resolvePromotion(base44, discount_code || promotion_code || referral_code, eligible_subtotal);
       if (!discount?.code || discount.amount <= 0) {
@@ -912,7 +1004,7 @@ Deno.serve(async (req) => {
       stripeIdempotencyKey ? { idempotencyKey: stripeIdempotencyKey } : {}
     );
 
-    console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: automatic_payment_methods=enabled, allow_redirects=never. amount=${amountCents}¢, customer=${customer_email}`);
+    console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: payment_method_types=card; express_wallets=apple_pay,google_pay. amount=${amountCents}¢, customer=${customer_email}`);
 
     // Pre-create a pending Order so webhook finalize is simple and idempotent
     const resolvedDeliveryAddress = delivery_address || [
