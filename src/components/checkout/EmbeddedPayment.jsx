@@ -226,6 +226,7 @@ function PaymentForm({
 
   const formatDiagnosticBool = (value) => (value ? 'yes' : 'no');
   const formatDiagnosticText = (value) => String(value ?? 'unknown');
+  const nativeGooglePayPreferred = isNativeGooglePayPlatform() && nativeGooglePayStatus.available;
 
   return (
     <div className="space-y-4">
@@ -258,7 +259,7 @@ function PaymentForm({
       )}
 
       {/* Express Checkout — Apple Pay / Google Pay. Collapse the section if Stripe reports no wallet methods. */}
-      {!isNativeGooglePayPlatform() && (!expressReady || expressAvailable) && (
+      {!nativeGooglePayPreferred && (!expressReady || expressAvailable) && (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Wallet Checkout</p>
           <div style={{ minHeight: '48px' }}>

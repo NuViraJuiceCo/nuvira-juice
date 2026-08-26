@@ -47,10 +47,13 @@ assert.match(bridge, /NativeGooglePay\.confirmPayment\(\{ clientSecret, publisha
 assert.match(oneTime, /getNativeGooglePayAvailability\(publishableKey\)/);
 assert.match(oneTime, /confirmNativeGooglePayPayment\(\{ clientSecret, publishableKey \}\)/);
 assert.match(oneTime, /Pay \$\$\{total\.toFixed\(2\)\} with Google Pay/);
-assert.match(oneTime, /!isNativeGooglePayPlatform\(\) && \(!expressReady \|\| expressAvailable\)/);
+assert.match(oneTime, /nativeGooglePayPreferred = isNativeGooglePayPlatform\(\) && nativeGooglePayStatus\.available/);
+assert.match(oneTime, /!nativeGooglePayPreferred && \(!expressReady \|\| expressAvailable\)/);
 assert.match(subscription, /getNativeGooglePayAvailability\(publishableKey\)/);
 assert.match(subscription, /confirmNativeGooglePayPayment\(\{ clientSecret, publishableKey \}\)/);
 assert.match(subscription, /Subscribe — \$\$\{amountDue\.toFixed\(2\)\} with Google Pay/);
+assert.match(subscription, /nativeGooglePayPreferred = isNativeGooglePayPlatform\(\) && nativeGooglePayStatus\.available/);
+assert.match(subscription, /!nativeGooglePayPreferred && \(!expressReady \|\| expressAvailable\)/);
 assert.match(criticalSuite, /run-g134-native-android-google-pay-tests\.mjs/);
 
 console.log(JSON.stringify({
