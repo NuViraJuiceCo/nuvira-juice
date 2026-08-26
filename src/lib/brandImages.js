@@ -8,12 +8,12 @@ export const BRAND_IMAGES = {
   eventCollateral: '/images/brand/nuvira-event-collateral.jpg',
   aboutHeroEvent: '/images/brand/nuvira-about-hero-event.jpg',
   aboutHeroMobile: '/images/brand/nuvira-about-hero-mobile.jpg',
-  aboutBottleCooler: '/images/brand/nuvira-about-bottle-cooler.jpg',
+  aboutBottleCooler: '/images/brand/nuvira-about-bottle-cooler.webp',
   aboutProductSignage: '/images/brand/nuvira-about-product-signage.jpg',
   aboutCommunityService: '/images/brand/nuvira-about-community-service.jpg',
   aboutMarketWide: '/images/brand/nuvira-about-market-wide.jpg',
-  trioOutdoorEvent: '/images/brand/nuvira-trio-outdoor-event.jpg',
-  toteBag: '/images/brand/nuvira-tote-bag.jpg',
+  trioOutdoorEvent: '/images/brand/nuvira-trio-outdoor-event.webp',
+  toteBag: '/images/brand/nuvira-tote-bag.webp',
   ogCooler: '/images/brand/nuvira-og-cooler.jpg',
 };
 

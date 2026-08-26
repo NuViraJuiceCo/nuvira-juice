@@ -26,6 +26,7 @@ function PaymentForm({
   isSubmitting,
   setIsSubmitting,
   onWalletStatus,
+  onPaymentAttempt,
   confirmLabel,
   showWalletDiagnostics,
 }) {
@@ -90,8 +91,9 @@ function PaymentForm({
   // Handle Express Checkout (Apple Pay / Google Pay) confirmation
   // ExpressCheckoutElement calls this after the user authorizes in the wallet sheet.
   // The express element has already collected the payment method — just confirm the PI.
-  const handleExpressConfirm = async () => {
+  const handleExpressConfirm = async (event) => {
     if (!stripe) return;
+    onPaymentAttempt?.(event?.expressPaymentType || 'Express wallet');
     setIsSubmitting(true);
     setErrorMsg('');
 
@@ -128,6 +130,7 @@ function PaymentForm({
     e.preventDefault();
     if (!stripe || !elements) return;
 
+    onPaymentAttempt?.('Card');
     setIsSubmitting(true);
     setErrorMsg('');
 
@@ -157,6 +160,7 @@ function PaymentForm({
   };
 
   const handleNativeApplePay = async () => {
+    onPaymentAttempt?.('Apple Pay');
     setIsSubmitting(true);
     setErrorMsg('');
 
@@ -190,6 +194,7 @@ function PaymentForm({
   };
 
   const handleNativeGooglePay = async () => {
+    onPaymentAttempt?.('Google Pay');
     setIsSubmitting(true);
     setErrorMsg('');
 
@@ -401,6 +406,7 @@ export default function EmbeddedPayment({
   onError,
   isSubmitting,
   setIsSubmitting,
+  onPaymentAttempt = undefined,
   confirmLabel = undefined,
   showWalletDiagnostics = false,
 }) {
@@ -467,6 +473,7 @@ export default function EmbeddedPayment({
           isSubmitting={isSubmitting}
           setIsSubmitting={setIsSubmitting}
           onWalletStatus={setWalletStatus}
+          onPaymentAttempt={onPaymentAttempt}
           confirmLabel={confirmLabel}
           showWalletDiagnostics={showWalletDiagnostics}
         />

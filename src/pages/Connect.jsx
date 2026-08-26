@@ -54,7 +54,7 @@ const socials = [
 const links = [
   {
     name: 'Website',
-    url: 'https://www.nuvirajuice.com',
+    url: 'https://nuvirajuice.com/',
     desc: 'Our full brand experience online',
     bg: 'bg-primary/8 border-primary/20',
     textColor: 'text-primary',

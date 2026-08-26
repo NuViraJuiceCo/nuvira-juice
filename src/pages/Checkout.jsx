@@ -24,6 +24,7 @@ import Zone3RouteReviewPanel from '@/components/checkout/Zone3RouteReviewPanel';
 import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 import { normalizeValidatedCheckoutCode } from '@/lib/checkoutPromotions';
 import { buildCustomerName, normalizeNamePart, resolveCustomerIdentity } from '@/lib/customerIdentity';
+import { trackGoogleAddPaymentInfo, trackGoogleAddShippingInfo } from '@/lib/googleAnalytics';
 
 const CHECKOUT_PROCESSING_WATCHDOG_MS = 20000;
 
@@ -157,6 +158,8 @@ function CheckoutFlow() {
   const checkoutAttemptInFlightRef = useRef(false);
   const checkoutStartLockedRef = useRef(false);
   const checkoutWatchdogRef = useRef(null);
+  const shippingAnalyticsTrackedRef = useRef(false);
+  const paymentAnalyticsTrackedRef = useRef(false);
   const checkoutCode = appliedDiscountCode;
 
   React.useEffect(() => {
@@ -698,6 +701,16 @@ function CheckoutFlow() {
         setCheckoutStartStage(CHECKOUT_START_STAGES.PAYMENT_ELEMENT_READY);
         setCheckoutStartMessage('');
 
+        if (!shippingAnalyticsTrackedRef.current) {
+          shippingAnalyticsTrackedRef.current = true;
+          void trackGoogleAddShippingInfo(
+            items,
+            res.data.effectiveTotal ?? total,
+            'Local delivery',
+            checkoutCode?.code || '',
+          );
+        }
+
         // Embedded flow: surface PaymentElement in-page
         setClientSecret(res.data.clientSecret);
         setPublishableKey(res.data.publishableKey);
@@ -1179,6 +1192,11 @@ function CheckoutFlow() {
             customerPhone={phone.trim()}
             isSubmitting={isSubmitting}
             setIsSubmitting={setIsSubmitting} showWalletDiagnostics={(isAdminUser(user)) && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('wallet_diagnostics') === '1'}
+            onPaymentAttempt={(paymentType) => {
+              if (paymentAnalyticsTrackedRef.current) return;
+              paymentAnalyticsTrackedRef.current = true;
+              void trackGoogleAddPaymentInfo(items, paymentTotal, paymentType, checkoutCode?.code || '');
+            }}
             onSuccess={(paymentIntentId) => {
               clearCart();
               localStorage.removeItem('nuvira_pending_checkout_session');

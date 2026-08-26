@@ -8,6 +8,18 @@ const confirmation = fs.readFileSync('src/pages/OrderConfirmation.jsx', 'utf8');
 const app = fs.readFileSync('src/App.jsx', 'utf8');
 const legal = fs.readFileSync('src/pages/Legal.jsx', 'utf8');
 const critical = fs.readFileSync('scripts/ci/run-critical-regressions.mjs', 'utf8');
+const cartContext = fs.readFileSync('src/lib/cartContext.jsx', 'utf8');
+const cart = fs.readFileSync('src/pages/Cart.jsx', 'utf8');
+const productDetail = fs.readFileSync('src/pages/ProductDetail.jsx', 'utf8');
+const programDetail = fs.readFileSync('src/pages/ProgramDetail.jsx', 'utf8');
+const checkout = fs.readFileSync('src/pages/Checkout.jsx', 'utf8');
+const embeddedPayment = fs.readFileSync('src/components/checkout/EmbeddedPayment.jsx', 'utf8');
+const indexHtml = fs.readFileSync('index.html', 'utf8');
+const seo = fs.readFileSync('src/components/SEO.jsx', 'utf8');
+const contact = fs.readFileSync('src/pages/Contact.jsx', 'utf8');
+const heroBanner = fs.readFileSync('src/components/home/HeroBanner.jsx', 'utf8');
+const brandImages = fs.readFileSync('src/lib/brandImages.js', 'utf8');
+const sitemap = fs.readFileSync('public/sitemap.xml', 'utf8');
 
 const checks = [
   ['web stream uses the exact GA4 measurement ID', () => {
@@ -58,6 +70,55 @@ const checks = [
   ['analytics privacy and purchase regression is permanently gated', () => {
     assert.match(critical, /run-g131-google-analytics-consent-tests\.mjs/);
   }],
+  ['recommended GA4 commerce milestones are wired through the real customer journey', () => {
+    for (const eventName of ['view_item', 'add_to_cart', 'view_cart', 'begin_checkout', 'add_shipping_info', 'add_payment_info']) {
+      assert.match(analytics, new RegExp(`['"]${eventName}['"]`));
+    }
+    assert.match(cartContext, /trackGoogleAddToCart/);
+    assert.match(cartContext, /trackGoogleBeginCheckout/);
+    assert.match(cart, /trackGoogleViewCart/);
+    assert.match(cart, /ANALYTICS_CONSENT_EVENT/);
+    assert.match(productDetail, /trackGoogleViewItem/);
+    assert.match(productDetail, /ANALYTICS_CONSENT_EVENT/);
+    assert.match(programDetail, /trackGoogleViewItem/);
+    assert.match(programDetail, /ANALYTICS_CONSENT_EVENT/);
+    assert.match(checkout, /trackGoogleAddShippingInfo/);
+    assert.match(checkout, /trackGoogleAddPaymentInfo/);
+    assert.match(checkout, /shippingAnalyticsTrackedRef/);
+    assert.match(checkout, /paymentAnalyticsTrackedRef/);
+    assert.match(embeddedPayment, /onPaymentAttempt\?\.\('Card'\)/);
+    assert.match(embeddedPayment, /onPaymentAttempt\?\.\('Google Pay'\)/);
+  }],
+  ['commerce analytics payload construction remains consent gated and PII free', () => {
+    assert.match(analytics, /GOOGLE_ECOMMERCE_EVENTS\.has\(eventName\)/);
+    assert.match(analytics, /getAnalyticsConsent\(\) !== 'granted'/);
+    assert.doesNotMatch(analytics, /params\.(?:customer_email|customer_name|contact_phone|delivery_address|address_line1)/);
+  }],
+  ['crawler-readable brand identity uses the canonical apex domain and verified social handles', () => {
+    assert.match(indexHtml, /rel="canonical" href="https:\/\/nuvirajuice\.com\/"/);
+    assert.match(indexHtml, /property="og:url" content="https:\/\/nuvirajuice\.com\/"/);
+    assert.doesNotMatch(indexHtml, /juice cleanse/i);
+    assert.doesNotMatch(indexHtml, /@nuvirajuice"/);
+    assert.match(indexHtml, /instagram\.com\/nuvirajuiceco/);
+    assert.match(indexHtml, /facebook\.com\/nuvirajuiceco/);
+    assert.match(seo, /instagram\.com\/nuvirajuiceco/);
+    assert.doesNotMatch(seo, /openingHoursSpecification/);
+    assert.match(contact, /instagram\.com\/nuvirajuiceco/);
+    assert.match(app, /path="\/our-story" element=\{<Navigate to="\/about" replace \/>\}/);
+    assert.match(sitemap, /https:\/\/nuvirajuice\.com\/about/);
+    assert.doesNotMatch(sitemap, /https:\/\/nuvirajuice\.com\/(?:our-story|subscribe|referral)/);
+  }],
+  ['homepage LCP image is preloaded and does not auto-rotate during Core Web Vitals measurement', () => {
+    assert.match(indexHtml, /rel="preload" as="image" href="\/images\/brand\/nuvira-about-bottle-cooler\.webp" fetchpriority="high"/);
+    assert.match(indexHtml, /content="width=device-width, initial-scale=1\.0, viewport-fit=cover"/);
+    assert.match(brandImages, /nuvira-about-bottle-cooler\.webp/);
+    assert.match(brandImages, /nuvira-trio-outdoor-event\.webp/);
+    assert.match(brandImages, /nuvira-tote-bag\.webp/);
+    assert.doesNotMatch(heroBanner, /setInterval/);
+    assert.doesNotMatch(heroBanner, /new Image\(\)/);
+    assert.match(heroBanner, /current !== 0/);
+    assert.match(app, /isNativeAppRuntime\(\) && !hasSplashBeenShown\(\)/);
+  }],
 ];
 
 let passed = 0;
@@ -98,7 +159,7 @@ const documentMock = {
 const executable = analytics
   .replace("import { isNativeAppRuntime } from '@/lib/nativeRuntime';", 'const isNativeAppRuntime = () => false;')
   .replace(/^export /gm, '')
-  + '\nglobalThis.__g131 = { setAnalyticsConsent, trackGooglePageView, trackGooglePurchase };';
+  + '\nglobalThis.__g131 = { setAnalyticsConsent, trackGooglePageView, trackGooglePurchase, trackGoogleEcommerceEvent };';
 const context = vm.createContext({
   window: windowMock,
   document: documentMock,
@@ -113,6 +174,13 @@ vm.runInContext(executable, context);
 
 assert.equal(context.__g131.setAnalyticsConsent('granted'), true);
 assert.equal(await context.__g131.trackGooglePageView('/order-tracker/NV-PRIVATE?session_id=secret', 'Order'), true);
+assert.equal(await context.__g131.trackGoogleEcommerceEvent('add_to_cart', {
+  value: 13.5,
+  items: [{ id: 'oasis', title: 'OASIS', category: 'Juice', size: '12 oz', price: 13.5, quantity: 1 }],
+}), true);
+assert.equal(await context.__g131.trackGoogleEcommerceEvent('unknown_event', {
+  items: [{ id: 'oasis', title: 'OASIS', price: 13.5, quantity: 1 }],
+}), false);
 const paidOrder = {
   order_number: 'NV-G131-PAID',
   payment_status: 'paid',
@@ -130,13 +198,17 @@ assert.equal(await context.__g131.trackGooglePurchase({ ...paidOrder, order_numb
 const emitted = windowMock.dataLayer.map((entry) => Array.from(entry));
 const pageView = emitted.find((entry) => entry[0] === 'event' && entry[1] === 'page_view');
 const purchases = emitted.filter((entry) => entry[0] === 'event' && entry[1] === 'purchase');
+const addToCart = emitted.find((entry) => entry[0] === 'event' && entry[1] === 'add_to_cart');
 assert.equal(pageView[2].page_path, '/order-tracker/:order');
 assert.equal(pageView[2].page_location, 'https://www.nuvirajuice.com/order-tracker/:order');
+assert.equal(addToCart[2].value, 13.5);
+assert.equal(addToCart[2].items[0].item_id, 'oasis');
+assert.equal('customer_email' in addToCart[2], false);
 assert.equal(purchases.length, 1);
 assert.equal(purchases[0][2].transaction_id, 'NV-G131-PAID');
 assert.equal(purchases[0][2].value, 27);
 assert.equal(purchases[0][2].shipping, 5);
 assert.equal(purchases[0][2].items[0].item_name, 'OASIS');
 assert.equal('customer_email' in purchases[0][2], false);
-console.log('PASS 10: runtime harness verifies consented page view, paid purchase, PII omission, and duplicate suppression');
+console.log(`PASS ${checks.length + 1}: runtime harness verifies consented page view, commerce milestone, paid purchase, PII omission, and duplicate suppression`);
 console.log(`G131 Google Analytics consent and purchase tracking: ${passed + 1}/${checks.length + 1} checks passed`);

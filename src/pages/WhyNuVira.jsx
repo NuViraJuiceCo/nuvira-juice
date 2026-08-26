@@ -300,7 +300,7 @@ export default function WhyNuVira() {
             <Link to="/shop" className="nuvira-gradient-button inline-flex h-12 items-center justify-center rounded-lg px-6 text-sm font-bold">
               Shop Juices
             </Link>
-            <Link to="/our-story" className="inline-flex h-12 items-center justify-center rounded-lg border border-nuvira bg-card/80 px-6 text-sm font-bold text-foreground">
+            <Link to="/about" className="inline-flex h-12 items-center justify-center rounded-lg border border-nuvira bg-card/80 px-6 text-sm font-bold text-foreground">
               Our Story
             </Link>
           </div>

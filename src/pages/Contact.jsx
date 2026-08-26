@@ -149,8 +149,8 @@ export default function Contact() {
         <div className="text-center pb-4">
           <p className="text-xs text-muted-foreground mb-2">Follow us for daily drops & wellness tips</p>
           <div className="flex justify-center gap-4">
-            <a href="https://www.instagram.com/nuvirajuice" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary">Instagram</a>
-            <a href="https://www.facebook.com/nuvirajuice" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary">Facebook</a>
+            <a href="https://www.instagram.com/nuvirajuiceco/" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary">Instagram</a>
+            <a href="https://www.facebook.com/nuvirajuiceco" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary">Facebook</a>
           </div>
         </div>
       </div>

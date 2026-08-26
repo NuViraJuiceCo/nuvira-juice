@@ -30,7 +30,7 @@ const supportMenuItems = [
 ];
 
 const brandItems = [
-  { icon: BookOpen, label: 'Our Story', path: '/our-story', desc: 'The NuVira origin & mission' },
+  { icon: BookOpen, label: 'Our Story', path: '/about', desc: 'The NuVira origin & mission' },
   { icon: Sparkles, label: 'Why NuVira', path: '/why-nuvira', desc: 'Philosophy behind every bottle' },
   { icon: Calendar, label: 'Events & Community', path: '/events', desc: 'STL pop-ups, drops & more' },
   { icon: Handshake, label: 'Partner With Us', path: '/partner', desc: 'Gyms, studios, offices & more' },

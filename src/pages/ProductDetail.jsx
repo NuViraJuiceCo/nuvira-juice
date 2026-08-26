@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import SEO from '@/components/SEO';
 import { base44 } from '@/api/base44Client';
@@ -29,6 +29,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
 import { BRAND_OG_IMAGE, brandImageUrl } from '@/lib/brandImages';
+import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
 
 function normalizeCategory(value) {
   return String(value || '').trim().toLowerCase();
@@ -142,6 +143,7 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
+  const trackedProductIdRef = useRef('');
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product-detail', identifier],
@@ -174,6 +176,21 @@ export default function ProductDetail() {
   });
 
   const related = relatedProducts.filter(p => p.id !== product?.id).slice(0, 4);
+
+  useEffect(() => {
+    const trackingId = String(product?.id || identifier || '');
+    if (!product || !trackingId) return undefined;
+    const trackView = async () => {
+      if (trackedProductIdRef.current === trackingId) return;
+      if (await trackGoogleViewItem(product)) trackedProductIdRef.current = trackingId;
+    };
+    const onConsent = (event) => {
+      if (event.detail === 'granted') void trackView();
+    };
+    void trackView();
+    window.addEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
+    return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
+  }, [identifier, product]);
 
   useEffect(() => {
     if ((id || handle) && product) {

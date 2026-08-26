@@ -98,12 +98,7 @@
     <priority>0.8</priority>
   </url>
 
-  <!-- Subscriptions & Wellness -->
-  <url>
-    <loc>https://nuvirajuice.com/subscribe</loc>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
+  <!-- Wellness -->
   <url>
     <loc>https://nuvirajuice.com/why-nuvira</loc>
     <changefreq>monthly</changefreq>
@@ -112,7 +107,7 @@
 
   <!-- Brand / Trust pages -->
   <url>
-    <loc>https://nuvirajuice.com/our-story</loc>
+    <loc>https://nuvirajuice.com/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -148,11 +143,6 @@
   </url>
   <url>
     <loc>https://nuvirajuice.com/connect</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-  <url>
-    <loc>https://nuvirajuice.com/referral</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>

@@ -34,7 +34,7 @@ function buildEventSchema(events) {
     "organizer": {
       "@type": "Organization",
       "name": "NuVira Juice Co.",
-      "url": "https://www.nuvirajuice.com"
+      "url": "https://nuvirajuice.com/"
     },
     ...(e.tickets_link ? { "offers": { "@type": "Offer", "url": e.tickets_link, "availability": "https://schema.org/InStock" } } : {}),
   }));

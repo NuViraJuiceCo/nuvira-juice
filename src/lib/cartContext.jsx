@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
+import { trackGoogleAddToCart, trackGoogleBeginCheckout } from '@/lib/googleAnalytics';
 
 const CartContext = createContext();
 const JOURNEY_SESSION_KEY = 'nuvira_customer_journey_session';
@@ -88,6 +89,7 @@ export function CartProvider({ children }) {
   }, [items]);
 
   const addItem = (product, quantity = 1, extra = {}) => {
+    void trackGoogleAddToCart({ ...product, ...extra }, quantity);
     setItems(prev => {
       const nextLineKey = extra.cart_line_key || product.id;
       const existing = prev.find(i => (i.cart_line_key || i.product_id) === nextLineKey);
@@ -133,6 +135,7 @@ export function CartProvider({ children }) {
   const clearCart = () => setItems([]);
   const trackCheckoutStarted = () => {
     if (items.length > 0) recordJourneyActivity('checkout_started', items);
+    if (items.length > 0) void trackGoogleBeginCheckout(items, subtotal);
   };
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);

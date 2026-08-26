@@ -182,14 +182,85 @@ function validMoney(value) {
 function buildPurchaseItems(items) {
   return (Array.isArray(items) ? items : [])
     .map((item, index) => ({
-      item_id: String(item?.product_id || `item-${index + 1}`),
-      item_name: String(item?.title || 'NuVira product'),
+      item_id: String(item?.product_id || item?.id || `item-${index + 1}`),
+      item_name: String(item?.title || item?.name || 'NuVira product'),
       item_category: String(item?.category || (item?.is_program ? 'Juice Program' : 'Juice')),
       item_variant: String(item?.size || ''),
       price: validMoney(item?.price),
       quantity: Math.max(1, Math.round(Number(item?.quantity) || 1)),
     }))
     .filter((item) => item.price > 0);
+}
+
+const GOOGLE_ECOMMERCE_EVENTS = new Set([
+  'view_item',
+  'add_to_cart',
+  'view_cart',
+  'begin_checkout',
+  'add_shipping_info',
+  'add_payment_info',
+]);
+
+function safeAnalyticsLabel(value, fallback = '') {
+  return String(value || fallback)
+    .replace(/[\r\n\t]+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
+function merchandiseValue(items) {
+  return Math.round(items.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 100) / 100;
+}
+
+export async function trackGoogleEcommerceEvent(eventName, payload = {}) {
+  if (!GOOGLE_ECOMMERCE_EVENTS.has(eventName) || getAnalyticsConsent() !== 'granted') return false;
+
+  const items = buildPurchaseItems(payload.items);
+  if (!items.length || !(await loadGoogleAnalytics())) return false;
+
+  const params = {
+    currency: 'USD',
+    value: payload.value === undefined ? merchandiseValue(items) : validMoney(payload.value),
+    items,
+  };
+
+  const coupon = safeAnalyticsLabel(payload.coupon);
+  if (coupon) params.coupon = coupon;
+  if (eventName === 'add_shipping_info') {
+    params.shipping_tier = safeAnalyticsLabel(payload.shippingTier, 'Local delivery');
+  }
+  if (eventName === 'add_payment_info') {
+    params.payment_type = safeAnalyticsLabel(payload.paymentType, 'Card or wallet');
+  }
+
+  window.gtag('event', eventName, params);
+  return true;
+}
+
+export function trackGoogleViewItem(item) {
+  return trackGoogleEcommerceEvent('view_item', { items: [item] });
+}
+
+export function trackGoogleAddToCart(item, quantity = 1) {
+  return trackGoogleEcommerceEvent('add_to_cart', {
+    items: [{ ...item, quantity: Math.max(1, Math.round(Number(quantity) || 1)) }],
+  });
+}
+
+export function trackGoogleViewCart(items, value) {
+  return trackGoogleEcommerceEvent('view_cart', { items, value });
+}
+
+export function trackGoogleBeginCheckout(items, value, coupon = '') {
+  return trackGoogleEcommerceEvent('begin_checkout', { items, value, coupon });
+}
+
+export function trackGoogleAddShippingInfo(items, value, shippingTier = 'Local delivery', coupon = '') {
+  return trackGoogleEcommerceEvent('add_shipping_info', { items, value, shippingTier, coupon });
+}
+
+export function trackGoogleAddPaymentInfo(items, value, paymentType = 'Card or wallet', coupon = '') {
+  return trackGoogleEcommerceEvent('add_payment_info', { items, value, paymentType, coupon });
 }
 
 export function isEligibleGooglePurchase(order) {
