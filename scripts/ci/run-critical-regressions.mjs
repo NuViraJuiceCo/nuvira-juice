@@ -85,6 +85,7 @@ const harnesses = [
   'scripts/migration/run-g128-google-merchant-quality-tests.mjs',
   'scripts/migration/run-g131-google-analytics-consent-tests.mjs',
   'scripts/migration/run-g132-google-merchant-structured-content-tests.mjs',
+  'scripts/migration/run-g133-google-pay-domain-readiness-tests.mjs',
 ];
 
 function fail(message, extra = {}) {
