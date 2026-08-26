@@ -10,6 +10,7 @@ import { CheckCircle, Truck, ArrowRight, Home, Clock, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
+import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import {
   ANALYTICS_CONSENT_EVENT,
   trackGooglePurchase,
@@ -20,10 +21,11 @@ const POLL_INTERVAL_MS = 3000;
 
 /**
  * OrderConfirmation — lookup priority:
- * 1. ?session_id=cs_xxx  → calls getOrderBySession backend (handles webhook delay gracefully)
- * 2. ?order_number=NV-XX → direct entity filter (legacy / fast path)
- * 3. /order-confirmation/:id → entity ID lookup (legacy path)
- * 4. No params → friendly "check your orders" fallback
+ * 1. Guest order + session-scoped token → token-authorized sanitized lookup
+ * 2. ?session_id=cs_xxx  → calls getOrderBySession backend (handles webhook delay gracefully)
+ * 3. ?order_number=NV-XX → direct entity filter (legacy / fast path)
+ * 4. /order-confirmation/:id → entity ID lookup (legacy path)
+ * 5. No params → friendly "check your orders" fallback
  *
  * NEVER navigates back to /checkout after a successful payment.
  */
@@ -33,11 +35,14 @@ export default function OrderConfirmation() {
   const orderNumber = queryParams.get('order_number');
   // pi= param from embedded checkout — treat same as order_number lookup
   const piParam     = queryParams.get('pi');
+  const isGuestCheckout = queryParams.get('guest_checkout') === '1';
 
   const rawPathParam = window.location.pathname.split('/').pop();
   const pathId = rawPathParam && rawPathParam !== 'order-confirmation' ? rawPathParam : null;
 
-  const lookupMode = sessionId ? 'session_id' : orderNumber ? 'order_number' : pathId ? 'path_id' : 'none';
+  const lookupMode = isGuestCheckout && orderNumber
+    ? 'guest_order'
+    : sessionId ? 'session_id' : orderNumber ? 'order_number' : pathId ? 'path_id' : 'none';
 
   const [order, setOrder]         = useState(null);
   const [loading, setLoading]     = useState(lookupMode !== 'none');
@@ -54,7 +59,37 @@ export default function OrderConfirmation() {
 
     const poll = async () => {
       try {
-        if (lookupMode === 'session_id') {
+        if (lookupMode === 'guest_order') {
+          let guestConfirmation = null;
+          try {
+            guestConfirmation = JSON.parse(sessionStorage.getItem('nuvira_guest_order_confirmation') || 'null');
+          } catch {
+            guestConfirmation = null;
+          }
+          const tokenIsFresh = guestConfirmation?.timestamp && Date.now() - Number(guestConfirmation.timestamp) < 24 * 60 * 60 * 1000;
+          if (!tokenIsFresh || guestConfirmation?.order_number !== orderNumber || !guestConfirmation?.token) {
+            setPaymentOk(true);
+            setLoading(false);
+            clearInterval(pollRef.current);
+            clearTimeout(timeoutRef.current);
+            return;
+          }
+          const res = await base44.functions.invoke('createPaymentIntent', {
+            mode: 'guest_order_status',
+            order_number: orderNumber,
+            guest_order_token: guestConfirmation.token,
+          });
+          const data = res?.data || res;
+          setPaymentOk(true);
+          if (data?.found && data?.order) {
+            setOrder(data.order);
+            setLoading(false);
+            sessionStorage.removeItem('nuvira_guest_order_confirmation');
+            clearInterval(pollRef.current);
+            clearTimeout(timeoutRef.current);
+            return;
+          }
+        } else if (lookupMode === 'session_id') {
           const res = await base44.functions.invoke('getOrderBySession', { session_id: sessionId });
           const data = res.data;
 
@@ -102,6 +137,13 @@ export default function OrderConfirmation() {
           }
         }
       } catch (e) {
+        if (lookupMode === 'guest_order' && [400, 403].includes(Number(e?.status))) {
+          setPaymentOk(true);
+          setLoading(false);
+          clearInterval(pollRef.current);
+          clearTimeout(timeoutRef.current);
+          return;
+        }
         console.warn('[OrderConfirmation] Poll error:', e.message);
       }
     };
@@ -227,6 +269,30 @@ export default function OrderConfirmation() {
     );
   }
 
+  if (!order && lookupMode === 'guest_order' && paymentOk) {
+    return (
+      <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center" style={{ paddingTop: SAFE_TOP_PADDING }}>
+        <SEO title="Order Confirmed" noindex={true} />
+        <div className="nuvira-icon-badge w-20 h-20 rounded-full flex items-center justify-center mb-5">
+          <CheckCircle className="w-10 h-10" />
+        </div>
+        <h1 className="font-heading text-2xl font-bold mb-2">Your Order is Confirmed!</h1>
+        {resolvedOrderNumber && <p className="text-sm text-muted-foreground mb-2">Order #{resolvedOrderNumber}</p>}
+        <p className="text-sm text-muted-foreground max-w-sm mb-6 leading-relaxed">
+          Your receipt and delivery updates are being sent to the email you provided. Create an account with that same email whenever you want to track this order in NuVira.
+        </p>
+        <div className="space-y-2.5 w-full max-w-sm">
+          <Button onClick={() => redirectToLogin('/account/orders')} className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
+            Create Account / Sign In <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+          <Link to="/" className="block">
+            <Button variant="outline" className="w-full h-11 rounded-xl font-semibold text-sm"><Home className="w-4 h-4 mr-2" /> Back to Home</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!order) return null;
 
   // ── Case 4: Order confirmed ────────────────────────────────────────────────
@@ -307,16 +373,22 @@ export default function OrderConfirmation() {
 
         {/* Actions */}
         <div className="space-y-2.5">
-          <Link to={`/order-tracker/${order.order_number || order.id}`} className="block">
-            <Button className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
-              Track Your Order <ArrowRight className="w-4 h-4 ml-2" />
+          {isGuestCheckout ? (
+            <Button onClick={() => redirectToLogin('/account/orders')} className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
+              Create Account to Track <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
-          </Link>
-          <Link to="/account/orders" className="block">
-            <Button variant="outline" className="w-full h-11 rounded-xl font-semibold text-sm">
-              View All Orders
-            </Button>
-          </Link>
+          ) : (
+            <>
+              <Link to={`/order-tracker/${order.order_number || order.id}`} className="block">
+                <Button className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
+                  Track Your Order <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </Link>
+              <Link to="/account/orders" className="block">
+                <Button variant="outline" className="w-full h-11 rounded-xl font-semibold text-sm">View All Orders</Button>
+              </Link>
+            </>
+          )}
           <Link to="/" className="block">
             <Button variant="ghost" className="w-full h-11 rounded-xl font-semibold text-sm">
               <Home className="w-4 h-4 mr-2" /> Back to Home

@@ -53,7 +53,7 @@ assert.match(paymentIntent, /stripe\.paymentMethodDomains\.update/);
 assert.match(paymentIntent, /stripe\.paymentMethodDomains\.validate/);
 
 const walletBranchIndex = paymentIntent.indexOf("if (mode === 'wallet_configuration_status' || mode === 'ensure_google_pay_domains')");
-const customerAuthorizationIndex = paymentIntent.indexOf('const unauthorized = await authorizeCheckoutCustomer');
+const customerAuthorizationIndex = paymentIntent.indexOf('const unauthorized = authorizeCheckoutCustomer');
 const itemValidationIndex = paymentIntent.indexOf('const invalidItem =');
 assert.ok(walletBranchIndex > 0 && walletBranchIndex < customerAuthorizationIndex, 'wallet administration must run before customer checkout authorization');
 assert.ok(walletBranchIndex < itemValidationIndex, 'wallet administration must not require cart items');

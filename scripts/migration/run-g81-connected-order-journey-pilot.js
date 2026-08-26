@@ -89,6 +89,7 @@ try {
     do_not_recover: false,
     notes: 'G81 zero-dollar internal test. No Stripe or Shopify provider object.',
     health_advisory_acknowledged: true,
+    health_advisory_version: '2026-05-13-v1',
   });
   assert(order?.id, 'test order creation failed');
 

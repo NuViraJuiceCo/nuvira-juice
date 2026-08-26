@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import SEO from '@/components/SEO';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Truck, Gift } from 'lucide-react';
+import { ArrowLeft, Truck, Gift, LockKeyhole } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +44,12 @@ const CHECKOUT_COPY = {
   NO_WRITE_FAILURE: 'Checkout did not start. Please review your details and try again.',
   AMBIGUOUS_STATE: 'We couldn’t confirm whether checkout started. Please don’t retry yet. We’re checking your order.',
   SLOW_PROCESSING: 'Still checking your checkout. Please don’t close, refresh, or tap again.',
+};
+
+const normalizeCheckoutEmail = (value) => String(value || '').trim().toLowerCase();
+const isValidCheckoutEmail = (value) => {
+  const normalized = normalizeCheckoutEmail(value);
+  return normalized.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 };
 
 const BAG_RETURN_COMPLETED_STATUSES = new Set([
@@ -117,8 +123,10 @@ function CheckoutFlow() {
   const { user } = useAuth();
   const journeyCheckoutTrackedRef = useRef(false);
   const fulfillmentType = 'delivery';
+  const isGuestCheckout = !user?.email;
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [checkoutEmail, setCheckoutEmail] = useState(user?.email || '');
   const [address, setAddress] = useState({ street: '', city: '', state: '', zip: '' });
   const [phone, setPhone] = useState('');
   const [prefilled, setPrefilled] = useState(false);
@@ -161,12 +169,22 @@ function CheckoutFlow() {
   const shippingAnalyticsTrackedRef = useRef(false);
   const paymentAnalyticsTrackedRef = useRef(false);
   const checkoutCode = appliedDiscountCode;
+  const normalizedCustomerEmail = normalizeCheckoutEmail(user?.email || checkoutEmail);
+  const guestOrderToken = React.useRef(
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? `${crypto.randomUUID()}-${crypto.randomUUID()}`
+      : `nv-guest-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+  );
 
   React.useEffect(() => {
-    if (!user?.email || items.length === 0 || journeyCheckoutTrackedRef.current) return;
+    if (user?.email) setCheckoutEmail(user.email);
+  }, [user?.email]);
+
+  React.useEffect(() => {
+    if (items.length === 0 || journeyCheckoutTrackedRef.current) return;
     journeyCheckoutTrackedRef.current = true;
     trackCheckoutStarted();
-  }, [items.length, trackCheckoutStarted, user?.email]);
+  }, [items.length, trackCheckoutStarted]);
 
   const activeReward = React.useMemo(() => {
     if (!user?.email) return null;
@@ -515,6 +533,11 @@ function CheckoutFlow() {
     const normalizedLastName = normalizeNamePart(lastName);
     const resolvedName = buildCustomerName(normalizedFirstName, normalizedLastName);
 
+    if (!isValidCheckoutEmail(normalizedCustomerEmail)) {
+      toast.error('Please enter a valid email for your receipt and delivery updates');
+      return;
+    }
+
     if (!normalizedFirstName || !normalizedLastName) {
       toast.error('Please enter the first and last name for this order');
       return;
@@ -662,7 +685,9 @@ function CheckoutFlow() {
         delivery_window_start: selectedDeliveryOption?.delivery_window_start || null,
         delivery_window_end: selectedDeliveryOption?.delivery_window_end || null,
         delivery_schedule_source: selectedDeliveryOption ? 'customer_selected' : 'system_default',
-        customer_email: user?.email || null,
+        customer_email: normalizedCustomerEmail,
+        guest_checkout: isGuestCheckout,
+        guest_order_token: isGuestCheckout ? guestOrderToken.current : null,
         customer_name: resolvedName,
         customer_first_name: normalizedFirstName,
         customer_last_name: normalizedLastName,
@@ -733,6 +758,11 @@ function CheckoutFlow() {
 
       showAmbiguousCheckoutStartState();
     } catch (error) {
+      const explicitFailure = error?.data || error?.response?.data || null;
+      if (isExplicitNoWriteCheckoutStartFailure(explicitFailure)) {
+        showExplicitNoWriteCheckoutFailure(explicitFailure?.message || explicitFailure?.error);
+        return;
+      }
       if (paymentAttemptStarted || error?.checkoutStateUnknown) {
         showAmbiguousCheckoutStartState();
         return;
@@ -743,33 +773,6 @@ function CheckoutFlow() {
 
   if (items.length === 0) {
     return <Navigate to="/cart" replace />;
-  }
-
-  // Block checkout if not logged in
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
-        <div className="nuvira-icon-badge w-16 h-16 rounded-full flex items-center justify-center mb-4">
-          <span className="text-3xl">🍃</span>
-        </div>
-        <h2 className="font-heading text-2xl font-bold mb-2">Sign In to Checkout</h2>
-        <p className="text-sm text-muted-foreground leading-relaxed mb-6 max-w-xs">
-          Create a free account or sign in to place your order. It only takes a moment!
-        </p>
-        <Button
-          onClick={() => redirectToLogin('/checkout')}
-          className="w-full max-w-xs h-12 rounded-xl font-semibold"
-        >
-          Sign In / Create Account
-        </Button>
-        <button
-          onClick={() => navigate('/cart')}
-          className="mt-4 text-xs text-muted-foreground underline"
-        >
-          Go back to cart
-        </button>
-      </div>
-    );
   }
 
   // Block checkout if profile setup is incomplete
@@ -838,6 +841,27 @@ function CheckoutFlow() {
           </p>
         </div>
       </div>
+
+      {isGuestCheckout && (
+        <div className="mx-4 mb-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-start gap-3">
+            <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Secure guest checkout</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                No account is required. Google Pay, Apple Pay, and card are available at the secure payment step when supported on your device.
+              </p>
+              <button
+                type="button"
+                onClick={() => redirectToLogin('/checkout')}
+                className="mt-2 text-[11px] font-semibold text-primary underline underline-offset-2"
+              >
+                Sign in to use rewards and view order history
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delivery Date Selection */}
       {deliveryOptions.length > 1 && (
@@ -933,7 +957,7 @@ function CheckoutFlow() {
             type="button"
             variant="outline"
             className="rounded-xl h-11 px-4 shrink-0"
-            disabled={isApplyingDiscountCode || (!appliedDiscountCode && !discountCodeInput.trim())}
+            disabled={isApplyingDiscountCode || (!appliedDiscountCode && !discountCodeInput.trim()) || (isGuestCheckout && !isValidCheckoutEmail(normalizedCustomerEmail))}
             onClick={async () => {
               if (appliedDiscountCode) {
                 setAppliedDiscountCode(null);
@@ -947,6 +971,8 @@ function CheckoutFlow() {
                   mode: 'validate_discount_code',
                   discount_code: discountCodeInput,
                   eligible_subtotal: merchandiseTotalBeforePromotion,
+                  customer_email: normalizedCustomerEmail || null,
+                  guest_checkout: isGuestCheckout,
                 });
                 const payload = response?.data || response;
                 const resolvedCode = normalizeValidatedCheckoutCode(payload?.discount);
@@ -977,6 +1003,27 @@ function CheckoutFlow() {
 
       {/* Contact */}
       <div className="px-4 space-y-4 mb-5">
+        <div>
+          <Label htmlFor="checkout-email" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
+            Email For Receipt &amp; Updates
+          </Label>
+          <Input
+            id="checkout-email"
+            name="email"
+            type="email"
+            inputMode="email"
+            aria-label="Email for receipt and delivery updates"
+            autoComplete="email"
+            value={checkoutEmail}
+            onChange={e => setCheckoutEmail(e.target.value)}
+            placeholder="you@example.com"
+            readOnly={Boolean(user?.email)}
+            className="rounded-xl h-11"
+          />
+          {isGuestCheckout && checkoutEmail && !isValidCheckoutEmail(checkoutEmail) && (
+            <p className="mt-1.5 text-xs font-medium text-destructive" role="alert">Enter a complete email address.</p>
+          )}
+        </div>
         <div>
           <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
             Name For This Order
@@ -1132,7 +1179,7 @@ function CheckoutFlow() {
           )}
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
             <span>Delivery</span>
-            <span>{deliveryFee > 0 ? `$${deliveryFee.toFixed(2)}` : 'Free'}</span>
+            <span>{zoneEligibility ? (deliveryFee > 0 ? `$${deliveryFee.toFixed(2)}` : 'Free') : 'Calculated after address'}</span>
           </div>
           <div className="flex justify-between text-sm font-bold mt-1.5">
             <span>Total</span><span>${total.toFixed(2)}</span>
@@ -1142,7 +1189,7 @@ function CheckoutFlow() {
 
       {/* Zone 3 Route Review — shown instead of normal checkout when address is in zone_3 */}
       {zoneEligibility?.zone_type === 'route_review' && zoneEligibility?.checkout_allowed && !clientSecret && (
-        <Zone3RouteReviewPanel
+        user?.email ? <Zone3RouteReviewPanel
           zoneEligibility={zoneEligibility}
           items={items}
           subtotal={subtotal}
@@ -1150,7 +1197,7 @@ function CheckoutFlow() {
           checkoutCode={checkoutCode}
           address={address}
           phone={phone}
-          customerEmail={user?.email}
+          customerEmail={normalizedCustomerEmail}
           customerName={buildCustomerName(firstName, lastName)}
           customerFirstName={normalizeNamePart(firstName)}
           customerLastName={normalizeNamePart(lastName)}
@@ -1160,7 +1207,13 @@ function CheckoutFlow() {
             });
           }}
           onCancel={() => navigate('/cart')}
-        />
+        /> : (
+          <div className="mx-4 mb-5 rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-center dark:border-cyan-800 dark:bg-cyan-950/30">
+            <p className="text-sm font-semibold text-foreground">Sign in for route review</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">This address needs a manual delivery review and authorization hold, which must be linked to a verified account.</p>
+            <Button type="button" onClick={() => redirectToLogin('/checkout')} className="mt-3 h-10 rounded-xl px-5 text-xs font-semibold">Sign In / Create Account</Button>
+          </div>
+        )
       )}
 
       {/* Payment Step — embedded Stripe PaymentElement after form is submitted */}
@@ -1188,7 +1241,7 @@ function CheckoutFlow() {
             publishableKey={publishableKey}
             total={paymentTotal}
             customerName={buildCustomerName(firstName, lastName)}
-            customerEmail={user?.email || ''}
+            customerEmail={normalizedCustomerEmail}
             customerPhone={phone.trim()}
             isSubmitting={isSubmitting}
             setIsSubmitting={setIsSubmitting} showWalletDiagnostics={(isAdminUser(user)) && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('wallet_diagnostics') === '1'}
@@ -1200,7 +1253,14 @@ function CheckoutFlow() {
             onSuccess={(paymentIntentId) => {
               clearCart();
               localStorage.removeItem('nuvira_pending_checkout_session');
-              navigate(`/order-confirmation?order_number=${pendingOrderNumber}&pi=${paymentIntentId}`);
+              if (isGuestCheckout) {
+                sessionStorage.setItem('nuvira_guest_order_confirmation', JSON.stringify({
+                  order_number: pendingOrderNumber,
+                  token: guestOrderToken.current,
+                  timestamp: Date.now(),
+                }));
+              }
+              navigate(`/order-confirmation?order_number=${pendingOrderNumber}&pi=${paymentIntentId}${isGuestCheckout ? '&guest_checkout=1' : ''}`);
             }}
             onError={(msg) => {
               toast.error(msg || 'Payment failed. Please try again.');
