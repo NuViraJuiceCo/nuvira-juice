@@ -2,12 +2,12 @@
   "version": "4",
   "specifiers": {
     "npm:@base44/sdk@0.8.25": "0.8.25",
-    "npm:@base44/sdk@0.8.41": "0.8.41",
-    "npm:@base44/sdk@~0.8.41": "0.8.41",
-    "npm:@base44/vite-plugin@^1.0.30": "1.0.30",
+    "npm:@base44/sdk@~0.8.44": "0.8.44",
+    "npm:@base44/vite-plugin@^1.0.31": "1.0.31",
     "npm:@capacitor-firebase/messaging@^8.2.0": "8.3.0_@capacitor+core@8.4.0_firebase@12.14.0__@firebase+app@0.14.13__@firebase+app-types@0.9.5__@firebase+app-compat@0.5.13",
     "npm:@capacitor/android@8.3.4": "8.3.4_@capacitor+core@8.4.0",
     "npm:@capacitor/app@^8.1.0": "8.1.0_@capacitor+core@8.4.0",
+    "npm:@capacitor/browser@8.0.4": "8.0.4_@capacitor+core@8.4.0",
     "npm:@capacitor/cli@^8.3.4": "8.4.0",
     "npm:@capacitor/core@^8.3.4": "8.4.0",
     "npm:@capacitor/ios@^8.3.4": "8.4.0_@capacitor+core@8.4.0",
@@ -84,7 +84,7 @@
     "npm:react-leaflet@^4.2.1": "4.2.1_leaflet@1.9.4_react@18.3.1_react-dom@18.3.1__react@18.3.1",
     "npm:react-markdown@^9.0.1": "9.1.0_@types+react@18.3.31_react@18.3.1",
     "npm:react-resizable-panels@^2.1.7": "2.1.9_react@18.3.1_react-dom@18.3.1__react@18.3.1",
-    "npm:react-router-dom@^6.30.4": "6.30.4_react@18.3.1_react-dom@18.3.1__react@18.3.1",
+    "npm:react-router-dom@^7.18.2": "7.18.2_react@18.3.1_react-dom@18.3.1__react@18.3.1",
     "npm:react@^18.2.0": "18.3.1",
     "npm:recharts@^2.15.4": "2.15.4_react@18.3.1_react-dom@18.3.1__react@18.3.1",
     "npm:sonner@^2.0.1": "2.0.7_react@18.3.1_react-dom@18.3.1__react@18.3.1",
@@ -250,17 +250,17 @@
         "uuid"
       ]
     },
-    "@base44/sdk@0.8.41": {
-      "integrity": "sha512-TpyBpTsiXZdL2Jh3stRjaOvuY7/Bndll8OrVFyCiNigPvtUdDvsBNAyUoN5ElOyw73wG0jGT4ULWF6bLM3uQSA==",
+    "@base44/sdk@0.8.44": {
+      "integrity": "sha512-LcjNE6l56gVFgW8QSC2b8aMQuYU3OOq7pc5eUdzNx+6t6WpWGJyZ38owO1rhmODIvk/PF8lUBTeEJn2OjeL2hg==",
       "dependencies": [
-        "axios@1.19.0",
+        "axios@1.20.0",
         "partysocket",
         "socket.io-client",
         "uuid"
       ]
     },
-    "@base44/vite-plugin@1.0.30": {
-      "integrity": "sha512-KFO+HP3TUf/2vg5cW0LFV7/nHHQyAYqXqPi6jq/hQB64JWhvZBXLlQIwQU0y5mu0JVliFOgLNcwHdwC8J+ekjg==",
+    "@base44/vite-plugin@1.0.31": {
+      "integrity": "sha512-g4B4AoEyl5MQea3PSVLiYJgQSO5klfRfFSpntr2zWEw5m1oRrsNno7zsumreB18G6L++g/GBcX8ioPYUpMdbNA==",
       "dependencies": [
         "@babel/generator",
         "@babel/parser",
@@ -283,6 +283,12 @@
     },
     "@capacitor/app@8.1.0_@capacitor+core@8.4.0": {
       "integrity": "sha512-MlmttTOWHDedr/G4SrhNRxsXMqY+R75S4MM4eIgzsgCzOYhb/MpCkA5Q3nuOCfL1oHm26xjUzqZ5aupbOwdfYg==",
+      "dependencies": [
+        "@capacitor/core"
+      ]
+    },
+    "@capacitor/browser@8.0.4_@capacitor+core@8.4.0": {
+      "integrity": "sha512-ORZ4u/y+7aMuu6yVuk6SP529fUZyqcbnuHB1q5McpA3o2SYfVoi28iB8rsQjI2ad1qlKJd29ZUuGtspXLBDlWg==",
       "dependencies": [
         "@capacitor/core"
       ]
@@ -1809,9 +1815,6 @@
         "react-dom"
       ]
     },
-    "@remix-run/router@1.23.3": {
-      "integrity": "sha512-4An71tdz9X8+3sI4Qqqd2LWd9vS39J7sqd9EU4Scw7TJE/qB10Flv/UuqbPVgfQV9XoK8Np6jNquZitnZq5i+Q=="
-    },
     "@rolldown/pluginutils@1.0.0-beta.27": {
       "integrity": "sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA=="
     },
@@ -2265,8 +2268,8 @@
         "proxy-from-env"
       ]
     },
-    "axios@1.19.0": {
-      "integrity": "sha512-ht/iuYZXEjFxLH/Hkezgd7m6JKlHHXEUSneaDz8uZe1Gj5QZtCnpyDsckvAiEnT89OEbCLmnte4R4sn7P0EKFw==",
+    "axios@1.20.0": {
+      "integrity": "sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==",
       "dependencies": [
         "follow-redirects",
         "form-data",
@@ -2482,6 +2485,9 @@
     },
     "convert-source-map@2.0.0": {
       "integrity": "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="
+    },
+    "cookie@1.1.1": {
+      "integrity": "sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ=="
     },
     "core-js@3.49.0": {
       "integrity": "sha512-es1U2+YTtzpwkxVLwAFdSpaIMyQaq0PBgm3YD1W3Qpsn1NAmO3KSgZfu+oGSWVu6NvLHoHCV/aYcsE5wiB7ALg=="
@@ -4614,20 +4620,21 @@
         "react-dom"
       ]
     },
-    "react-router-dom@6.30.4_react@18.3.1_react-dom@18.3.1__react@18.3.1": {
-      "integrity": "sha512-q4HvNl+mmDdkS0g+MqiBZNteQJCuimWoOyHMy4T/RQLAn9Z29+E91QXRaxOujeMl2HTzRSS0KFPd7lxX3PjV0Q==",
+    "react-router-dom@7.18.2_react@18.3.1_react-dom@18.3.1__react@18.3.1": {
+      "integrity": "sha512-AIKJ/jgGlFb3EbfCXk5Gzshiwt+l3mqbCrNjmEWMMjqQxNJ3svBa6bgzFyCC2Sw3RA0VWF1kg3uQf2OFhxb8hw==",
       "dependencies": [
-        "@remix-run/router",
         "react",
         "react-dom",
         "react-router"
       ]
     },
-    "react-router@6.30.4_react@18.3.1": {
-      "integrity": "sha512-SVUsDe+DybHM/WmYKIVYhZh1o5Dcuf16yM6WjG02Q9XVFMZIJyHYhwrr6bFBXZkVP6z69kNkMyBCujt8FaFLJA==",
+    "react-router@7.18.2_react@18.3.1_react-dom@18.3.1__react@18.3.1": {
+      "integrity": "sha512-aUVMjFm3GAPTTZL7oYr5E7ETiqfQCHRLH+B+5afnICvf0r7kkK4eR6SMuwbSTJw/7t+12khT/Kahij49fqOCIg==",
       "dependencies": [
-        "@remix-run/router",
-        "react"
+        "cookie",
+        "react",
+        "react-dom",
+        "set-cookie-parser"
       ]
     },
     "react-smooth@4.0.4_react@18.3.1_react-dom@18.3.1__react@18.3.1": {
@@ -4878,6 +4885,9 @@
     },
     "semver@7.8.4": {
       "integrity": "sha512-rUCObTnP32Q08R2uuIrt7r9PlEonuTmtuXYcW6s5kjdlj3xbnwe+21yXptAUYcMAABLkYYTtnmzb3w3EDZfueA=="
+    },
+    "set-cookie-parser@2.7.2": {
+      "integrity": "sha512-oeM1lpU/UvhTxw+g3cIfxXHyJRc/uidd3yK1P242gzHds0udQBYzs3y8j4gCCW+ZJ7ad0yctld8RYO+bdurlvw=="
     },
     "set-function-length@1.2.2": {
       "integrity": "sha512-pgRc4hJ4/sNjWCSS9AmnS40x3bNMDTknHgL5UaMBTMyJnU90EgWh1Rz+MC9eFu4BuN/UwZjKQuY/1v3rM7HMfg==",
@@ -5633,11 +5643,12 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
-        "npm:@base44/sdk@~0.8.41",
-        "npm:@base44/vite-plugin@^1.0.30",
+        "npm:@base44/sdk@~0.8.44",
+        "npm:@base44/vite-plugin@^1.0.31",
         "npm:@capacitor-firebase/messaging@^8.2.0",
         "npm:@capacitor/android@8.3.4",
         "npm:@capacitor/app@^8.1.0",
+        "npm:@capacitor/browser@8.0.4",
         "npm:@capacitor/cli@^8.3.4",
         "npm:@capacitor/core@^8.3.4",
         "npm:@capacitor/ios@^8.3.4",
@@ -5712,7 +5723,7 @@
         "npm:react-leaflet@^4.2.1",
         "npm:react-markdown@^9.0.1",
         "npm:react-resizable-panels@^2.1.7",
-        "npm:react-router-dom@^6.30.4",
+        "npm:react-router-dom@^7.18.2",
         "npm:react@^18.2.0",
         "npm:recharts@^2.15.4",
         "npm:sonner@^2.0.1",

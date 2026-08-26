@@ -9,6 +9,7 @@ const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
   'www.nuvirajuice.com',
 ]);
 const GOOGLE_PAY_DOMAIN_CONFIRMATION = 'ENSURE_GOOGLE_PAY_DOMAINS';
+const HEALTH_ADVISORY_VERSION = '2026-05-13-v1';
 const PROGRAM_SCHEDULE_VERSION = '2026-08-09.v2';
 const PROGRAM_ORDER_OPTIONS = Object.freeze({
   radiance: Object.freeze({
@@ -117,6 +118,126 @@ function normalizePromotionCode(value) {
 
 function normalizeCustomerEmail(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function isValidCustomerEmail(value) {
+  const normalized = normalizeCustomerEmail(value);
+  return normalized.length > 3 && normalized.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
+}
+
+function isValidGuestSecret(value) {
+  const normalized = String(value || '').trim();
+  return normalized.length >= 24 && normalized.length <= 180 && /^[A-Za-z0-9._:-]+$/.test(normalized);
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value || '')));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function constantTimeEqual(left, right) {
+  const a = String(left || '');
+  const b = String(right || '');
+  if (!a || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < a.length; index += 1) mismatch |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return mismatch === 0;
+}
+
+function guestAccountBenefitsRequested(body) {
+  return Number(body?.points_discount || 0) !== 0
+    || Number(body?.points_used || 0) !== 0
+    || Number(body?.reward_discount || 0) !== 0
+    || Number(body?.credits_discount || 0) !== 0
+    || Boolean(body?.active_reward)
+    || Boolean(String(body?.bag_return_request_id || '').trim());
+}
+
+async function authoritativeGuestCheckoutItems(base44, requestedItems) {
+  const availableProducts = await base44.asServiceRole.entities.Product.filter(
+    { is_available: true },
+    'sort_order',
+    250,
+  );
+  const productById = new Map<string, any>(
+    availableProducts.map((product) => [String(product?.id || '').trim(), product]),
+  );
+  const resolved = [];
+  for (const requestedItem of requestedItems) {
+    const programKey = programKeyForCheckoutItem(requestedItem);
+    if (programKey) {
+      const programDays = programDaysForCheckoutItem(requestedItem, programKey);
+      const option = programDays ? PROGRAM_ORDER_OPTIONS[programKey]?.[programDays] : null;
+      if (!option || Number(requestedItem?.price) !== option.price) return null;
+      resolved.push(normalizeCheckoutItem({ ...requestedItem, price: option.price }));
+      continue;
+    }
+
+    const productId = String(requestedItem?.product_id || '').trim();
+    if (!productId || productId.startsWith('__')) return null;
+    const product = productById.get(productId);
+    if (!product) return null;
+    const authoritativePrice = Number(product.price);
+    if (!Number.isFinite(authoritativePrice) || authoritativePrice < 0) return null;
+    resolved.push(normalizeCheckoutItem({
+      ...requestedItem,
+      product_id: product.id,
+      title: product.title,
+      price: authoritativePrice,
+      image_url: product.image_url || requestedItem.image_url || null,
+      category: product.category,
+      size: product.size || requestedItem.size || null,
+    }));
+  }
+  return resolved;
+}
+
+function sanitizeGuestConfirmationOrder(order) {
+  if (!order) return null;
+  return {
+    order_number: order.order_number,
+    customer_email: order.customer_email,
+    items: Array.isArray(order.items) ? order.items.map((item) => ({
+      title: item?.title || 'NuVira item',
+      price: Number(item?.price || 0),
+      quantity: Number(item?.quantity || 0),
+    })) : [],
+    total: Number(order.total || 0),
+    status: order.status,
+    payment_status: order.payment_status,
+    payment_captured: order.payment_captured === true,
+    assigned_delivery_date: order.assigned_delivery_date || null,
+    estimated_delivery_date: order.estimated_delivery_date || null,
+    is_test_order: order.is_test_order === true,
+  };
+}
+
+async function readGuestOrderStatus(base44, body) {
+  const orderNumber = String(body?.order_number || '').trim().toUpperCase();
+  const guestToken = String(body?.guest_order_token || '').trim();
+  if (!/^NV-[A-Z0-9-]{3,64}$/.test(orderNumber) || !isValidGuestSecret(guestToken)) {
+    return Response.json({ error: 'invalid_guest_order_lookup' }, { status: 400 });
+  }
+
+  const checkoutSessions = await base44.asServiceRole.entities.CheckoutSession.filter({ order_number: orderNumber }, '-created_date', 5);
+  const expectedHash = await sha256Hex(guestToken);
+  const now = Date.now();
+  const tokenMatches = checkoutSessions.some((row) => (
+    row?.checkout_data?.guest_checkout === true
+      && Number.isFinite(Date.parse(String(row?.expires_at || '')))
+      && Date.parse(String(row.expires_at)) > now
+      && constantTimeEqual(row?.checkout_data?.guest_order_token_hash, expectedHash)
+  ));
+  if (!tokenMatches) return Response.json({ error: 'guest_order_not_authorized' }, { status: 403 });
+
+  const orders = await base44.asServiceRole.entities.Order.filter({ order_number: orderNumber }, '-created_date', 2);
+  const order = orders.find((candidate) => (
+    candidate?.payment_captured === true || ['paid', 'captured'].includes(String(candidate?.payment_status || '').toLowerCase())
+  ));
+  if (!order) {
+    return Response.json({ ok: true, found: false, order_number: orderNumber, payment_status: 'processing' });
+  }
+  return Response.json({ ok: true, found: true, order: sanitizeGuestConfirmationOrder(order) });
 }
 
 function isWalletConfigurationAdmin(user) {
@@ -371,13 +492,13 @@ function resolveCustomerIdentity({
   return null;
 }
 
-async function authorizeCheckoutCustomer(base44, customerEmail) {
-  const user = await base44.auth.me().catch(() => null);
+function authorizeCheckoutCustomer(user, customerEmail, guestCheckout) {
   const requested = String(customerEmail || '').trim().toLowerCase();
   const requester = String(user?.email || '').trim().toLowerCase();
-  if (!user?.email || !requested) {
+  if (!requested || (!user?.email && !guestCheckout)) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
+  if (!user?.email && guestCheckout) return null;
   if (user.role === 'admin' || requester === requested) {
     return null;
   }
@@ -609,6 +730,8 @@ Deno.serve(async (req) => {
       selected_delivery_date, assigned_delivery_date, production_date,
       delivery_window_label, delivery_window_start, delivery_window_end,
       delivery_schedule_source,
+      guest_checkout, guest_order_token,
+      health_advisory_acknowledged, health_advisory_version,
       // Zone eligibility (may be pre-validated by frontend; we re-validate server-side)
       zone_key: clientZoneKey,
       // Client-supplied idempotency key for duplicate-request protection
@@ -616,8 +739,10 @@ Deno.serve(async (req) => {
       bag_return_request_id,
     } = requestBody;
     const authenticatedUser = await base44.auth.me().catch(() => null);
-    if (!authenticatedUser?.email) {
-      return Response.json({ error: 'unauthorized' }, { status: 401 });
+    const isGuestCheckout = !authenticatedUser?.email && guest_checkout === true;
+
+    if (mode === 'guest_order_status') {
+      return await readGuestOrderStatus(base44, requestBody);
     }
 
     if (mode === 'wallet_configuration_status' || mode === 'ensure_google_pay_domains') {
@@ -659,7 +784,15 @@ Deno.serve(async (req) => {
           error: 'This discount code is not valid for the current order.',
         }, { status: 400 });
       }
-      const redemptionBlock = await oneTimeRedemptionBlock(base44, discount, authenticatedUser.email);
+      const discountCustomerEmail = normalizeCustomerEmail(customer_email || authenticatedUser?.email);
+      if (discount.once_per_customer && !isValidCustomerEmail(discountCustomerEmail)) {
+        return Response.json({
+          ok: false,
+          error_code: 'CUSTOMER_EMAIL_REQUIRED',
+          error: 'Enter your email before applying this one-time offer.',
+        }, { status: 400 });
+      }
+      const redemptionBlock = await oneTimeRedemptionBlock(base44, discount, discountCustomerEmail);
       if (redemptionBlock) return redemptionBlock;
       return Response.json({
         ok: true,
@@ -670,8 +803,46 @@ Deno.serve(async (req) => {
       });
     }
 
-    const unauthorized = await authorizeCheckoutCustomer(base44, customer_email);
+    const normalizedCustomerEmail = normalizeCustomerEmail(customer_email);
+    if (!isValidCustomerEmail(normalizedCustomerEmail)) {
+      return Response.json({
+        error: 'A valid email is required for receipts and delivery updates.',
+        error_code: 'CUSTOMER_EMAIL_REQUIRED',
+        writes_performed: false,
+        payment_intent_created: false,
+        order_created: false,
+      }, { status: 400 });
+    }
+    if (isGuestCheckout && (!isValidGuestSecret(guest_order_token) || !isValidGuestSecret(checkout_idempotency_key))) {
+      return Response.json({
+        error: 'Guest checkout could not be secured. Please refresh and try again.',
+        error_code: 'GUEST_CHECKOUT_SECRET_REQUIRED',
+        writes_performed: false,
+        payment_intent_created: false,
+        order_created: false,
+      }, { status: 400 });
+    }
+    if (isGuestCheckout && guestAccountBenefitsRequested(requestBody)) {
+      return Response.json({
+        error: 'Sign in to use account rewards, credits, or bag returns.',
+        error_code: 'GUEST_ACCOUNT_BENEFITS_NOT_ALLOWED',
+        writes_performed: false,
+        payment_intent_created: false,
+        order_created: false,
+      }, { status: 403 });
+    }
+    const unauthorized = authorizeCheckoutCustomer(authenticatedUser, normalizedCustomerEmail, isGuestCheckout);
     if (unauthorized) return unauthorized;
+    if (health_advisory_acknowledged !== true || health_advisory_version !== HEALTH_ADVISORY_VERSION) {
+      return Response.json({
+        error: 'Please acknowledge the current health advisory before placing your order.',
+        error_code: 'HEALTH_ADVISORY_ACKNOWLEDGMENT_REQUIRED',
+        writes_performed: false,
+        payment_intent_created: false,
+        order_created: false,
+      }, { status: 400 });
+    }
+    const healthAdvisoryAcknowledgedAt = new Date().toISOString();
 
     const normalizedPhone = String(contact_phone || '').trim();
     const normalizedAddress = {
@@ -681,12 +852,13 @@ Deno.serve(async (req) => {
       state: String(address_state || '').trim(),
       postalCode: String(address_postal_code || '').trim(),
     };
-    const invalidItem = !Array.isArray(items) || items.length === 0 || items.some((item) => (
+    const invalidItem = !Array.isArray(items) || items.length === 0 || items.length > 50 || items.some((item) => (
       !String(item?.title || '').trim() ||
       !Number.isFinite(Number(item?.price)) ||
       Number(item?.price) < 0 ||
       !Number.isInteger(Number(item?.quantity)) ||
       Number(item?.quantity) < 1 ||
+      Number(item?.quantity) > 100 ||
       invalidProgramCheckoutItem(item)
     ));
     if (invalidItem) {
@@ -695,7 +867,21 @@ Deno.serve(async (req) => {
         error_code: 'INVALID_ORDER_ITEMS',
       }, { status: 400 });
     }
-    const normalizedItems = items.map(normalizeCheckoutItem);
+    const normalizedItems = isGuestCheckout
+      ? await authoritativeGuestCheckoutItems(base44, items)
+      : items.map(normalizeCheckoutItem);
+    if (!normalizedItems) {
+      return Response.json({
+        error: 'A product in your cart changed or is unavailable. Please return to your cart and try again.',
+        error_code: 'PRODUCT_PRICE_OR_AVAILABILITY_CHANGED',
+        writes_performed: false,
+        payment_intent_created: false,
+        order_created: false,
+      }, { status: 409 });
+    }
+    const authoritativeSubtotal = isGuestCheckout
+      ? Math.round(normalizedItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0) * 100) / 100
+      : Number(subtotal);
     if (normalizedPhone.replace(/\D/g, '').length < 10) {
       return Response.json({
         error: 'A valid phone number is required for fulfillment.',
@@ -721,7 +907,7 @@ Deno.serve(async (req) => {
       const addrForCheck = delivery_address ||
         [normalizedAddress.line1, normalizedAddress.city, normalizedAddress.state, normalizedAddress.postalCode].filter(Boolean).join(', ');
       try {
-        validatedEligibility = await getDeliveryEligibility(addrForCheck, subtotal || 0, 'one_time');
+        validatedEligibility = await getDeliveryEligibility(addrForCheck, authoritativeSubtotal || 0, 'one_time');
       } catch (eligErr) {
         console.error(`[PI] Eligibility check failed: ${eligErr.message}`);
         return Response.json({ error: 'Could not verify delivery eligibility. Please try again.' }, { status: 400 });
@@ -752,12 +938,12 @@ Deno.serve(async (req) => {
     }
 
     let customerProfile = null;
-    if (customer_email) {
+    if (authenticatedUser?.email) {
       try {
-        const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email });
+        const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: normalizedCustomerEmail });
         customerProfile = profiles[0] || null;
       } catch (err) {
-        console.warn(`[PI] Failed to fetch UserProfile for ${customer_email}: ${err.message}`);
+        console.warn(`[PI] Failed to fetch authenticated customer profile: ${err.message}`);
       }
     }
 
@@ -779,8 +965,8 @@ Deno.serve(async (req) => {
     // Subscription perks
     let subFreeDelivery = false;
     let subDiscountPct  = 0;
-    if (customer_email) {
-      const subs = await base44.asServiceRole.entities.Subscription.filter({ customer_email, status: 'active' });
+    if (authenticatedUser?.email) {
+      const subs = await base44.asServiceRole.entities.Subscription.filter({ customer_email: normalizedCustomerEmail, status: 'active' });
       if (subs.length > 0) {
         const allPlans = await base44.asServiceRole.entities.SubscriptionPlan.list();
         const plan = allPlans.find(p => p.id === subs[0].plan_id);
@@ -791,16 +977,18 @@ Deno.serve(async (req) => {
       }
     }
 
-    const effectiveDeliveryFee = subFreeDelivery ? 0 : (delivery_fee || 0);
-    const subDiscountAmt       = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
+    const authoritativeDeliveryFee = validatedEligibility
+      ? Number(validatedEligibility.delivery_fee || 0)
+      : Number(delivery_fee || 0);
+    const effectiveDeliveryFee = subFreeDelivery ? 0 : authoritativeDeliveryFee;
+    const subDiscountAmt       = subDiscountPct > 0 ? Math.round(authoritativeSubtotal * subDiscountPct) / 100 : 0;
     const usesServerManagedDiscountContract = Number(discount_contract_version || 0) >= 2;
     const legacyReferralAdjustment = !usesServerManagedDiscountContract && !discount_code && referral_code
       ? Number(referral_discount || 0)
       : 0;
-    const merchandiseTotalBeforePromotion = Math.max(
-      0,
-      Number(total) - Number(delivery_fee || 0) + legacyReferralAdjustment,
-    );
+    const merchandiseTotalBeforePromotion = isGuestCheckout
+      ? authoritativeSubtotal
+      : Math.max(0, Number(total) - Number(delivery_fee || 0) + legacyReferralAdjustment);
     const submittedDiscountCode = discount_code || promotion_code || referral_code;
     const promotion = await resolvePromotion(base44, submittedDiscountCode, merchandiseTotalBeforePromotion);
     if (!promotion) {
@@ -813,7 +1001,7 @@ Deno.serve(async (req) => {
     const redemptionBlock = await oneTimeRedemptionBlock(
       base44,
       promotion,
-      customer_email || authenticatedUser.email,
+      normalizedCustomerEmail,
     );
     if (redemptionBlock) return redemptionBlock;
     const promotionDiscountAmt = promotion.type === 'promotion' ? promotion.amount : 0;
@@ -824,10 +1012,10 @@ Deno.serve(async (req) => {
     const appliedCheckoutCodeDiscount = appliedPromotionDiscountAmt + appliedReferralDiscountAmt;
     const appliedPromotionCode = promotion.type === 'promotion' ? promotion.code : null;
     const appliedReferralCode = promotion.type === 'referral' ? promotion.code : null;
-    const totalDiscountAmount  = Math.min(Number(subtotal), Math.round((
-      Number(points_discount || 0) +
-      Number(reward_discount || 0) +
-      Number(credits_discount || 0) +
+    const totalDiscountAmount  = Math.min(authoritativeSubtotal, Math.round((
+      Number(isGuestCheckout ? 0 : points_discount || 0) +
+      Number(isGuestCheckout ? 0 : reward_discount || 0) +
+      Number(isGuestCheckout ? 0 : credits_discount || 0) +
       subDiscountAmt +
       appliedCheckoutCodeDiscount
     ) * 100) / 100);
@@ -917,11 +1105,12 @@ Deno.serve(async (req) => {
       base44_app_id:            Deno.env.get('BASE44_APP_ID'),
       source_app:               'customer_app',
       checkout_version:         '3.0_embedded',
+      checkout_mode:            isGuestCheckout ? 'guest' : 'account',
       order_number:             orderNumber,
       order_type:               'one_time',
       fulfillment_mode:         'single_delivery',
       is_preorder:              'false',
-      customer_email:           customer_email || '',
+      customer_email:           normalizedCustomerEmail,
       customer_name:            customer_name  || '',
       customer_first_name:      customerIdentity.firstName,
       customer_last_name:       customerIdentity.lastName,
@@ -963,7 +1152,10 @@ Deno.serve(async (req) => {
       promotion_discount_amount:  appliedPromotionDiscountAmt.toFixed(2),
       total_discount_amount:      totalDiscountAmount.toFixed(2),
       discount_codes:             discountCodes.join(','),
-      bag_return_request_id:      String(bag_return_request_id || '').trim(),
+      bag_return_request_id:      isGuestCheckout ? '' : String(bag_return_request_id || '').trim(),
+      health_advisory_acknowledged: 'true',
+      health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
+      health_advisory_version:    HEALTH_ADVISORY_VERSION,
     };
 
     // Account discounts are represented in the pre-code total. The checkout
@@ -973,7 +1165,9 @@ Deno.serve(async (req) => {
     // Build Stripe idempotency key from the client-supplied checkout key (if present).
     // This ensures duplicate calls from retries or double-taps return the same PI.
     const stripeIdempotencyKey = checkout_idempotency_key
-      ? `nv-pi-${checkout_idempotency_key}`
+      ? isGuestCheckout
+        ? `nv-pi-guest-${(await sha256Hex(`${normalizedCustomerEmail}:${checkout_idempotency_key}`)).slice(0, 48)}`
+        : `nv-pi-${checkout_idempotency_key}`
       : undefined;
 
     // Create PaymentIntent with card only.
@@ -986,7 +1180,7 @@ Deno.serve(async (req) => {
         currency: 'usd',
         payment_method_types: ['card'],
         metadata: intentMetadata,
-        receipt_email: customer_email || undefined,
+        receipt_email: normalizedCustomerEmail,
         shipping: fulfillment_type === 'delivery' ? {
           name: customer_name,
           phone: normalizedPhone,
@@ -1004,7 +1198,7 @@ Deno.serve(async (req) => {
       stripeIdempotencyKey ? { idempotencyKey: stripeIdempotencyKey } : {}
     );
 
-    console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: payment_method_types=card; express_wallets=apple_pay,google_pay. amount=${amountCents}¢, customer=${customer_email}`);
+    console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: payment_method_types=card; express_wallets=apple_pay,google_pay. amount=${amountCents}¢, checkout_mode=${isGuestCheckout ? 'guest' : 'account'}`);
 
     // Pre-create a pending Order so webhook finalize is simple and idempotent
     const resolvedDeliveryAddress = delivery_address || [
@@ -1056,10 +1250,10 @@ Deno.serve(async (req) => {
 
       await base44.asServiceRole.entities.Order.create({
         order_number:             orderNumber,
-        customer_email:           customer_email || '',
+        customer_email:           normalizedCustomerEmail,
         customer_name,
         items: normalizedItems,
-        subtotal,
+        subtotal:                 authoritativeSubtotal,
         delivery_fee:             effectiveDeliveryFee,
         total:                    effectiveTotal,
         fulfillment_type:         fulfillment_type || 'delivery',
@@ -1098,6 +1292,10 @@ Deno.serve(async (req) => {
         total_discounts:          totalDiscountAmount,
         discount_codes:           discountCodes,
         is_preorder:              false,
+        source_type:              isGuestCheckout ? 'guest_one_time' : 'one_time',
+        health_advisory_acknowledged: true,
+        health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
+        health_advisory_version:  HEALTH_ADVISORY_VERSION,
         // Zone eligibility fields
         ...(eligibility ? {
           delivery_zone_id:         eligibility.zone_key || '',
@@ -1119,10 +1317,10 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.CheckoutSession.create({
         stripe_session_id: paymentIntent.id, // re-use field for PI ID
         order_number:      orderNumber,
-        customer_email:    customer_email || '',
+        customer_email:    normalizedCustomerEmail,
         checkout_data: {
           order_number: orderNumber,
-          customer_email,
+          customer_email: normalizedCustomerEmail,
           customer_name,
           customer_first_name: customerIdentity.firstName,
           customer_last_name: customerIdentity.lastName,
@@ -1135,7 +1333,7 @@ Deno.serve(async (req) => {
           address_state: normalizedAddress.state,
           address_postal_code: normalizedAddress.postalCode,
           address_country: 'US',
-          items: normalizedItems, subtotal,
+          items: normalizedItems, subtotal: authoritativeSubtotal,
           delivery_fee:              effectiveDeliveryFee,
           total:                     effectiveTotal,
           fulfillment_type:          fulfillment_type || 'delivery',
@@ -1164,11 +1362,16 @@ Deno.serve(async (req) => {
           promotion_discount_amount: appliedPromotionDiscountAmt,
           total_discounts:           totalDiscountAmount,
           discount_codes:            discountCodes,
-          points_used:               points_used    || 0,
-          points_discount:           points_discount|| 0,
-          active_reward:             active_reward  || null,
-          reward_discount:           reward_discount|| 0,
-          credits_discount:          credits_discount || 0,
+          points_used:               isGuestCheckout ? 0 : points_used || 0,
+          points_discount:           isGuestCheckout ? 0 : points_discount || 0,
+          active_reward:             isGuestCheckout ? null : active_reward || null,
+          reward_discount:           isGuestCheckout ? 0 : reward_discount || 0,
+          credits_discount:          isGuestCheckout ? 0 : credits_discount || 0,
+          guest_checkout:            isGuestCheckout,
+          guest_order_token_hash:    isGuestCheckout ? await sha256Hex(guest_order_token) : null,
+          health_advisory_acknowledged: true,
+          health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
+          health_advisory_version:    HEALTH_ADVISORY_VERSION,
         },
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       });

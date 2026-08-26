@@ -437,10 +437,6 @@ export default function Cart() {
           <Button
             onClick={() => {
               if (!meetsMinimum) return;
-              if (!user) {
-                redirectToLogin('/checkout');
-                return;
-              }
               navigate('/checkout');
             }}
             disabled={!meetsMinimum}
@@ -449,6 +445,18 @@ export default function Cart() {
             {meetsMinimum ? 'Checkout' : 'Add more bottles'}
             {meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
           </Button>
+          {!user && meetsMinimum && (
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-foreground/60">
+              <span>Guest checkout available.</span>
+              <button
+                type="button"
+                onClick={() => redirectToLogin('/checkout')}
+                className="font-semibold text-primary underline underline-offset-2"
+              >
+                Sign in for rewards
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
