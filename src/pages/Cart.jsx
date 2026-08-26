@@ -16,11 +16,31 @@ import { useAuth } from '@/lib/AuthContext';
 import { isBirthdayRewardActive, useBirthdayReward } from '@/lib/birthdayReward';
 import FreeProductPicker from '@/components/FreeProductPicker';
 import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
+import { ANALYTICS_CONSENT_EVENT, trackGoogleViewCart } from '@/lib/googleAnalytics';
 
 export default function Cart() {
   const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem } = useCart();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const analyticsCartSignatureRef = React.useRef('');
+
+  useEffect(() => {
+    if (items.length === 0) return;
+    const signature = items
+      .map((item) => `${item.cart_line_key || item.product_id}:${item.quantity}`)
+      .sort()
+      .join('|');
+    const trackCart = async () => {
+      if (analyticsCartSignatureRef.current === signature) return;
+      if (await trackGoogleViewCart(items, subtotal)) analyticsCartSignatureRef.current = signature;
+    };
+    const onConsent = (event) => {
+      if (event.detail === 'granted') void trackCart();
+    };
+    void trackCart();
+    window.addEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
+    return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
+  }, [items, subtotal]);
 
   const { data: userProfile } = useQuery({
     queryKey: ['user-profile-cart', user?.email],

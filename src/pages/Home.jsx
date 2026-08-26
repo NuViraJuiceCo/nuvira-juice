@@ -132,7 +132,7 @@ export default function Home({ seoActive = true }) {
         style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))' }}
       >
         <div>
-          <img src={LOGO_URL} alt="NuVira Juice Company" className="h-8" />
+          <img src={LOGO_URL} alt="NuVira Juice Company" className="h-8" width="82" height="32" />
           {displayFirstName && (
             <motion.p
               initial={{ opacity: 0 }}
@@ -250,7 +250,7 @@ export default function Home({ seoActive = true }) {
             </Link>
           </div>
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 mb-3">
-            <Link to="/our-story" className="text-xs text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
+            <Link to="/about" className="text-xs text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
             <Link to="/contact" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
             <Link to="/support" className="text-xs text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
             <Link to="/legal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Legal</Link>

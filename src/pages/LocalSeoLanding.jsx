@@ -117,7 +117,7 @@ export const SEO_LANDING_PAGES = {
     serviceType: 'Cold-pressed juice in Wentzville',
     primaryLink: '/shop',
     primaryLabel: 'Shop Wentzville Juices',
-    secondaryLink: '/our-story',
+    secondaryLink: '/about',
     secondaryLabel: 'Our Story',
     sections: [
       {

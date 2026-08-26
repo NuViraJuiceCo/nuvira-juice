@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, Check, Minus, Package, Plus, Sparkles, Truck, Zap } from 'lucide-react';
@@ -18,6 +18,7 @@ import {
 } from '@/lib/program-catalog';
 import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
 import { absoluteUrl } from '@/lib/seo-slugs';
+import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
 
 const FALLBACK_WELLNESS_SHOTS = PUBLIC_PRODUCT_FALLBACKS.filter((product) => (
   product.category === 'shot' && product.is_available !== false
@@ -90,11 +91,36 @@ export default function ProgramDetail() {
   const program = PROGRAMS.find(p => p.key === key);
   const [selectedDays, setSelectedDays] = useState(3);
   const [selectedShotCounts, setSelectedShotCounts] = useState({});
+  const trackedProgramOptionRef = useRef('');
 
   useEffect(() => {
     setSelectedDays(3);
     setSelectedShotCounts({});
   }, [key]);
+
+  useEffect(() => {
+    if (!program) return undefined;
+    const option = programOptionForDays(program, selectedDays);
+    const trackingKey = `${program.key}:${option.days}`;
+    const trackView = async () => {
+      if (trackedProgramOptionRef.current === trackingKey) return;
+      const tracked = await trackGoogleViewItem({
+        id: programProductId(program.key, option.days),
+        title: `${program.name} Program (${option.days}-Day)`,
+        price: option.price,
+        category: 'Juice Program',
+        is_program: true,
+        size: `${option.bottles} bottles`,
+      });
+      if (tracked) trackedProgramOptionRef.current = trackingKey;
+    };
+    const onConsent = (event) => {
+      if (event.detail === 'granted') void trackView();
+    };
+    void trackView();
+    window.addEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
+    return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
+  }, [program, selectedDays]);
 
   const { data: shots = [] } = useQuery({
     queryKey: ['wellness-shots'],

@@ -18,6 +18,7 @@ export const LOCAL_BUSINESS_SCHEMA = {
   "logo": BRAND_ICON,
   "image": DEFAULT_IMAGE,
   "description": DEFAULT_DESCRIPTION,
+  "telephone": "+1-559-826-2823",
   "email": "support@nuvirajuice.com",
   "address": {
     "@type": "PostalAddress",
@@ -76,15 +77,10 @@ export const LOCAL_BUSINESS_SCHEMA = {
       }
     ]
   },
-  "openingHoursSpecification": {
-    "@type": "OpeningHoursSpecification",
-    "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-    "opens": "08:00",
-    "closes": "18:00"
-  },
   "sameAs": [
-    "https://www.instagram.com/nuvirajuice",
-    "https://www.facebook.com/nuvirajuice"
+    "https://www.instagram.com/nuvirajuiceco/",
+    "https://www.facebook.com/nuvirajuiceco",
+    "https://www.tiktok.com/@nuvirajuiceco"
   ],
 };
 

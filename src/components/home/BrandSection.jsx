@@ -10,7 +10,7 @@ const values = [
 ];
 
 const brandLinks = [
-  { label: 'Our Story', to: '/our-story', desc: 'The NuVira origin and mission' },
+  { label: 'Our Story', to: '/about', desc: 'The NuVira origin and mission' },
   { label: 'Why NuVira', to: '/why-nuvira', desc: 'The philosophy behind every bottle' },
   { label: 'Events & Community', to: '/events', desc: 'STL pop-ups, drops & more' },
 ];

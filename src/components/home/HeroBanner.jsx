@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Sparkles } from 'lucide-react';
@@ -76,22 +76,6 @@ export default function HeroBanner({ banners = [] }) {
       link_to: '/shop',
     }
   ];
-  const heroImageUrls = activeBanners.map(({ image_url }) => image_url).filter(Boolean).join('|');
-
-  useEffect(() => {
-    if (activeBanners.length <= 1) return;
-    const t = setInterval(() => setCurrent(c => (c + 1) % activeBanners.length), 4500);
-    return () => clearInterval(t);
-  }, [activeBanners.length]);
-
-  useEffect(() => {
-    activeBanners.slice(1).forEach(({ image_url }) => {
-      if (!image_url) return;
-      const img = new Image();
-      img.src = image_url;
-    });
-  }, [heroImageUrls]);
-
   const banner = activeBanners[current];
 
   return (
@@ -108,15 +92,15 @@ export default function HeroBanner({ banners = [] }) {
           style={{ objectPosition: activeBanners[0].hero_object_position || '58% center' }}
           fetchPriority="high"
           decoding="sync"
-          width="1600"
-          height="1000"
+          width="1440"
+          height="960"
         />
         <div className="absolute inset-0 bg-[linear-gradient(102deg,rgba(3,28,18,0.97)_0%,rgba(6,63,39,0.84)_45%,rgba(2,18,13,0.22)_100%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(184,239,91,0.22)_0%,transparent_34%),linear-gradient(180deg,rgba(0,0,0,0.06)_0%,rgba(0,0,0,0.62)_100%)]" />
       </div>
 
       {/* Animated layer for multi-banner transitions only */}
-      {activeBanners.length > 1 && (
+      {activeBanners.length > 1 && current !== 0 && (
         <AnimatePresence mode="wait">
           <motion.div
             key={current}
@@ -131,9 +115,10 @@ export default function HeroBanner({ banners = [] }) {
               alt={banner.title}
               className="h-full w-full object-cover"
               style={{ objectPosition: banner.hero_object_position || '58% center' }}
+              loading="lazy"
               decoding="async"
-              width="1600"
-              height="1000"
+              width="1440"
+              height="960"
             />
             <div className="absolute inset-0 bg-[linear-gradient(102deg,rgba(3,28,18,0.97)_0%,rgba(6,63,39,0.84)_45%,rgba(2,18,13,0.22)_100%)]" />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(184,239,91,0.22)_0%,transparent_34%),linear-gradient(180deg,rgba(0,0,0,0.06)_0%,rgba(0,0,0,0.62)_100%)]" />

@@ -27,6 +27,7 @@ import {
   ensureDeliveryLiveActivityRegistration,
   installDeliveryLiveActivityListeners,
 } from '@/lib/deliveryLiveActivity';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 const ProductDetail = React.lazy(() => import('@/pages/ProductDetail'));
 const LocalSeoLanding = React.lazy(() => import('@/pages/LocalSeoLanding'));
@@ -195,7 +196,7 @@ function markSplashShown() {
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, checkAppState } = useAuth();
   const navigate = useNavigate();
-  const [showSplash, setShowSplash] = React.useState(() => !hasSplashBeenShown());
+  const [showSplash, setShowSplash] = React.useState(() => isNativeAppRuntime() && !hasSplashBeenShown());
   const hasRequestedAuthRedirectRef = React.useRef(false);
 
   const location = useLocation();
@@ -422,7 +423,7 @@ const AuthenticatedApp = () => {
           <Route path="/delete-account" element={<DeleteAccount />} />
           <Route path="/account/subscriptions" element={<ProtectedRoute element={<SubscriptionManagement />} user={user} />} />
           <Route path="/support" element={<Support />} />
-          <Route path="/our-story" element={<About />} />
+          <Route path="/our-story" element={<Navigate to="/about" replace />} />
           <Route path="/about" element={<About />} />
           <Route path="/why-nuvira" element={<WhyNuVira />} />
           <Route path="/events" element={<Events />} />
