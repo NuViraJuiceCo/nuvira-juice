@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const SITE_URL = 'https://www.nuvirajuice.com';
 const BRAND = 'NuVira Juice Co.';
+const GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION = '2026-08-25.g132-structured-content';
 
 const GOOGLE_PRODUCT_CATEGORIES = {
   juice: '2887',
@@ -443,6 +444,7 @@ ${entries.join('\n')}
         'Content-Type': 'application/xml; charset=utf-8',
         'Cache-Control': 'public, max-age=1800',
         'X-Feed-Generated': now,
+        'X-Feed-Revision': GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION,
         'X-Product-Count': String(entries.length),
       },
     });

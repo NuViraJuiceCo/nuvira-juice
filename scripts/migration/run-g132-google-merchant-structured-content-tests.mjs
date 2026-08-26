@@ -74,6 +74,8 @@ assert.match(xmlSource, /<g:product_detail>/);
 assert.match(xmlSource, /<g:section_name>/);
 assert.match(xmlSource, /<g:attribute_name>/);
 assert.match(xmlSource, /<g:attribute_value>/);
+assert.match(xmlSource, /GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION = '2026-08-25\.g132-structured-content'/);
+assert.match(xmlSource, /'X-Feed-Revision': GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION/);
 
 assert.doesNotMatch(productDetailSource, /'@type': 'OfferShippingDetails'/);
 assert.doesNotMatch(productDetailSource, /shippingRate:\s*\{[\s\S]{0,160}value: '0'/);
