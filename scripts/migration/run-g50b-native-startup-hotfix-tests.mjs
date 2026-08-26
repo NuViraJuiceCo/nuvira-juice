@@ -148,7 +148,7 @@ assert(nativeLogin.includes('if (isSignInReset) return;'), 'NativeLogin can stil
 assert(nativeLogin.includes('Sign-in was reset. Please sign in again.'), 'NativeLogin reset mode does not show stable reset copy');
 
 assert(checkout.includes('checkout_idempotency_key'), 'Checkout idempotency key unexpectedly removed');
-assert(createPaymentIntent.includes('stripe.paymentIntents.create'), 'createPaymentIntent unexpectedly changed or lost PI creation evidence');
+assert(createPaymentIntent.includes('paymentIntents.create'), 'createPaymentIntent unexpectedly changed or lost PI creation evidence');
 assert(createPaymentIntent.includes('entities.Order.create'), 'createPaymentIntent unexpectedly changed or lost pending Order creation evidence');
 
 assert(capacitor.webDir === 'dist', 'Capacitor webDir is not dist');

@@ -9,6 +9,8 @@ const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
   'www.nuvirajuice.com',
 ]);
 const GOOGLE_PAY_DOMAIN_CONFIRMATION = 'ENSURE_GOOGLE_PAY_DOMAINS';
+const CHECKOUT_PROVIDER_SANDBOX_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
+const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const HEALTH_ADVISORY_VERSION = '2026-05-13-v1';
 const PROGRAM_SCHEDULE_VERSION = '2026-08-09.v2';
 const PROGRAM_ORDER_OPTIONS = Object.freeze({
@@ -242,6 +244,46 @@ async function readGuestOrderStatus(base44, body) {
 
 function isWalletConfigurationAdmin(user) {
   return ['admin', 'owner'].includes(String(user?.role || '').trim().toLowerCase());
+}
+
+function checkoutProviderSandboxStripe() {
+  const secretKey = String(Deno.env.get('STRIPE_SANDBOX_SECRET_KEY') || '').trim();
+  if (!secretKey) return null;
+  return new Stripe(secretKey);
+}
+
+function normalizeCheckoutProviderSandboxRequest(body, testId) {
+  const normalizedTestId = String(testId || '').trim().toLowerCase();
+  return {
+    ...body,
+    customer_email: CHECKOUT_PROVIDER_SANDBOX_RECIPIENT,
+    customer_name: 'NuVira Sandbox',
+    customer_first_name: 'NuVira',
+    customer_last_name: 'Sandbox',
+    contact_phone: '6365550100',
+    fulfillment_type: 'delivery',
+    delivery_address: "619 N Main St, O'Fallon, MO 63366",
+    address_line1: '619 N Main St',
+    address_line2: '',
+    address_city: "O'Fallon",
+    address_state: 'MO',
+    address_postal_code: '63366',
+    points_discount: 0,
+    points_used: 0,
+    active_reward: null,
+    reward_discount: 0,
+    credits_discount: 0,
+    referral_discount: 0,
+    referral_code: null,
+    promotion_code: null,
+    discount_code: null,
+    bag_return_request_id: null,
+    guest_checkout: true,
+    health_advisory_acknowledged: true,
+    health_advisory_version: HEALTH_ADVISORY_VERSION,
+    checkout_idempotency_key: `g136-sandbox-checkout-${normalizedTestId}`,
+    guest_order_token: `g136-sandbox-order-token-${normalizedTestId}`,
+  };
 }
 
 function paymentMethodDomainSummary(domainName, record) {
@@ -712,7 +754,49 @@ function optionConflictsWithSubmittedFields(option, selectedOption) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const requestBody = await req.json();
+    const submittedRequestBody = await req.json();
+    const authenticatedUser = await base44.auth.me().catch(() => null);
+    const sandboxRequested = submittedRequestBody?.internal_sandbox_checkout === true;
+    const sandboxTestId = String(submittedRequestBody?.sandbox_test_id || '').trim();
+    const internalSandboxCheckout = sandboxRequested
+      && isWalletConfigurationAdmin(authenticatedUser)
+      && constantTimeEqual(
+        submittedRequestBody?.internal_sandbox_confirmation,
+        CHECKOUT_PROVIDER_SANDBOX_CONFIRMATION,
+      )
+      && /^[a-zA-Z0-9._:-]{8,80}$/.test(sandboxTestId);
+
+    if (sandboxRequested && !isWalletConfigurationAdmin(authenticatedUser)) {
+      return Response.json({
+        ok: false,
+        error: 'Admin access is required for the provider sandbox.',
+        error_code: 'CHECKOUT_PROVIDER_SANDBOX_FORBIDDEN',
+        writes_performed: false,
+        provider_calls_performed: false,
+      }, { status: 403 });
+    }
+    if (sandboxRequested && !internalSandboxCheckout) {
+      return Response.json({
+        ok: false,
+        error: 'Exact provider sandbox confirmation and a valid test id are required.',
+        error_code: 'CHECKOUT_PROVIDER_SANDBOX_CONFIRMATION_REQUIRED',
+        writes_performed: false,
+        provider_calls_performed: false,
+      }, { status: 400 });
+    }
+    if (internalSandboxCheckout && !checkoutProviderSandboxStripe()) {
+      return Response.json({
+        ok: false,
+        error: 'Stripe provider sandbox is not configured.',
+        error_code: 'CHECKOUT_PROVIDER_SANDBOX_NOT_CONFIGURED',
+        writes_performed: false,
+        provider_calls_performed: false,
+      }, { status: 503 });
+    }
+
+    const requestBody = internalSandboxCheckout
+      ? normalizeCheckoutProviderSandboxRequest(submittedRequestBody, sandboxTestId)
+      : submittedRequestBody;
 
     const {
       mode, discount_code, discount_contract_version, eligible_subtotal,
@@ -738,8 +822,7 @@ Deno.serve(async (req) => {
       checkout_idempotency_key,
       bag_return_request_id,
     } = requestBody;
-    const authenticatedUser = await base44.auth.me().catch(() => null);
-    const isGuestCheckout = !authenticatedUser?.email && guest_checkout === true;
+    const isGuestCheckout = internalSandboxCheckout || (!authenticatedUser?.email && guest_checkout === true);
 
     if (mode === 'guest_order_status') {
       return await readGuestOrderStatus(base44, requestBody);
@@ -1027,7 +1110,9 @@ Deno.serve(async (req) => {
       merchandiseTotalBeforePromotion - appliedCheckoutCodeDiscount
     ) + effectiveDeliveryFee;
 
-    const orderNumber = `NV-${Date.now().toString(36).toUpperCase()}`;
+    let orderNumber = internalSandboxCheckout
+      ? `NV-SBX-${Date.now().toString(36).toUpperCase()}`
+      : `NV-${Date.now().toString(36).toUpperCase()}`;
 
     // ── CENTRAL SCHEDULE ENGINE ──────────────────────────────────────────
     // Read latest backend options as the single source of truth for checkout dates.
@@ -1156,6 +1241,9 @@ Deno.serve(async (req) => {
       health_advisory_acknowledged: 'true',
       health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
       health_advisory_version:    HEALTH_ADVISORY_VERSION,
+      internal_sandbox_checkout:  internalSandboxCheckout ? 'true' : 'false',
+      is_test_order:              internalSandboxCheckout ? 'true' : 'false',
+      sandbox_test_id:            internalSandboxCheckout ? sandboxTestId : '',
     };
 
     // Account discounts are represented in the pre-code total. The checkout
@@ -1174,7 +1262,8 @@ Deno.serve(async (req) => {
     // payment_method_types:['card'] enables Apple Pay and Google Pay via ExpressCheckoutElement
     // without opening the door to Bank, Klarna, ACH, or any redirect-based method.
     // automatic_payment_methods is intentionally omitted to prevent Bank from appearing.
-    const paymentIntent = await stripe.paymentIntents.create(
+    const checkoutStripe = internalSandboxCheckout ? checkoutProviderSandboxStripe() : stripe;
+    const paymentIntent = await checkoutStripe.paymentIntents.create(
       {
         amount:   amountCents,
         currency: 'usd',
@@ -1193,10 +1282,16 @@ Deno.serve(async (req) => {
             country: 'US',
           },
         } : undefined,
-        description: `NuVira Order ${orderNumber}`,
+        description: internalSandboxCheckout
+          ? `NuVira provider sandbox ${orderNumber}`
+          : `NuVira Order ${orderNumber}`,
       },
       stripeIdempotencyKey ? { idempotencyKey: stripeIdempotencyKey } : {}
     );
+
+    if (internalSandboxCheckout && paymentIntent.metadata?.order_number) {
+      orderNumber = paymentIntent.metadata.order_number;
+    }
 
     console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: payment_method_types=card; express_wallets=apple_pay,google_pay. amount=${amountCents}¢, checkout_mode=${isGuestCheckout ? 'guest' : 'account'}`);
 
@@ -1207,6 +1302,8 @@ Deno.serve(async (req) => {
       normalizedAddress.state,
       normalizedAddress.postalCode,
     ].filter(Boolean).join(', ');
+    let sandboxOrderReady = !internalSandboxCheckout;
+    let sandboxSessionReady = !internalSandboxCheckout;
 
     try {
       // Deduplication guard: if a retry call hit Stripe idempotency and returned the same PI,
@@ -1218,10 +1315,17 @@ Deno.serve(async (req) => {
         if (existingOrders.length > 0) {
           const existing = existingOrders[0];
           console.log(`[PI] Idempotent retry — returning existing pending Order ${existing.order_number} for PI ${paymentIntent.id}`);
+          if (internalSandboxCheckout) {
+            sandboxOrderReady = existing.is_test_order === true
+              && existing.source_type === 'guest_sandbox'
+              && existing.customer_email === CHECKOUT_PROVIDER_SANDBOX_RECIPIENT;
+          } else {
           return Response.json({
             clientSecret:         paymentIntent.client_secret,
             paymentIntentId:      paymentIntent.id,
-            publishableKey:       Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
+            publishableKey:       internalSandboxCheckout
+              ? Deno.env.get('STRIPE_SANDBOX_PUBLISHABLE_KEY')
+              : Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
             orderNumber:          existing.order_number,
             effectiveTotal,
             effectiveDeliveryFee,
@@ -1245,10 +1349,12 @@ Deno.serve(async (req) => {
               final_schedule_source: canonicalSchedule.finalScheduleSource,
             },
           });
+          }
         }
       }
 
-      await base44.asServiceRole.entities.Order.create({
+      if (!sandboxOrderReady) {
+        await base44.asServiceRole.entities.Order.create({
         order_number:             orderNumber,
         customer_email:           normalizedCustomerEmail,
         customer_name,
@@ -1292,7 +1398,10 @@ Deno.serve(async (req) => {
         total_discounts:          totalDiscountAmount,
         discount_codes:           discountCodes,
         is_preorder:              false,
-        source_type:              isGuestCheckout ? 'guest_one_time' : 'one_time',
+        source_type:              internalSandboxCheckout
+          ? 'guest_sandbox'
+          : isGuestCheckout ? 'guest_one_time' : 'one_time',
+        is_test_order:            internalSandboxCheckout,
         health_advisory_acknowledged: true,
         health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
         health_advisory_version:  HEALTH_ADVISORY_VERSION,
@@ -1305,7 +1414,9 @@ Deno.serve(async (req) => {
           timestamp: new Date().toISOString(),
           message:   'Order created — awaiting payment confirmation.',
         }],
-      });
+        });
+        sandboxOrderReady = internalSandboxCheckout;
+      }
       console.log(`[PI] Pending Order ${orderNumber} pre-created`);
     } catch (orderErr) {
       // Non-fatal — webhook will create order if this fails
@@ -1314,7 +1425,18 @@ Deno.serve(async (req) => {
 
     // Also store CheckoutSession for legacy compatibility / admin tools
     try {
-      await base44.asServiceRole.entities.CheckoutSession.create({
+      if (internalSandboxCheckout) {
+        const existingSessions = await base44.asServiceRole.entities.CheckoutSession.filter({
+          stripe_session_id: paymentIntent.id,
+        }, '-created_date', 2);
+        sandboxSessionReady = existingSessions.some((candidate) => (
+          candidate?.checkout_data?.internal_sandbox_checkout === true
+            && candidate?.checkout_data?.sandbox_test_id === sandboxTestId
+            && candidate?.customer_email === CHECKOUT_PROVIDER_SANDBOX_RECIPIENT
+        ));
+      }
+      if (!sandboxSessionReady) {
+        await base44.asServiceRole.entities.CheckoutSession.create({
         stripe_session_id: paymentIntent.id, // re-use field for PI ID
         order_number:      orderNumber,
         customer_email:    normalizedCustomerEmail,
@@ -1369,14 +1491,72 @@ Deno.serve(async (req) => {
           credits_discount:          isGuestCheckout ? 0 : credits_discount || 0,
           guest_checkout:            isGuestCheckout,
           guest_order_token_hash:    isGuestCheckout ? await sha256Hex(guest_order_token) : null,
+          internal_sandbox_checkout: internalSandboxCheckout,
+          sandbox_test_id:           internalSandboxCheckout ? sandboxTestId : null,
           health_advisory_acknowledged: true,
           health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
           health_advisory_version:    HEALTH_ADVISORY_VERSION,
         },
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      });
+        });
+        sandboxSessionReady = internalSandboxCheckout;
+      }
     } catch (csErr) {
       console.warn(`[PI] Failed to store CheckoutSession for ${orderNumber}: ${csErr.message}`);
+    }
+
+    if (internalSandboxCheckout) {
+      if (!sandboxOrderReady || !sandboxSessionReady) {
+        return Response.json({
+          ok: false,
+          sandbox: true,
+          no_money_moved: true,
+          sandbox_test_id: sandboxTestId,
+          orderNumber,
+          paymentIntentId: paymentIntent.id,
+          error: 'The isolated sandbox records were not ready, so payment confirmation was not attempted.',
+          error_code: 'CHECKOUT_PROVIDER_SANDBOX_RECORDS_NOT_READY',
+          provider_call_performed: true,
+          payment_confirmation_attempted: false,
+          production_stripe_key_used: false,
+          customer_communications_sent: false,
+        }, { status: 503 });
+      }
+      try {
+        const confirmed = paymentIntent.status === 'succeeded'
+          ? paymentIntent
+          : await checkoutStripe.paymentIntents.confirm(paymentIntent.id, {
+            payment_method: 'pm_card_visa',
+          });
+        return Response.json({
+          ok: true,
+          sandbox: true,
+          no_money_moved: true,
+          sandbox_test_id: sandboxTestId,
+          orderNumber,
+          paymentIntentId: confirmed.id,
+          payment_status: confirmed.status,
+          provider_call_performed: true,
+          production_stripe_key_used: false,
+          customer_communications_sent_directly: false,
+          safe_test_recipient: CHECKOUT_PROVIDER_SANDBOX_RECIPIENT,
+        });
+      } catch (sandboxError) {
+        console.error(`[PI sandbox] Test PaymentIntent confirmation failed for ${orderNumber}: ${sandboxError?.message || 'unknown provider error'}`);
+        return Response.json({
+          ok: false,
+          sandbox: true,
+          no_money_moved: true,
+          sandbox_test_id: sandboxTestId,
+          orderNumber,
+          paymentIntentId: paymentIntent.id,
+          error: 'Stripe sandbox payment confirmation failed.',
+          error_code: 'CHECKOUT_PROVIDER_SANDBOX_CONFIRMATION_FAILED',
+          provider_call_performed: true,
+          production_stripe_key_used: false,
+          customer_communications_sent_directly: false,
+        }, { status: 502 });
+      }
     }
 
     return Response.json({

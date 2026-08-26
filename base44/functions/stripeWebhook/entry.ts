@@ -4,6 +4,7 @@ import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-refresh-2026-06-04-v2';
+const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
   'backend_cadence',
   'admin_override',
@@ -71,6 +72,144 @@ function verifiedCheckoutSchedule(checkoutData: Record<string, any> = {}, metada
 
 function isStagingSafeMode() {
   return Deno.env.get('NUVIRA_STAGING_SAFE_MODE') === 'true';
+}
+
+function checkoutProviderSandboxStripe() {
+  const secretKey = String(Deno.env.get('STRIPE_SANDBOX_SECRET_KEY') || '').trim();
+  if (!secretKey) return null;
+  return new Stripe(secretKey);
+}
+
+function isCheckoutProviderSandboxEvent(event) {
+  const object = event?.data?.object || {};
+  const metadata = object?.metadata || {};
+  return event?.livemode === false
+    && metadata.internal_sandbox_checkout === 'true'
+    && metadata.is_test_order === 'true'
+    && /^[a-zA-Z0-9._:-]{8,80}$/.test(String(metadata.sandbox_test_id || ''));
+}
+
+async function handleCheckoutProviderSandboxEvent(base44, event) {
+  if (event.type !== 'payment_intent.succeeded') {
+    return Response.json({
+      received: true,
+      sandbox: true,
+      action: 'ignored_non_terminal_sandbox_event',
+      event_type: event.type,
+    });
+  }
+
+  const pi = event.data.object;
+  const metadata = pi.metadata || {};
+  const orderNumber = String(metadata.order_number || '').trim();
+  const sandboxTestId = String(metadata.sandbox_test_id || '').trim();
+  if (!orderNumber || !sandboxTestId) {
+    return Response.json({ error: 'invalid_checkout_provider_sandbox_event' }, { status: 400 });
+  }
+
+  const orders = await base44.asServiceRole.entities.Order.filter({
+    stripe_payment_intent_id: pi.id,
+  }, '-created_date', 2);
+  const order = orders.find((candidate) => (
+    candidate?.is_test_order === true
+      && candidate?.source_type === 'guest_sandbox'
+      && candidate?.order_number === orderNumber
+  ));
+  if (!order) {
+    console.error(`[stripeWebhook sandbox] Pre-created isolated order not found for ${orderNumber}`);
+    return Response.json({ error: 'checkout_provider_sandbox_order_not_found' }, { status: 409 });
+  }
+
+  const checkoutSessions = await base44.asServiceRole.entities.CheckoutSession.filter({
+    stripe_session_id: pi.id,
+  }, '-created_date', 2);
+  const checkoutSession = checkoutSessions.find((candidate) => (
+    candidate?.checkout_data?.internal_sandbox_checkout === true
+      && candidate?.checkout_data?.sandbox_test_id === sandboxTestId
+      && candidate?.customer_email === CHECKOUT_PROVIDER_SANDBOX_RECIPIENT
+  ));
+  if (!checkoutSession) {
+    console.error(`[stripeWebhook sandbox] Isolated CheckoutSession not found for ${orderNumber}`);
+    return Response.json({ error: 'checkout_provider_sandbox_session_not_found' }, { status: 409 });
+  }
+
+  if (order.payment_captured !== true) {
+    await base44.asServiceRole.entities.Order.update(order.id, {
+      status: 'order_received',
+      payment_status: 'paid',
+      financial_status: 'paid',
+      payment_captured: true,
+      is_test_order: true,
+      do_not_recover: true,
+      status_history: [
+        ...(order.status_history || []),
+        {
+          status: 'order_received',
+          timestamp: new Date().toISOString(),
+          message: 'No-money Stripe provider sandbox payment verified; excluded from customer and operations workflows.',
+        },
+      ],
+    });
+  }
+
+  const emailResponse = await base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
+    order_id: order.id,
+    customer_email: CHECKOUT_PROVIDER_SANDBOX_RECIPIENT,
+    customer_name: order.customer_name,
+    order_number: orderNumber,
+    items: order.items,
+    total: order.total,
+    delivery_address: order.delivery_address,
+    assigned_delivery_date: order.assigned_delivery_date,
+    delivery_window_label: order.delivery_window_label,
+    internal_sandbox_test: true,
+    sandbox_test_id: sandboxTestId,
+  });
+  const emailResult = emailResponse?.data || emailResponse || {};
+  if (emailResult?.success !== true) {
+    throw new Error(emailResult?.error || 'sandbox_order_confirmation_email_failed');
+  }
+
+  const existingAuditLogs = await base44.asServiceRole.entities.OrderSyncLog.filter({
+    idempotency_key: `stripe_sandbox:${event.id}`,
+  }, '-created_date', 1);
+  if (!existingAuditLogs[0]) {
+    await base44.asServiceRole.entities.OrderSyncLog.create({
+      order_number: orderNumber,
+      status: 'success',
+      description: 'No-money guest checkout provider sandbox passed Stripe signature, payment, order isolation, and safe Resend acceptance.',
+      started_at: new Date(event.created * 1000).toISOString(),
+      completed_at: new Date().toISOString(),
+      triggered_by: 'stripe_webhook',
+      event_type: event.type,
+      stripe_event_id: event.id,
+      order_id: order.id,
+      customer_email: CHECKOUT_PROVIDER_SANDBOX_RECIPIENT,
+      action: 'provider_sandbox_verified',
+      reason: 'isolated_test_order_no_customer_or_operational_side_effects',
+      success: true,
+      idempotency_key: `stripe_sandbox:${event.id}`,
+      correlation_id: sandboxTestId,
+    });
+  }
+
+  return Response.json({
+    received: true,
+    sandbox: true,
+    no_money_moved: true,
+    order_number: orderNumber,
+    sandbox_test_id: sandboxTestId,
+    payment_captured: true,
+    customer_email_provider: 'resend_safe_test_address',
+    customer_email_accepted: true,
+    push_attempted: false,
+    push_skipped_reason: 'guest_checkout_has_no_registered_device',
+    loyalty_write_performed: false,
+    shopify_write_performed: false,
+    inventory_write_performed: false,
+    production_write_performed: false,
+    customer_record_write_performed: false,
+  });
 }
 
 function skipLoyaltyWrite(stagingSafeMode) {
@@ -209,25 +348,43 @@ Deno.serve(async (req) => {
   const body = await req.text();
   const signature = req.headers.get('stripe-signature');
   const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
+  const sandboxWebhookSecret = Deno.env.get('STRIPE_SANDBOX_WEBHOOK_SECRET');
 
   let event;
+  let webhookMode = 'live';
   try {
     event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-  } catch (err) {
+  } catch (liveError) {
+    try {
+      const sandboxStripe = checkoutProviderSandboxStripe();
+      if (!sandboxStripe || !sandboxWebhookSecret) throw new Error('sandbox_webhook_not_configured');
+      event = await sandboxStripe.webhooks.constructEventAsync(body, signature, sandboxWebhookSecret);
+      webhookMode = 'sandbox';
+    } catch (sandboxError) {
     // Safe boundary logging only. Never log secret values, prefixes, suffixes, or raw payloads.
     const secretExists = !!webhookSecret;
+    const sandboxSecretExists = !!sandboxWebhookSecret;
     const signatureExists = !!signature;
     const requestPath = req.url;
-    
-    console.error('Webhook signature verification failed:', err.message);
+
+    console.error('Webhook signature verification failed');
     console.error('[stripeWebhook] invalid signature boundary', {
       has_stripe_webhook_secret: secretExists,
+      has_stripe_sandbox_webhook_secret: sandboxSecretExists,
       has_stripe_signature_header: signatureExists,
       request_path: requestPath,
       runtime_build_id: STRIPE_WEBHOOK_RUNTIME_BUILD_ID,
     });
-    
+
     return Response.json({ error: 'Invalid signature' }, { status: 400 });
+    }
+  }
+
+  if (webhookMode === 'live' && event?.livemode === false) {
+    return Response.json({ error: 'live_webhook_rejected_test_event' }, { status: 400 });
+  }
+  if (webhookMode === 'sandbox' && !isCheckoutProviderSandboxEvent(event)) {
+    return Response.json({ error: 'sandbox_webhook_rejected_unmarked_event' }, { status: 400 });
   }
 
   const base44 = createClientFromRequest(req);
@@ -235,6 +392,10 @@ Deno.serve(async (req) => {
   installStagingSideEffectGuards(base44, stagingSafeMode);
 
   try {
+    if (webhookMode === 'sandbox') {
+      return await handleCheckoutProviderSandboxEvent(base44, event);
+    }
+
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const customerEmail = session.customer_email || session.metadata?.customer_email;

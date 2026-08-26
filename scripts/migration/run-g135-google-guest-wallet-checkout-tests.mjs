@@ -37,7 +37,7 @@ assert.match(embeddedPayment, /ExpressCheckoutElement/);
 assert.match(embeddedPayment, /googlePay:\s*'always'/);
 assert.match(embeddedPayment, /applePay:\s*'always'/);
 
-assert.match(paymentIntent, /const isGuestCheckout = !authenticatedUser\?\.email && guest_checkout === true/);
+assert.match(paymentIntent, /const isGuestCheckout = internalSandboxCheckout \|\| \(!authenticatedUser\?\.email && guest_checkout === true\)/);
 assert.match(paymentIntent, /isValidCustomerEmail\(normalizedCustomerEmail\)/);
 assert.match(paymentIntent, /GUEST_CHECKOUT_SECRET_REQUIRED/);
 assert.match(paymentIntent, /GUEST_ACCOUNT_BENEFITS_NOT_ALLOWED/);
