@@ -26,46 +26,181 @@ const MERCHANT_COPY = {
   aura: {
     title: 'NuVira AURA Cold-Pressed Juice – 12 oz',
     description: 'A 12 oz cold-pressed juice blend made with carrot, orange, pineapple, cucumber, ginger, sea salt, and coconut water. Keep refrigerated.',
+    highlights: [
+      'Carrot-forward blend with bright citrus notes',
+      'Cucumber and coconut water balance the finish',
+      'Ginger adds a clean, gently spiced note',
+      'Produce-forward recipe with recognizable ingredients',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed juice',
+      packageContents: 'One 12 oz bottle',
+      ingredients: 'Carrot, orange, pineapple, cucumber, ginger, sea salt, and coconut water',
+    },
   },
   oasis: {
     title: 'NuVira OASIS Cold-Pressed Juice – 12 oz',
     description: 'A 12 oz cold-pressed juice blend made with watermelon, pineapple, orange, lemon, ginger, sea salt, black pepper, and coconut water. Keep refrigerated.',
+    highlights: [
+      'Watermelon-forward blend with pineapple and orange',
+      'Lemon and ginger add a bright finish',
+      'Sea salt, black pepper, and coconut water round out the blend',
+      'Produce-forward recipe with recognizable ingredients',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed juice',
+      packageContents: 'One 12 oz bottle',
+      ingredients: 'Watermelon, pineapple, orange, lemon, ginger, sea salt, black pepper, and coconut water',
+    },
   },
   're-nu': {
     title: 'NuVira RE-NU Cold-Pressed Green Juice – 12 oz',
     description: 'A 12 oz cold-pressed green juice made with cucumber, apple, celery, and kale. Keep refrigerated.',
+    highlights: [
+      'Cucumber-forward green juice',
+      'Apple balances celery and kale',
+      'Four-ingredient produce blend',
+      'Fresh, crisp flavor profile',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed green juice',
+      packageContents: 'One 12 oz bottle',
+      ingredients: 'Cucumber, apple, celery, and kale',
+    },
   },
   'the nuvira trio': {
     title: 'NuVira Cold-Pressed Juice Trio – 3 × 12 oz',
     description: 'One 12 oz bottle each of NuVira AURA, RE-NU, and OASIS cold-pressed juice. Keep refrigerated.',
+    highlights: [
+      'Includes one AURA, one OASIS, and one RE-NU',
+      'Carrot, watermelon, and green juice profiles in one bundle',
+      'Three distinct produce-forward blends',
+      'Built for sampling the signature lineup',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed juice bundle',
+      packageContents: 'Three 12 oz bottles: one AURA, one OASIS, and one RE-NU',
+      ingredients: 'AURA: carrot, orange, pineapple, cucumber, ginger, sea salt, and coconut water; OASIS: watermelon, pineapple, orange, lemon, ginger, sea salt, black pepper, and coconut water; RE-NU: cucumber, apple, celery, and kale',
+    },
   },
   'orange juice': {
     title: 'NuVira Cold-Pressed Orange Juice – 32 oz',
     description: 'A 32 oz bottle of cold-pressed orange juice made from oranges with no added sugar or preservatives. Keep refrigerated.',
+    highlights: [
+      'Bright, naturally sweet orange flavor',
+      'Single-fruit recipe',
+      'No added sugar',
+      'Made without concentrates',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed juice',
+      packageContents: 'One 32 oz bottle',
+      ingredients: 'Orange',
+    },
   },
   'pineapple juice': {
     title: 'NuVira Cold-Pressed Pineapple Juice – 32 oz',
     description: 'A 32 oz bottle of cold-pressed pineapple juice made from whole pineapple with no added sugar or preservatives. Keep refrigerated.',
+    highlights: [
+      'Tangy, tropical pineapple flavor',
+      'Single-fruit recipe',
+      'No added sugar',
+      'Made without concentrates',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed juice',
+      packageContents: 'One 32 oz bottle',
+      ingredients: 'Pineapple',
+    },
   },
   'watermelon juice': {
     title: 'NuVira Cold-Pressed Watermelon Juice – 32 oz',
     description: 'A 32 oz bottle of cold-pressed watermelon juice made from fresh watermelon with no added sugar or preservatives. Keep refrigerated.',
+    highlights: [
+      'Light, refreshing watermelon flavor',
+      'Single-fruit recipe',
+      'No added sugar',
+      'Made without concentrates',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed juice',
+      packageContents: 'One 32 oz bottle',
+      ingredients: 'Watermelon',
+    },
   },
   'radiance shot': {
     title: 'NuVira Radiance Wellness Shot – 2 oz',
     description: 'A 2 oz wellness shot made with beet, apple, and lemon. Keep refrigerated.',
+    highlights: [
+      'Bright beet, apple, and lemon flavor',
+      'Produce-forward three-ingredient blend',
+      'Tart finish',
+      'Compact ready-to-drink format',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed wellness shot',
+      packageContents: 'One 2 oz bottle',
+      ingredients: 'Beet, apple, and lemon',
+    },
   },
   'hydration shot': {
     title: 'NuVira Hydration Wellness Shot – 2 oz',
     description: 'A 2 oz wellness shot made with coconut water, pink Himalayan salt, lime, honey, and mint. Keep refrigerated.',
+    highlights: [
+      'Coconut water, lime, honey, and mint blend',
+      'Finished with pink Himalayan salt',
+      'Fresh mint and citrus flavor',
+      'Compact ready-to-drink format',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed wellness shot',
+      packageContents: 'One 2 oz bottle',
+      ingredients: 'Coconut water, pink Himalayan salt, lime, honey, and mint',
+    },
   },
   'reset shot': {
     title: 'NuVira Reset Wellness Shot – 2 oz',
     description: 'A 2 oz wellness shot made with pineapple, lemon, ginger, and black salt. Keep refrigerated.',
+    highlights: [
+      'Zesty pineapple, lemon, and ginger blend',
+      'Finished with black salt',
+      'Bright, gently spiced flavor profile',
+      'Compact ready-to-drink format',
+      'Prepared in small batches',
+    ],
+    facts: {
+      productType: 'Cold-pressed wellness shot',
+      packageContents: 'One 2 oz bottle',
+      ingredients: 'Pineapple, lemon, ginger, and black salt',
+    },
   },
   'large nuvira tote bag': {
     title: 'NuVira Reusable Tote Bag – Large',
     description: 'A large reusable NuVira tote bag for event days, juice runs, and everyday carry.',
+    highlights: [
+      'Reusable large-format tote',
+      'Black exterior with a white logo',
+      'Designed for juice runs and event days',
+      'Suitable for everyday carrying',
+      'Twin carry handles',
+    ],
+    details: [
+      { sectionName: 'Product', attributeName: 'Product type', attributeValue: 'Reusable tote bag' },
+      { sectionName: 'Product', attributeName: 'Size', attributeValue: 'Large' },
+      { sectionName: 'Design', attributeName: 'Exterior color', attributeValue: 'Black' },
+      { sectionName: 'Design', attributeName: 'Handle style', attributeValue: 'Twin carry handles' },
+      { sectionName: 'Design', attributeName: 'Logo color', attributeValue: 'White' },
+      { sectionName: 'Use', attributeName: 'Intended use', attributeValue: 'Everyday carrying, juice runs, and event days' },
+    ],
   },
 };
 
@@ -147,6 +282,36 @@ function getMerchantCopy(product) {
     title: `${String(product.title || '').trim()}${size ? ` – ${size}` : ''}`,
     description: `${String(product.title || '').trim()} from NuVira Juice Co. See the product page for current ingredients, size, availability, and scheduled local-delivery details.`,
   };
+}
+
+function getMerchantStructuredContent(product) {
+  const titleKey = String(product.title || '').trim().toLowerCase();
+  const curated = MERCHANT_COPY[titleKey];
+  if (!curated) return { highlights: [], details: [] };
+
+  const highlights = Array.isArray(curated.highlights)
+    ? curated.highlights.map(value => String(value || '').trim()).filter(Boolean).slice(0, 6)
+    : [];
+
+  if (Array.isArray(curated.details)) {
+    return { highlights, details: curated.details };
+  }
+
+  if (!curated.facts) return { highlights, details: [] };
+
+  const details = [
+    { sectionName: 'Product', attributeName: 'Product type', attributeValue: curated.facts.productType },
+    { sectionName: 'Package', attributeName: 'Package contents', attributeValue: curated.facts.packageContents },
+    { sectionName: 'Composition', attributeName: 'Ingredients', attributeValue: curated.facts.ingredients },
+    { sectionName: 'Production', attributeName: 'Production method', attributeValue: 'Cold-pressed' },
+    { sectionName: 'Storage', attributeName: 'Storage temperature', attributeValue: '40°F or below' },
+    { sectionName: 'Freshness', attributeName: 'Typical refrigerated shelf life', attributeValue: '5–7 days from production' },
+    { sectionName: 'Freshness', attributeName: 'Use-by guidance', attributeValue: 'Follow the date printed on the bottle' },
+    { sectionName: 'Formulation', attributeName: 'Artificial preservatives', attributeValue: 'None' },
+    { sectionName: 'Serving', attributeName: 'Serving guidance', attributeValue: 'Shake gently and enjoy chilled' },
+  ];
+
+  return { highlights, details };
 }
 
 function getServiceAccountKey() {
@@ -237,6 +402,7 @@ function buildMerchantProductInput(product) {
   const images = getMerchantImages(product);
   if (!product.title || !images.primary || !product.price) return null;
   const copy = getMerchantCopy(product);
+  const structuredContent = getMerchantStructuredContent(product);
 
   const offerId = product.id;
   const productAttributes: Record<string, any> = {
@@ -255,6 +421,13 @@ function buildMerchantProductInput(product) {
       currencyCode: 'USD',
     },
   };
+
+  if (structuredContent.highlights.length >= 2) {
+    productAttributes.productHighlights = structuredContent.highlights;
+  }
+  if (structuredContent.details.length > 0) {
+    productAttributes.productDetails = structuredContent.details;
+  }
 
   const merchantProductInput: Record<string, any> = {
     offerId,
