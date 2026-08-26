@@ -3,7 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g136-public-diagnostic-v1';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g136-public-diagnostic-v2';
 const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
@@ -367,7 +367,7 @@ Deno.serve(async (req) => {
     const sandboxSecretExists = !!sandboxWebhookSecret;
     const signatureExists = !!signature;
     const requestPath = req.url;
-    const sandboxDiagnosticRequested = req.headers.get('x-nuvira-sandbox-signature-probe')
+    const sandboxDiagnosticRequested = new URL(req.url).searchParams.get('sandbox_signature_probe')
       === CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION;
 
     console.error('Webhook signature verification failed');
