@@ -159,7 +159,7 @@ async function authoritativeGuestCheckoutItems(base44, requestedItems) {
     'sort_order',
     250,
   );
-  const productById = new Map<string, any>(
+  const productById = Object.fromEntries(
     availableProducts.map((product) => [String(product?.id || '').trim(), product]),
   );
   const resolved = [];
@@ -175,7 +175,7 @@ async function authoritativeGuestCheckoutItems(base44, requestedItems) {
 
     const productId = String(requestedItem?.product_id || '').trim();
     if (!productId || productId.startsWith('__')) return null;
-    const product = productById.get(productId);
+    const product = productById[productId];
     if (!product) return null;
     const authoritativePrice = Number(product.price);
     if (!Number.isFinite(authoritativePrice) || authoritativePrice < 0) return null;

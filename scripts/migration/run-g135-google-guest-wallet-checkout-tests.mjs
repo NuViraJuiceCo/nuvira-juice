@@ -45,7 +45,7 @@ assert.match(paymentIntent, /HEALTH_ADVISORY_ACKNOWLEDGMENT_REQUIRED/);
 assert.match(paymentIntent, /health_advisory_acknowledged_at:\s*healthAdvisoryAcknowledgedAt/);
 assert.match(paymentIntent, /authoritativeGuestCheckoutItems\(base44, items\)/);
 assert.match(paymentIntent, /entities\.Product\.filter\(\s*\{ is_available: true \},\s*'sort_order',\s*250/);
-assert.match(paymentIntent, /const productById = new Map/);
+assert.match(paymentIntent, /const productById = Object\.fromEntries/);
 assert.doesNotMatch(paymentIntent, /entities\.Product\.filter\(\{ id: productId \}/);
 assert.match(paymentIntent, /PRODUCT_PRICE_OR_AVAILABILITY_CHANGED/);
 assert.match(paymentIntent, /items\.length > 50/);
