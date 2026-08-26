@@ -11,7 +11,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" /></noscript>
-    <link rel="preload" as="image" href="/images/brand/nuvira-about-bottle-cooler.webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/images/brand/nuvira-about-bottle-cooler.webp" imagesrcset="/images/brand/nuvira-about-bottle-cooler-840.webp 840w, /images/brand/nuvira-about-bottle-cooler.webp 1440w" imagesizes="100vw" fetchpriority="high" />
+    <script type="module">
+      if (!globalThis.Capacitor?.isNativePlatform?.() && window.location.pathname === '/') {
+        import('/src/pages/Home.jsx');
+      }
+    </script>
     <link rel="preconnect" href="https://media.base44.com" crossorigin />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
