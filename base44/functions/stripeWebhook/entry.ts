@@ -3,7 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g136-sandbox-signature-v1';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g136-sandbox-signature-v2';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
   'backend_cadence',
