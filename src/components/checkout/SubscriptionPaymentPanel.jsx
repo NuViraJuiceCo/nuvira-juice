@@ -132,6 +132,7 @@ function PaymentForm({ amountDue, planName, clientSecret, publishableKey, onSucc
       setSubmitting(false);
     }
   };
+  const nativeGooglePayPreferred = isNativeGooglePayPlatform() && nativeGooglePayStatus.available;
 
   return (
     <div className="space-y-4">
@@ -159,7 +160,7 @@ function PaymentForm({ amountDue, planName, clientSecret, publishableKey, onSucc
         </div>
       )}
 
-      {(!isNativeGooglePayPlatform() && (!expressReady || expressAvailable)) && (
+      {(!nativeGooglePayPreferred && (!expressReady || expressAvailable)) && (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Wallet Checkout</p>
           <div style={{ minHeight: '48px' }}>
