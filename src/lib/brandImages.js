@@ -9,6 +9,7 @@ export const BRAND_IMAGES = {
   aboutHeroEvent: '/images/brand/nuvira-about-hero-event.jpg',
   aboutHeroMobile: '/images/brand/nuvira-about-hero-mobile.jpg',
   aboutBottleCooler: '/images/brand/nuvira-about-bottle-cooler.webp',
+  aboutBottleCoolerMobile: '/images/brand/nuvira-about-bottle-cooler-840.webp',
   aboutProductSignage: '/images/brand/nuvira-about-product-signage.jpg',
   aboutCommunityService: '/images/brand/nuvira-about-community-service.jpg',
   aboutMarketWide: '/images/brand/nuvira-about-market-wide.jpg',

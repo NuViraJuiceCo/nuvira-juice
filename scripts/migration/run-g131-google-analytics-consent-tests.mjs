@@ -110,14 +110,16 @@ const checks = [
     assert.doesNotMatch(sitemap, /https:\/\/nuvirajuice\.com\/(?:our-story|subscribe|referral)/);
   }],
   ['homepage LCP image is preloaded and does not auto-rotate during Core Web Vitals measurement', () => {
-    assert.match(indexHtml, /rel="preload" as="image" href="\/images\/brand\/nuvira-about-bottle-cooler\.webp" fetchpriority="high"/);
+    assert.match(indexHtml, /rel="preload" as="image" href="\/images\/brand\/nuvira-about-bottle-cooler\.webp" imagesrcset="\/images\/brand\/nuvira-about-bottle-cooler-840\.webp 840w, \/images\/brand\/nuvira-about-bottle-cooler\.webp 1440w" imagesizes="100vw" fetchpriority="high"/);
     assert.match(indexHtml, /content="width=device-width, initial-scale=1\.0, viewport-fit=cover"/);
     assert.match(brandImages, /nuvira-about-bottle-cooler\.webp/);
+    assert.match(brandImages, /nuvira-about-bottle-cooler-840\.webp/);
     assert.match(brandImages, /nuvira-trio-outdoor-event\.webp/);
     assert.match(brandImages, /nuvira-tote-bag\.webp/);
     assert.doesNotMatch(heroBanner, /setInterval/);
     assert.doesNotMatch(heroBanner, /new Image\(\)/);
     assert.match(heroBanner, /current !== 0/);
+    assert.match(heroBanner, /srcSet=\{activeBanners\[0\]\.image_url === DEFAULT_HERO_IMAGE\.image_url/);
     assert.match(app, /isNativeAppRuntime\(\) && !hasSplashBeenShown\(\)/);
   }],
   ['homepage LCP heading uses a preloaded local font and renders without a mount delay', () => {
@@ -126,6 +128,12 @@ const checks = [
     assert.match(indexCss, /src: url\('\/fonts\/playfair-display-latin\.woff2'\) format\('woff2'\)/);
     assert.ok(fs.existsSync('public/fonts/playfair-display-latin.woff2'));
     assert.match(heroBanner, /<motion\.div\s+initial=\{false\}/);
+  }],
+  ['web homepage module begins loading early without weakening native route isolation', () => {
+    assert.match(indexHtml, /!globalThis\.Capacitor\?\.isNativePlatform\?\.\(\)/);
+    assert.match(indexHtml, /window\.location\.pathname === '\/'/);
+    assert.match(indexHtml, /import\('\/src\/pages\/Home\.jsx'\)/);
+    assert.match(app, /const Home = React\.lazy\(\(\) => import\('@\/pages\/Home'\)\)/);
   }],
 ];
 

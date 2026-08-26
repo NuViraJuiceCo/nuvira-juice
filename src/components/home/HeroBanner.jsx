@@ -87,6 +87,10 @@ export default function HeroBanner({ banners = [] }) {
       <div className="absolute inset-0">
         <img
           src={activeBanners[0].image_url}
+          srcSet={activeBanners[0].image_url === DEFAULT_HERO_IMAGE.image_url
+            ? `${BRAND_IMAGES.aboutBottleCoolerMobile} 840w, ${DEFAULT_HERO_IMAGE.image_url} 1440w`
+            : undefined}
+          sizes="100vw"
           alt={activeBanners[0].title}
           className="h-full w-full object-cover"
           style={{ objectPosition: activeBanners[0].hero_object_position || '58% center' }}
