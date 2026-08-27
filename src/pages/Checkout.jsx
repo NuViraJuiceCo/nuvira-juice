@@ -26,6 +26,7 @@ import { normalizeValidatedCheckoutCode } from '@/lib/checkoutPromotions';
 import { buildCustomerName, normalizeNamePart, resolveCustomerIdentity } from '@/lib/customerIdentity';
 import { trackGoogleAddPaymentInfo, trackGoogleAddShippingInfo } from '@/lib/googleAnalytics';
 import { getMarketingConsent, trackMetaAddPaymentInfo } from '@/lib/metaPixel';
+import { trackSnapAddBilling } from '@/lib/snapPixel';
 
 const CHECKOUT_PROCESSING_WATCHDOG_MS = 20000;
 
@@ -1252,6 +1253,7 @@ function CheckoutFlow() {
               paymentAnalyticsTrackedRef.current = true;
               void trackGoogleAddPaymentInfo(items, paymentTotal, paymentType, checkoutCode?.code || '');
               void trackMetaAddPaymentInfo(items, paymentTotal);
+              void trackSnapAddBilling(items, paymentTotal);
             }}
             onSuccess={(paymentIntentId) => {
               clearCart();

@@ -21,6 +21,7 @@ import {
   MARKETING_CONSENT_EVENT,
   trackMetaSearch,
 } from '@/lib/metaPixel';
+import { trackSnapSearch } from '@/lib/snapPixel';
 
 const ALL_CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -39,6 +40,7 @@ export default function Shop({ seoActive = true }) {
   const trackedGoogleListsRef = useRef(new Set());
   const trackedGoogleSearchesRef = useRef(new Set());
   const trackedMetaSearchesRef = useRef(new Set());
+  const trackedSnapSearchesRef = useRef(new Set());
   const showWebsiteSeoLinks = seoActive && !isNativeAppRuntime();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -159,6 +161,11 @@ export default function Shop({ seoActive = true }) {
       if (!trackedMetaSearchesRef.current.has(term)) {
         void trackMetaSearch(term).then((tracked) => {
           if (tracked) trackedMetaSearchesRef.current.add(term);
+        });
+      }
+      if (!trackedSnapSearchesRef.current.has(term)) {
+        void trackSnapSearch(term).then((tracked) => {
+          if (tracked) trackedSnapSearchesRef.current.add(term);
         });
       }
     }, 650);

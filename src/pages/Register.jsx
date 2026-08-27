@@ -12,6 +12,7 @@ import { toast } from "@/components/ui/use-toast";
 import { safeReturnTo } from "@/lib/authReturnTo";
 import { prepareGoogleProviderAuthRedirect, trackGoogleSignUp } from "@/lib/googleAnalytics";
 import { prepareMetaRegistrationEvent } from "@/lib/metaPixel";
+import { prepareSnapRegistrationEvent } from "@/lib/snapPixel";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -50,6 +51,7 @@ export default function Register() {
       }
       trackGoogleSignUp('email');
       prepareMetaRegistrationEvent('email');
+      prepareSnapRegistrationEvent('email');
       window.location.href = safeReturnTo();
     } catch (err) {
       setError(err.message || "Invalid verification code");

@@ -31,6 +31,7 @@ import ProductCard from '@/components/shop/ProductCard';
 import { BRAND_OG_IMAGE, brandImageUrl } from '@/lib/brandImages';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
 import { MARKETING_CONSENT_EVENT, trackMetaViewContent } from '@/lib/metaPixel';
+import { trackSnapViewContent } from '@/lib/snapPixel';
 
 function normalizeCategory(value) {
   return String(value || '').trim().toLowerCase();
@@ -146,6 +147,7 @@ export default function ProductDetail() {
   const [quantity, setQuantity] = useState(1);
   const trackedProductIdRef = useRef('');
   const trackedMetaProductIdRef = useRef('');
+  const trackedSnapProductIdRef = useRef('');
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product-detail', identifier],
@@ -190,14 +192,22 @@ export default function ProductDetail() {
       if (trackedMetaProductIdRef.current === trackingId) return;
       if (await trackMetaViewContent(product)) trackedMetaProductIdRef.current = trackingId;
     };
+    const trackSnapView = async () => {
+      if (trackedSnapProductIdRef.current === trackingId) return;
+      if (await trackSnapViewContent(product)) trackedSnapProductIdRef.current = trackingId;
+    };
     const onAnalyticsConsent = (event) => {
       if (event.detail === 'granted') void trackGoogleView();
     };
     const onMarketingConsent = (event) => {
-      if (event.detail === 'granted') void trackMetaView();
+      if (event.detail === 'granted') {
+        void trackMetaView();
+        void trackSnapView();
+      }
     };
     void trackGoogleView();
     void trackMetaView();
+    void trackSnapView();
     window.addEventListener(ANALYTICS_CONSENT_EVENT, onAnalyticsConsent);
     window.addEventListener(MARKETING_CONSENT_EVENT, onMarketingConsent);
     return () => {

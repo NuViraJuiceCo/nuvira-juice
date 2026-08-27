@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { submitCustomerInquiry } from '@/lib/customerCommunications';
 import { trackGoogleGenerateLead } from '@/lib/googleAnalytics';
 import { trackMetaLead } from '@/lib/metaPixel';
+import { trackSnapLead } from '@/lib/snapPixel';
 
 const HERO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
@@ -83,6 +84,7 @@ export default function BookEvent() {
       });
       void trackGoogleGenerateLead('event_booking');
       void trackMetaLead('event_booking');
+      void trackSnapLead('event_booking');
       toast.success("We received your inquiry! We'll be in touch within 48 hours to plan your event.");
       setForm({ name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', serviceModel: '', venue: '', notes: '' });
     } catch {

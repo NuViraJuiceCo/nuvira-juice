@@ -15,6 +15,8 @@ import {
   ANALYTICS_CONSENT_EVENT,
   trackGooglePurchase,
 } from '@/lib/googleAnalytics';
+import { MARKETING_CONSENT_EVENT } from '@/lib/metaPixel';
+import { trackSnapPurchase } from '@/lib/snapPixel';
 
 const POLLING_TIMEOUT_MS = 60000;
 const POLL_INTERVAL_MS = 3000;
@@ -53,6 +55,7 @@ export default function OrderConfirmation() {
   const pollRef    = useRef(null);
   const timeoutRef = useRef(null);
   const startTime  = useRef(Date.now());
+  const snapPurchaseTrackedRef = useRef('');
 
   useEffect(() => {
     if (lookupMode === 'none') return;
@@ -171,9 +174,20 @@ export default function OrderConfirmation() {
     const trackPurchase = () => {
       void trackGooglePurchase(order);
     };
+    const trackSnap = async () => {
+      const trackingKey = String(order?.order_number || order?.id || '');
+      if (!trackingKey || snapPurchaseTrackedRef.current === trackingKey) return;
+      const tracked = await trackSnapPurchase(order);
+      if (tracked) snapPurchaseTrackedRef.current = trackingKey;
+    };
     trackPurchase();
+    void trackSnap();
     window.addEventListener(ANALYTICS_CONSENT_EVENT, trackPurchase);
-    return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, trackPurchase);
+    window.addEventListener(MARKETING_CONSENT_EVENT, trackSnap);
+    return () => {
+      window.removeEventListener(ANALYTICS_CONSENT_EVENT, trackPurchase);
+      window.removeEventListener(MARKETING_CONSENT_EVENT, trackSnap);
+    };
   }, [lookupMode, order]);
 
   // ── Case 1: No params ──────────────────────────────────────────────────────
