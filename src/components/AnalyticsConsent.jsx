@@ -16,6 +16,7 @@ import {
   setMarketingConsent,
   trackMetaPageView,
 } from '@/lib/metaPixel';
+import { trackSnapPageView } from '@/lib/snapPixel';
 
 export default function AnalyticsConsent() {
   const location = useLocation();
@@ -34,6 +35,7 @@ export default function AnalyticsConsent() {
   React.useEffect(() => {
     if (isNative || getMarketingConsent() !== 'granted') return;
     void trackMetaPageView(location.pathname);
+    void trackSnapPageView(location.pathname);
   }, [isNative, location.pathname]);
 
   React.useEffect(() => {
@@ -66,6 +68,7 @@ export default function AnalyticsConsent() {
       setShowBanner(false);
       if (event.detail === 'granted') {
         void trackMetaPageView(window.location.pathname);
+        void trackSnapPageView(window.location.pathname);
       }
     };
     window.addEventListener(MARKETING_CONSENT_EVENT, onConsent);
@@ -118,7 +121,7 @@ export default function AnalyticsConsent() {
               <Checkbox
                 checked={marketingAllowed}
                 onCheckedChange={(checked) => setMarketingAllowed(checked === true)}
-                aria-label="Allow Meta marketing measurement"
+                aria-label="Allow advertising measurement"
               />
               <span className="mt-2 block text-xs font-semibold leading-tight text-foreground">Ad insights</span>
               <span className="mt-1.5 block text-[10.5px] leading-relaxed text-muted-foreground">Ad results and privacy-safe purchase matching.</span>

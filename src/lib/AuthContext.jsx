@@ -22,6 +22,10 @@ import {
   consumeMetaRegistrationEvent,
   trackMetaCompleteRegistration,
 } from '@/lib/metaPixel';
+import {
+  consumeSnapRegistrationEvent,
+  trackSnapSignUp,
+} from '@/lib/snapPixel';
 
 const AuthContext = createContext();
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 4500;
@@ -109,8 +113,10 @@ export const AuthProvider = ({ children }) => {
         const providerEventCompleted = completeGoogleProviderAuthEvent(pendingProviderAuthEvent);
         if (providerEventCompleted && pendingProviderAuthEvent?.eventName === 'sign_up') {
           void trackMetaCompleteRegistration(pendingProviderAuthEvent.method);
+          void trackSnapSignUp(pendingProviderAuthEvent.method, pendingProviderAuthEvent.token);
         }
         void consumeMetaRegistrationEvent();
+        void consumeSnapRegistrationEvent();
       }
       return currentUser;
     } catch (error) {

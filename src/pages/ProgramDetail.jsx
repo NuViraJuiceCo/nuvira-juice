@@ -20,6 +20,7 @@ import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
 import { absoluteUrl } from '@/lib/seo-slugs';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
 import { MARKETING_CONSENT_EVENT, trackMetaViewContent } from '@/lib/metaPixel';
+import { trackSnapViewContent } from '@/lib/snapPixel';
 
 const FALLBACK_WELLNESS_SHOTS = PUBLIC_PRODUCT_FALLBACKS.filter((product) => (
   product.category === 'shot' && product.is_available !== false
@@ -94,6 +95,7 @@ export default function ProgramDetail() {
   const [selectedShotCounts, setSelectedShotCounts] = useState({});
   const trackedProgramOptionRef = useRef('');
   const trackedMetaProgramOptionRef = useRef('');
+  const trackedSnapProgramOptionRef = useRef('');
 
   useEffect(() => {
     setSelectedDays(3);
@@ -123,14 +125,23 @@ export default function ProgramDetail() {
       const tracked = await trackMetaViewContent(item);
       if (tracked) trackedMetaProgramOptionRef.current = trackingKey;
     };
+    const trackSnapView = async () => {
+      if (trackedSnapProgramOptionRef.current === trackingKey) return;
+      const tracked = await trackSnapViewContent(item);
+      if (tracked) trackedSnapProgramOptionRef.current = trackingKey;
+    };
     const onAnalyticsConsent = (event) => {
       if (event.detail === 'granted') void trackGoogleView();
     };
     const onMarketingConsent = (event) => {
-      if (event.detail === 'granted') void trackMetaView();
+      if (event.detail === 'granted') {
+        void trackMetaView();
+        void trackSnapView();
+      }
     };
     void trackGoogleView();
     void trackMetaView();
+    void trackSnapView();
     window.addEventListener(ANALYTICS_CONSENT_EVENT, onAnalyticsConsent);
     window.addEventListener(MARKETING_CONSENT_EVENT, onMarketingConsent);
     return () => {

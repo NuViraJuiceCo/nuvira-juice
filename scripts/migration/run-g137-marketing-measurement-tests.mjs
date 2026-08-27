@@ -83,8 +83,8 @@ const checks = [
     assert.match(google, /\\S\+@\\S\+/);
     assert.match(meta, /\\S\+@\\S\+/);
   }],
-  ['privacy copy describes both optional tools and native exclusion', () => {
-    assert.match(legal, /Meta measurement remains off unless you enable Ad insights/);
+  ['privacy copy describes optional measurement tools and native exclusion', () => {
+    assert.match(legal, /Meta and Snapchat measurement remain off unless you enable Ad insights/);
     assert.match(legal, /one-way SHA-256 hashes/);
     assert.match(legal, /not enabled inside the native iOS or Android app/);
     assert.match(legal, /Review measurement choices/);

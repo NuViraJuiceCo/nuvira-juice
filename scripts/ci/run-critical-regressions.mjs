@@ -94,6 +94,7 @@ const harnesses = [
   'scripts/migration/run-g140-meta-catalog-match-tests.mjs',
   'scripts/migration/run-g141-growth-measurement-tests.mjs',
   'scripts/migration/run-g142-meta-registration-measurement-tests.mjs',
+  'scripts/migration/run-g143-snapchat-measurement-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

@@ -35,9 +35,10 @@ THIRD-PARTY SERVICES
 • Base44 — app infrastructure (base44.com/privacy)
 • Google Analytics — optional, consent-based website and purchase measurement (policies.google.com/privacy)
 • Meta Pixel — optional, consent-based ad and shopping-journey measurement (facebook.com/privacy/policy)
+• Snapchat Pixel — optional, consent-based ad, catalog, and shopping-journey measurement (values.snap.com/privacy/privacy-policy)
 
 MEASUREMENT PRIVACY
-Google Analytics remains off unless you enable Website analytics. Meta measurement remains off unless you enable Ad insights. Browser events do not include your raw name, email, phone number, street address, or payment details. After a consented purchase, our secure payment webhook may send Meta one-way SHA-256 hashes of your normalized email and phone solely to match the purchase to an ad interaction; Meta does not receive the raw values from this server event. Google advertising storage, signals, and personalization remain disabled. Meta measurement is limited to eligible website shopping, inquiry, and purchase actions and is not loaded on account, sign-in, checkout-confirmation, order-tracking, or admin page views. These optional web tools are not enabled inside the native iOS or Android app. You can reopen both choices from this page at any time.
+Google Analytics remains off unless you enable Website analytics. Meta and Snapchat measurement remain off unless you enable Ad insights. Browser events do not include your raw name, email, phone number, street address, or payment details. After a consented purchase, our secure payment webhook may send Meta one-way SHA-256 hashes of your normalized email and phone solely to match the purchase to an ad interaction; Meta does not receive the raw values from this server event. Google advertising storage, signals, and personalization remain disabled. Meta browser measurement is limited to eligible website shopping, inquiry, and purchase actions and is not loaded on account, sign-in, checkout-confirmation, order-tracking, or admin page views. Snapchat browser measurement is limited to eligible website shopping, inquiry, registration, and paid purchase actions. A paid Snapchat Purchase event may be sent from the order-confirmation page after Ad insights consent, using non-personal order totals and catalog item identifiers without raw contact, address, or payment details. These optional web tools are not enabled inside the native iOS or Android app. You can reopen both choices from this page at any time.
 
 DATA RETENTION
 Your data is retained as long as your account is active. You may request deletion at any time.
@@ -81,9 +82,6 @@ NO RETURNS ON FOOD PRODUCTS
 
 CANCELLATIONS
 • Orders may be cancelled before production begins (typically the day before your scheduled delivery). Contact us ASAP at support@nuvirajuice.com.
-
-SUBSCRIPTIONS
-• Subscriptions may be paused or cancelled at any time with 48 hours notice before the next billing cycle.
 
 Contact: support@nuvirajuice.com`,
   },
