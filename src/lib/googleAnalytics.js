@@ -6,6 +6,27 @@ export const ANALYTICS_CONSENT_EVENT = 'nuvira:analytics-consent';
 
 const PURCHASE_STORAGE_PREFIX = 'nuvira_ga4_purchase_v1:';
 const GOOGLE_TAG_SCRIPT_ID = 'nuvira-google-analytics';
+const GOOGLE_AUTH_EVENT_PARAM = 'nuvira_auth_event';
+const GOOGLE_AUTH_EVENT_STORAGE_KEY = 'nuvira_ga4_auth_event_v1';
+const GOOGLE_AUTH_EVENT_TTL_MS = 10 * 60 * 1000;
+const CAMPAIGN_QUERY_KEYS = [
+  'utm_id',
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'gclid',
+  'dclid',
+  'gbraid',
+  'wbraid',
+  'gad_source',
+  'gad_campaignid',
+  'fbclid',
+  'ttclid',
+  'msclkid',
+  'srsltid',
+];
 
 let googleTagPromise = null;
 let googleTagConfigured = false;
@@ -20,6 +41,15 @@ function safeStorage() {
   if (!hasBrowserRuntime()) return null;
   try {
     return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function safeSessionStorage() {
+  if (!hasBrowserRuntime()) return null;
+  try {
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -106,6 +136,32 @@ export function sanitizeAnalyticsPath(pathname = '/') {
   return path;
 }
 
+function sanitizeCampaignValue(value) {
+  const sanitized = String(value || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .trim()
+    .slice(0, 200);
+  if (!sanitized) return '';
+  if (/\S+@\S+\.\S+/.test(sanitized)) return '';
+  if (/(?:\+?\d[\s().-]*){7,}/.test(sanitized)) return '';
+  return sanitized;
+}
+
+export function buildAnalyticsPageLocation(pathname = '/', search = '') {
+  const pagePath = sanitizeAnalyticsPath(pathname);
+  if (!hasBrowserRuntime()) return pagePath;
+
+  const sourceParams = new URLSearchParams(String(search || ''));
+  const campaignParams = new URLSearchParams();
+  for (const key of CAMPAIGN_QUERY_KEYS) {
+    const value = sanitizeCampaignValue(sourceParams.get(key));
+    if (value) campaignParams.set(key, value);
+  }
+
+  const campaignQuery = campaignParams.toString();
+  return `${window.location.origin}${pagePath}${campaignQuery ? `?${campaignQuery}` : ''}`;
+}
+
 export function isTrackableAnalyticsPath(pathname = '/') {
   const path = String(pathname || '/').toLowerCase();
   return !path.startsWith('/admin')
@@ -169,7 +225,7 @@ export async function trackGooglePageView(pathname, title = '') {
   window.gtag('event', 'page_view', {
     page_title: String(title || document.title || 'NuVira Juice Co.'),
     page_path: pagePath,
-    page_location: `${window.location.origin}${pagePath}`,
+    page_location: buildAnalyticsPageLocation(pathname, window.location.search),
   });
   return true;
 }
@@ -209,6 +265,147 @@ function safeAnalyticsLabel(value, fallback = '') {
     .replace(/[\r\n\t]+/g, ' ')
     .trim()
     .slice(0, 80);
+}
+
+function trackGoogleLifecycleEvent(eventName, params = {}) {
+  if (!hasBrowserRuntime() || isNativeAppRuntime() || getAnalyticsConsent() !== 'granted') {
+    return false;
+  }
+
+  // gtag queues commands in dataLayer, so auth redirects do not need to wait
+  // for the network script before leaving the page.
+  void loadGoogleAnalytics();
+  prepareDataLayer();
+  window.gtag('event', eventName, params);
+  return true;
+}
+
+export function trackGoogleLogin(method = 'email') {
+  return trackGoogleLifecycleEvent('login', {
+    method: safeAnalyticsLabel(method, 'unknown'),
+  });
+}
+
+export function trackGoogleSignUp(method = 'email') {
+  return trackGoogleLifecycleEvent('sign_up', {
+    method: safeAnalyticsLabel(method, 'unknown'),
+  });
+}
+
+export function trackGoogleProfileComplete(source = 'account_setup') {
+  return trackGoogleLifecycleEvent('profile_complete', {
+    profile_source: safeAnalyticsLabel(source, 'account_setup'),
+  });
+}
+
+export function trackGoogleShare(method = 'native_share', contentType = 'referral', itemId = 'nuvira_referral') {
+  return trackGoogleLifecycleEvent('share', {
+    method: safeAnalyticsLabel(method, 'unknown'),
+    content_type: safeAnalyticsLabel(contentType, 'referral'),
+    item_id: safeAnalyticsLabel(itemId, 'nuvira_referral'),
+  });
+}
+
+function createAuthEventToken() {
+  try {
+    return globalThis.crypto?.randomUUID?.() || '';
+  } catch {
+    return '';
+  }
+}
+
+export function prepareGoogleProviderAuthRedirect(returnTo = '/', intendedEvent = 'login', method = 'google') {
+  if (!hasBrowserRuntime() || isNativeAppRuntime()) return returnTo;
+  if (intendedEvent !== 'login' && intendedEvent !== 'sign_up') return returnTo;
+
+  const storage = safeSessionStorage();
+  const token = createAuthEventToken();
+  if (!storage || !token) return returnTo;
+
+  try {
+    const url = new URL(String(returnTo || '/'), window.location.origin);
+    if (url.origin !== window.location.origin) return '/';
+    storage.setItem(GOOGLE_AUTH_EVENT_STORAGE_KEY, JSON.stringify({
+      token,
+      intendedEvent,
+      method: safeAnalyticsLabel(method, 'google'),
+      createdAt: Date.now(),
+    }));
+    url.searchParams.set(GOOGLE_AUTH_EVENT_PARAM, token);
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return returnTo;
+  }
+}
+
+export function captureGoogleProviderAuthEvent() {
+  if (!hasBrowserRuntime() || isNativeAppRuntime()) return null;
+
+  const token = new URL(window.location.href).searchParams.get(GOOGLE_AUTH_EVENT_PARAM);
+  const storage = safeSessionStorage();
+  if (!token || !storage) return null;
+
+  try {
+    const stored = JSON.parse(storage.getItem(GOOGLE_AUTH_EVENT_STORAGE_KEY) || 'null');
+    if (!stored || stored.token !== token) {
+      clearGoogleProviderAuthEvent({ token });
+      return null;
+    }
+    const ageMs = Date.now() - Number(stored.createdAt || 0);
+    if (ageMs < 0 || ageMs > GOOGLE_AUTH_EVENT_TTL_MS) {
+      clearGoogleProviderAuthEvent({ token });
+      return null;
+    }
+
+    const providerOutcome = new URL(window.location.href).searchParams.get('is_new_user');
+    const eventName = providerOutcome === 'true'
+      ? 'sign_up'
+      : providerOutcome === 'false'
+        ? 'login'
+        : stored.intendedEvent;
+    return {
+      token,
+      eventName,
+      method: safeAnalyticsLabel(stored.method, 'google'),
+    };
+  } catch {
+    clearGoogleProviderAuthEvent({ token });
+    return null;
+  }
+}
+
+function clearGoogleProviderAuthEvent(capturedEvent = null) {
+  if (!hasBrowserRuntime()) return;
+  const storage = safeSessionStorage();
+  try {
+    storage?.removeItem(GOOGLE_AUTH_EVENT_STORAGE_KEY);
+  } catch {
+    // Cleanup is best effort and must not affect authentication.
+  }
+
+  try {
+    const url = new URL(window.location.href);
+    if (!capturedEvent?.token || url.searchParams.get(GOOGLE_AUTH_EVENT_PARAM) === capturedEvent.token) {
+      url.searchParams.delete(GOOGLE_AUTH_EVENT_PARAM);
+      window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    }
+  } catch {
+    // URL cleanup is best effort and must not affect authentication.
+  }
+}
+
+export function completeGoogleProviderAuthEvent(capturedEvent) {
+  if (!capturedEvent?.token) return false;
+  clearGoogleProviderAuthEvent(capturedEvent);
+  if (capturedEvent.eventName === 'sign_up') return trackGoogleSignUp(capturedEvent.method);
+  if (capturedEvent.eventName === 'login') return trackGoogleLogin(capturedEvent.method);
+  return false;
+}
+
+export function discardGoogleProviderAuthEvent(capturedEvent) {
+  if (!capturedEvent?.token) return false;
+  clearGoogleProviderAuthEvent(capturedEvent);
+  return true;
 }
 
 function merchandiseValue(items) {

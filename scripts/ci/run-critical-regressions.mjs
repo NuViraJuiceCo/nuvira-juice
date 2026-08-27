@@ -92,6 +92,7 @@ const harnesses = [
   'scripts/migration/run-g137-marketing-measurement-tests.mjs',
   'scripts/migration/run-g138-meta-capi-purchase-tests.mjs',
   'scripts/migration/run-g140-meta-catalog-match-tests.mjs',
+  'scripts/migration/run-g141-growth-measurement-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

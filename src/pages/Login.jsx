@@ -8,6 +8,7 @@ import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { safeReturnTo } from "@/lib/authReturnTo";
+import { prepareGoogleProviderAuthRedirect, trackGoogleLogin } from "@/lib/googleAnalytics";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -24,6 +25,7 @@ export default function Login() {
     setLoading(true);
     try {
       await base44.auth.loginViaEmailPassword(email, password);
+      trackGoogleLogin('email');
       window.location.href = returnTo;
     } catch (err) {
       setError(err.message || "Invalid email or password");
@@ -33,7 +35,10 @@ export default function Login() {
   };
 
   const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", returnTo);
+    base44.auth.loginWithProvider(
+      "google",
+      prepareGoogleProviderAuthRedirect(returnTo, 'login', 'google')
+    );
   };
 
   return (

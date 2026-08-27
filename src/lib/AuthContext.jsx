@@ -13,6 +13,11 @@ import {
   redirectToLogin,
   replaceInAppRoute,
 } from '@/lib/nativeAuthRedirect';
+import {
+  captureGoogleProviderAuthEvent,
+  completeGoogleProviderAuthEvent,
+  discardGoogleProviderAuthEvent,
+} from '@/lib/googleAnalytics';
 
 const AuthContext = createContext();
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 4500;
@@ -84,6 +89,7 @@ export const AuthProvider = ({ children }) => {
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
 
   const checkUserAuth = useCallback(async ({ timeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS } = {}) => {
+    const pendingProviderAuthEvent = captureGoogleProviderAuthEvent();
     try {
       consumeBase44AuthFromUrl();
       setIsLoadingAuth(true);
@@ -95,8 +101,10 @@ export const AuthProvider = ({ children }) => {
       setAuthChecked(true);
       setIsLoadingAuth(false);
       setBootstrapState(currentUser ? AUTH_BOOTSTRAP_STATES.authenticated : AUTH_BOOTSTRAP_STATES.unauthenticated);
+      if (currentUser) completeGoogleProviderAuthEvent(pendingProviderAuthEvent);
       return currentUser;
     } catch (error) {
+      discardGoogleProviderAuthEvent(pendingProviderAuthEvent);
       if (error?.code === 'auth_bootstrap_timeout') {
         console.warn('[AuthContext] Auth bootstrap timed out; continuing as public session.');
         setAuthError({
@@ -128,7 +136,6 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
-      consumeBase44AuthFromUrl();
       
       // Skip app public settings check entirely for public apps
       // The app is already running, so it's accessible

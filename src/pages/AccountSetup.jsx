@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { Loader2, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { trackGoogleProfileComplete } from '@/lib/googleAnalytics';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -151,6 +152,7 @@ export default function AccountSetup() {
       const responseData = await response.json().catch(() => null);
 
       if (response.ok && responseData?.success) {
+        trackGoogleProfileComplete('account_setup');
         setIsComplete(true);
         // Force refetch immediately
         await queryClient.refetchQueries({ queryKey: ['user-onboarding-check'] });

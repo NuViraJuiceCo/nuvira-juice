@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
+import { trackGoogleShare } from '@/lib/googleAnalytics';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -29,19 +30,32 @@ export default function Referral() {
   const code = generateCode(user);
   const shareMessage = `Hey! I've been loving NuVira cold-pressed juice — it's fresh, produce-forward, and easy to keep in my routine. Use my code ${code} for $5 off your first order. Order at nuvirajuice.com 🌿`;
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    toast.success('Code copied!');
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      trackGoogleShare('clipboard', 'referral', 'nuvira_referral');
+      setCopied(true);
+      toast.success('Code copied!');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Unable to copy the code. Please select it manually.');
+    }
   };
 
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({ title: 'NuVira Juice', text: shareMessage });
-    } else {
-      navigator.clipboard.writeText(shareMessage);
-      toast.success('Message copied — paste and share!');
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'NuVira Juice', text: shareMessage });
+        trackGoogleShare('native_share', 'referral', 'nuvira_referral');
+      } else {
+        await navigator.clipboard.writeText(shareMessage);
+        trackGoogleShare('clipboard_message', 'referral', 'nuvira_referral');
+        toast.success('Message copied — paste and share!');
+      }
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        toast.error('Unable to share right now. Please try again.');
+      }
     }
   };
 
@@ -51,6 +65,7 @@ export default function Referral() {
     const subject = encodeURIComponent(`${user?.full_name || 'A friend'} invited you to try NuVira`);
     const body = encodeURIComponent(shareMessage);
     window.location.href = `mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`;
+    trackGoogleShare('email', 'referral', 'nuvira_referral');
     setSending(false);
     setEmail('');
     toast.success('Your email app is ready with the invitation.');
