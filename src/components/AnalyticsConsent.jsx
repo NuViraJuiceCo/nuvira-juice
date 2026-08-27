@@ -102,7 +102,7 @@ export default function AnalyticsConsent() {
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-foreground">Your privacy, your choice</h2>
           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-            Optional website measurement never includes your contact, address, or payment details.
+            Optional website measurement never includes raw contact, address, or payment details.
           </p>
           <div className="mt-2.5 grid grid-cols-2 gap-2 sm:mt-3">
             <label className="cursor-pointer rounded-xl border border-border/60 bg-background/55 p-2.5">
@@ -121,21 +121,21 @@ export default function AnalyticsConsent() {
                 aria-label="Allow Meta marketing measurement"
               />
               <span className="mt-2 block text-xs font-semibold leading-tight text-foreground">Ad insights</span>
-              <span className="mt-1.5 block text-[10.5px] leading-relaxed text-muted-foreground">Ad results and shopping or inquiry actions.</span>
+              <span className="mt-1.5 block text-[10.5px] leading-relaxed text-muted-foreground">Ad results and privacy-safe purchase matching.</span>
             </label>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
             <button
               type="button"
               onClick={useNecessaryOnly}
-              className="h-10 rounded-xl border border-border bg-background px-4 text-xs font-semibold text-foreground"
+              className="h-10 whitespace-nowrap rounded-xl border border-border bg-background px-4 text-xs font-semibold text-foreground"
             >
               No thanks
             </button>
             <button
               type="button"
               onClick={saveChoices}
-              className="nuvira-gradient-button h-10 rounded-xl px-4 text-xs font-semibold"
+              className="nuvira-gradient-button h-10 whitespace-nowrap rounded-xl px-4 text-xs font-semibold"
             >
               Save
             </button>

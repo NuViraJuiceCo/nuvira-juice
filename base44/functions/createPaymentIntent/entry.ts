@@ -10,6 +10,7 @@ const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
 ]);
 const GOOGLE_PAY_DOMAIN_CONFIRMATION = 'ENSURE_GOOGLE_PAY_DOMAINS';
 const CHECKOUT_PROVIDER_SANDBOX_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
+const META_CAPI_PROVIDER_SANDBOX_CONFIRMATION = 'RUN_META_CAPI_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const HEALTH_ADVISORY_VERSION = '2026-05-13-v1';
 const PROGRAM_SCHEDULE_VERSION = '2026-08-09.v2';
@@ -254,6 +255,8 @@ function checkoutProviderSandboxStripe() {
 
 function normalizeCheckoutProviderSandboxRequest(body, testId) {
   const normalizedTestId = String(testId || '').trim().toLowerCase();
+  const metaCapiTestEnabled = body?.meta_capi_test_enabled === true
+    && constantTimeEqual(body?.meta_capi_test_confirmation, META_CAPI_PROVIDER_SANDBOX_CONFIRMATION);
   return {
     ...body,
     customer_email: CHECKOUT_PROVIDER_SANDBOX_RECIPIENT,
@@ -277,6 +280,8 @@ function normalizeCheckoutProviderSandboxRequest(body, testId) {
     referral_code: null,
     promotion_code: null,
     discount_code: null,
+    marketing_measurement_consent: metaCapiTestEnabled ? 'granted' : 'denied',
+    meta_capi_test_enabled: metaCapiTestEnabled,
     bag_return_request_id: null,
     guest_checkout: true,
     health_advisory_acknowledged: true,
@@ -821,6 +826,8 @@ Deno.serve(async (req) => {
       // Client-supplied idempotency key for duplicate-request protection
       checkout_idempotency_key,
       bag_return_request_id,
+      marketing_measurement_consent,
+      meta_capi_test_enabled,
     } = requestBody;
     const isGuestCheckout = internalSandboxCheckout || (!authenticatedUser?.email && guest_checkout === true);
 
@@ -1235,6 +1242,8 @@ Deno.serve(async (req) => {
       internal_sandbox_checkout:  internalSandboxCheckout ? 'true' : 'false',
       is_test_order:              internalSandboxCheckout ? 'true' : 'false',
       sandbox_test_id:            internalSandboxCheckout ? sandboxTestId : '',
+      marketing_measurement_consent: marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
+      meta_capi_test_enabled:      internalSandboxCheckout && meta_capi_test_enabled === true ? 'true' : 'false',
     };
 
     if (Object.keys(intentMetadata).length > 50) {
@@ -1488,6 +1497,8 @@ Deno.serve(async (req) => {
           guest_order_token_hash:    isGuestCheckout ? await sha256Hex(guest_order_token) : null,
           internal_sandbox_checkout: internalSandboxCheckout,
           sandbox_test_id:           internalSandboxCheckout ? sandboxTestId : null,
+          marketing_measurement_consent: marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
+          meta_capi_test_enabled:     internalSandboxCheckout && meta_capi_test_enabled === true,
           health_advisory_acknowledged: true,
           health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
           health_advisory_version:    HEALTH_ADVISORY_VERSION,

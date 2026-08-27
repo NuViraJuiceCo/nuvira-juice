@@ -25,7 +25,7 @@ import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 import { normalizeValidatedCheckoutCode } from '@/lib/checkoutPromotions';
 import { buildCustomerName, normalizeNamePart, resolveCustomerIdentity } from '@/lib/customerIdentity';
 import { trackGoogleAddPaymentInfo, trackGoogleAddShippingInfo } from '@/lib/googleAnalytics';
-import { trackMetaAddPaymentInfo } from '@/lib/metaPixel';
+import { getMarketingConsent, trackMetaAddPaymentInfo } from '@/lib/metaPixel';
 
 const CHECKOUT_PROCESSING_WATCHDOG_MS = 20000;
 
@@ -711,6 +711,7 @@ function CheckoutFlow() {
         health_advisory_acknowledged: true,
         health_advisory_acknowledged_at: new Date().toISOString(),
         health_advisory_version: HEALTH_ADVISORY_CONFIG.version,
+        marketing_measurement_consent: getMarketingConsent() === 'granted' ? 'granted' : 'denied',
       });
 
       if (isValidCheckoutStartSuccess(res.data)) {

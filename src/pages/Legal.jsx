@@ -37,7 +37,7 @@ THIRD-PARTY SERVICES
 • Meta Pixel — optional, consent-based ad and shopping-journey measurement (facebook.com/privacy/policy)
 
 MEASUREMENT PRIVACY
-Google Analytics remains off unless you enable Website analytics. Meta Pixel remains off unless you enable Marketing measurement. We do not include your name, email, phone number, street address, or payment details in these event parameters. Google advertising storage, signals, and personalization remain disabled. Meta measurement is limited to eligible website shopping and inquiry actions and is not loaded on account, sign-in, checkout-confirmation, order-tracking, or admin page views. These optional web tools are not enabled inside the native iOS or Android app. You can reopen both choices from this page at any time.
+Google Analytics remains off unless you enable Website analytics. Meta measurement remains off unless you enable Ad insights. Browser events do not include your raw name, email, phone number, street address, or payment details. After a consented purchase, our secure payment webhook may send Meta one-way SHA-256 hashes of your normalized email and phone solely to match the purchase to an ad interaction; Meta does not receive the raw values from this server event. Google advertising storage, signals, and personalization remain disabled. Meta measurement is limited to eligible website shopping, inquiry, and purchase actions and is not loaded on account, sign-in, checkout-confirmation, order-tracking, or admin page views. These optional web tools are not enabled inside the native iOS or Android app. You can reopen both choices from this page at any time.
 
 DATA RETENTION
 Your data is retained as long as your account is active. You may request deletion at any time.

@@ -90,6 +90,7 @@ const harnesses = [
   'scripts/migration/run-g135-google-guest-wallet-checkout-tests.mjs',
   'scripts/migration/run-g136-stripe-guest-provider-sandbox-tests.mjs',
   'scripts/migration/run-g137-marketing-measurement-tests.mjs',
+  'scripts/migration/run-g138-meta-capi-purchase-tests.mjs',
 ];
 
 function fail(message, extra = {}) {
