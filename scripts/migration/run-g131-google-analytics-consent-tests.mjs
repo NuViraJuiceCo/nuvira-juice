@@ -24,7 +24,7 @@ const sitemap = fs.readFileSync('public/sitemap.xml', 'utf8');
 
 const checks = [
   ['web stream uses the exact GA4 measurement ID', () => {
-    assert.match(analytics, /G-ELZQJD8NR9/);
+    assert.match(analytics, /G-H8R82365GM/);
   }],
   ['analytics is consent gated and excluded from native apps', () => {
     assert.match(analytics, /getAnalyticsConsent\(\) !== 'granted'/);

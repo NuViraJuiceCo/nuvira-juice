@@ -1,6 +1,6 @@
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
-export const GOOGLE_ANALYTICS_MEASUREMENT_ID = 'G-ELZQJD8NR9';
+export const GOOGLE_ANALYTICS_MEASUREMENT_ID = 'G-H8R82365GM';
 export const ANALYTICS_CONSENT_STORAGE_KEY = 'nuvira_analytics_consent_v1';
 export const ANALYTICS_CONSENT_EVENT = 'nuvira:analytics-consent';
 
