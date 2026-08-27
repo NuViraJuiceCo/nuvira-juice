@@ -110,6 +110,9 @@ export function CartProvider({ children }) {
         image_url: product.image_url,
         size: product.size,
         category: product.category,
+        shopify_product_id: product.shopify_product_id || null,
+        shopify_variant_id: product.shopify_variant_id || null,
+        meta_catalog_content_id: product.meta_catalog_content_id || null,
         is_program: product.is_program || false,
         ...extra,
       }];

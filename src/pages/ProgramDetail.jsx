@@ -111,6 +111,7 @@ export default function ProgramDetail() {
       category: 'Juice Program',
       is_program: true,
       size: `${option.bottles} bottles`,
+      bundle_composition: option.bundleComposition.map((component) => ({ ...component })),
     };
     const trackGoogleView = async () => {
       if (trackedProgramOptionRef.current === trackingKey) return;

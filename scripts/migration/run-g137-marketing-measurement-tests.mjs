@@ -132,7 +132,7 @@ const documentMock = {
 const executable = meta
   .replace("import { isNativeAppRuntime } from '@/lib/nativeRuntime';", 'const isNativeAppRuntime = () => false;')
   .replace(/^export /gm, '')
-  + '\nglobalThis.__g137 = { getMarketingConsent, setMarketingConsent, trackMetaPageView, trackMetaViewContent, trackMetaSearch, trackMetaLead, sanitizeMetaSearchTerm };';
+  + '\nglobalThis.__g137 = { getMarketingConsent, setMarketingConsent, trackMetaPageView, trackMetaViewContent, trackMetaSearch, trackMetaLead, sanitizeMetaSearchTerm, normalizeMetaCatalogContentId, metaCatalogContentIdForItem };';
 const context = vm.createContext({
   window: windowMock,
   document: documentMock,
@@ -160,10 +160,12 @@ assert.ok(emitted.some((entry) => entry[0] === 'init' && entry[1] === '719023677
 assert.ok(emitted.some((entry) => entry[0] === 'track' && entry[1] === 'PageView'));
 assert.ok(emitted.some((entry) => entry[0] === 'track' && entry[1] === 'Lead' && entry[2].content_name === 'contact'));
 const viewContent = emitted.find((entry) => entry[0] === 'track' && entry[1] === 'ViewContent');
-assert.equal(viewContent[2].content_ids[0], 'oasis');
+assert.equal(viewContent[2].content_ids[0], '43220774944858');
 assert.equal(viewContent[2].value, 13.5);
 assert.equal(viewContent[3].eventID, 'web:ViewContent:synthetic-event-id');
 assert.equal('customer_email' in viewContent[2], false);
+assert.equal(context.__g137.normalizeMetaCatalogContentId('gid://shopify/ProductVariant/43220774813786'), '43220774813786');
+assert.equal(context.__g137.metaCatalogContentIdForItem({ id: '69d490ce699b5f1ac4dde496' }), '43220774846554');
 
 windowMock.location.pathname = '/order-confirmation';
 windowMock.location.search = '?session_id=synthetic-secret';

@@ -39,7 +39,12 @@ assert.match(legal, /Meta does not receive the raw values/);
 assert.match(critical, /run-g138-meta-capi-purchase-tests\.mjs/);
 
 const helperUrl = pathToFileURL(new URL('../../base44/functions/stripeWebhook/metaConversions.js', import.meta.url).pathname).href;
-const { META_CONVERSIONS_CONTRACT, sendMetaPurchaseConversion } = await import(`${helperUrl}?g138=${Date.now()}`);
+const {
+  META_CONVERSIONS_CONTRACT,
+  buildMetaCatalogContents,
+  normalizeMetaCatalogContentId,
+  sendMetaPurchaseConversion,
+} = await import(`${helperUrl}?g138=${Date.now()}`);
 
 const envMap = new Map([
   ['ENABLE_META_CAPI_PURCHASE', 'true'],
@@ -103,7 +108,7 @@ assert.equal(payload.data[0].event_name, 'Purchase');
 assert.equal(payload.data[0].event_id, 'stripe_purchase:pi_synthetic_g138');
 assert.equal(payload.data[0].custom_data.value, 16.99);
 assert.equal(payload.data[0].custom_data.currency, 'USD');
-assert.deepEqual(payload.data[0].custom_data.content_ids, ['oasis']);
+assert.deepEqual(payload.data[0].custom_data.content_ids, ['43220774944858']);
 assert.equal(payload.test_event_code, undefined);
 assert.equal(JSON.stringify(payload).includes('buyer@example.test'), false);
 assert.equal(JSON.stringify(payload).includes('6365550100'), false);
@@ -112,6 +117,20 @@ const expectedEmailHex = [...new Uint8Array(expectedEmailHash)].map((byte) => by
 assert.equal(payload.data[0].user_data.em[0], expectedEmailHex);
 assert.equal(logs.at(-1).idempotency_key, 'meta_capi_purchase:pi_synthetic_g138');
 assert.equal(logs.at(-1).status, 'success');
+assert.equal(normalizeMetaCatalogContentId('gid://shopify/ProductVariant/43220774813786'), '43220774813786');
+assert.deepEqual(buildMetaCatalogContents([{
+  product_id: 'program_hydration_2day',
+  price: 104,
+  quantity: 1,
+  is_program: true,
+  bundle_composition: [
+    { product_id: 'oasis', quantity: 6 },
+    { product_id: 'aura', quantity: 2 },
+  ],
+}]).map(({ id, quantity }) => ({ id, quantity })), [
+  { id: '43220774944858', quantity: 6 },
+  { id: '43220774813786', quantity: 2 },
+]);
 
 const replay = await sendMetaPurchaseConversion({ base44, event, paymentIntent, order, fetchImpl: acceptedFetch, env });
 assert.equal(replay.deduplicated, true);
