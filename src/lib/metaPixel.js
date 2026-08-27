@@ -5,6 +5,8 @@ export const MARKETING_CONSENT_STORAGE_KEY = 'nuvira_marketing_consent_v1';
 export const MARKETING_CONSENT_EVENT = 'nuvira:marketing-consent';
 
 const META_PIXEL_SCRIPT_ID = 'nuvira-meta-pixel';
+const META_REGISTRATION_STORAGE_KEY = 'nuvira_meta_registration_event_v1';
+const META_REGISTRATION_TTL_MS = 10 * 60 * 1000;
 const META_STANDARD_EVENTS = new Set([
   'PageView',
   'ViewContent',
@@ -12,6 +14,7 @@ const META_STANDARD_EVENTS = new Set([
   'AddToCart',
   'InitiateCheckout',
   'AddPaymentInfo',
+  'CompleteRegistration',
   'Lead',
 ]);
 const META_CATALOG_CONTENT_IDS = Object.freeze({
@@ -65,6 +68,15 @@ function safeStorage() {
   if (!hasBrowserRuntime()) return null;
   try {
     return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function safeSessionStorage() {
+  if (!hasBrowserRuntime()) return null;
+  try {
+    return window.sessionStorage;
   } catch {
     return null;
   }
@@ -332,6 +344,47 @@ export function trackMetaAddPaymentInfo(items, value) {
     currency: 'USD',
     value: value === undefined ? itemsValue(items) : validMoney(value),
   });
+}
+
+export function prepareMetaRegistrationEvent(method = 'email') {
+  if (!hasBrowserRuntime() || isNativeAppRuntime()) return false;
+  const storage = safeSessionStorage();
+  if (!storage) return false;
+  try {
+    storage.setItem(META_REGISTRATION_STORAGE_KEY, JSON.stringify({
+      method: safeLabel(method, 'unknown'),
+      createdAt: Date.now(),
+    }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function trackMetaCompleteRegistration(method = 'email') {
+  return trackMetaStandardEvent('CompleteRegistration', {
+    content_name: 'NuVira account',
+    registration_method: safeLabel(method, 'unknown'),
+    status: 'completed',
+  });
+}
+
+export async function consumeMetaRegistrationEvent() {
+  if (!hasBrowserRuntime() || isNativeAppRuntime()) return false;
+  const storage = safeSessionStorage();
+  if (!storage) return false;
+
+  let pending = null;
+  try {
+    pending = JSON.parse(storage.getItem(META_REGISTRATION_STORAGE_KEY) || 'null');
+    storage.removeItem(META_REGISTRATION_STORAGE_KEY);
+  } catch {
+    return false;
+  }
+
+  const ageMs = Date.now() - Number(pending?.createdAt || 0);
+  if (!pending || ageMs < 0 || ageMs > META_REGISTRATION_TTL_MS) return false;
+  return trackMetaCompleteRegistration(pending.method);
 }
 
 export function sanitizeMetaSearchTerm(value) {

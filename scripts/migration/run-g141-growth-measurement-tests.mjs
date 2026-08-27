@@ -35,7 +35,7 @@ const checks = [
     assert.match(analytics, /stored\.token !== token/);
     assert.match(analytics, /providerOutcome === 'true'/);
     assert.match(authContext, /const pendingProviderAuthEvent = captureGoogleProviderAuthEvent\(\);[\s\S]{0,120}consumeBase44AuthFromUrl\(\);/);
-    assert.match(authContext, /if \(currentUser\) completeGoogleProviderAuthEvent\(pendingProviderAuthEvent\);/);
+    assert.match(authContext, /if \(currentUser\) \{\s*const providerEventCompleted = completeGoogleProviderAuthEvent\(pendingProviderAuthEvent\);/);
     assert.match(authContext, /discardGoogleProviderAuthEvent\(pendingProviderAuthEvent\);/);
   }],
   ['profile completion is measured only after the backend confirms success', () => {

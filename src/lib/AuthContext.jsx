@@ -18,6 +18,10 @@ import {
   completeGoogleProviderAuthEvent,
   discardGoogleProviderAuthEvent,
 } from '@/lib/googleAnalytics';
+import {
+  consumeMetaRegistrationEvent,
+  trackMetaCompleteRegistration,
+} from '@/lib/metaPixel';
 
 const AuthContext = createContext();
 const AUTH_BOOTSTRAP_TIMEOUT_MS = 4500;
@@ -101,7 +105,13 @@ export const AuthProvider = ({ children }) => {
       setAuthChecked(true);
       setIsLoadingAuth(false);
       setBootstrapState(currentUser ? AUTH_BOOTSTRAP_STATES.authenticated : AUTH_BOOTSTRAP_STATES.unauthenticated);
-      if (currentUser) completeGoogleProviderAuthEvent(pendingProviderAuthEvent);
+      if (currentUser) {
+        const providerEventCompleted = completeGoogleProviderAuthEvent(pendingProviderAuthEvent);
+        if (providerEventCompleted && pendingProviderAuthEvent?.eventName === 'sign_up') {
+          void trackMetaCompleteRegistration(pendingProviderAuthEvent.method);
+        }
+        void consumeMetaRegistrationEvent();
+      }
       return currentUser;
     } catch (error) {
       discardGoogleProviderAuthEvent(pendingProviderAuthEvent);
