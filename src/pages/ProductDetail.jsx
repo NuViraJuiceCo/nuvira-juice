@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
 import { BRAND_OG_IMAGE, brandImageUrl } from '@/lib/brandImages';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
+import { MARKETING_CONSENT_EVENT, trackMetaViewContent } from '@/lib/metaPixel';
 
 function normalizeCategory(value) {
   return String(value || '').trim().toLowerCase();
@@ -144,6 +145,7 @@ export default function ProductDetail() {
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
   const trackedProductIdRef = useRef('');
+  const trackedMetaProductIdRef = useRef('');
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product-detail', identifier],
@@ -180,16 +182,28 @@ export default function ProductDetail() {
   useEffect(() => {
     const trackingId = String(product?.id || identifier || '');
     if (!product || !trackingId) return undefined;
-    const trackView = async () => {
+    const trackGoogleView = async () => {
       if (trackedProductIdRef.current === trackingId) return;
       if (await trackGoogleViewItem(product)) trackedProductIdRef.current = trackingId;
     };
-    const onConsent = (event) => {
-      if (event.detail === 'granted') void trackView();
+    const trackMetaView = async () => {
+      if (trackedMetaProductIdRef.current === trackingId) return;
+      if (await trackMetaViewContent(product)) trackedMetaProductIdRef.current = trackingId;
     };
-    void trackView();
-    window.addEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
-    return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
+    const onAnalyticsConsent = (event) => {
+      if (event.detail === 'granted') void trackGoogleView();
+    };
+    const onMarketingConsent = (event) => {
+      if (event.detail === 'granted') void trackMetaView();
+    };
+    void trackGoogleView();
+    void trackMetaView();
+    window.addEventListener(ANALYTICS_CONSENT_EVENT, onAnalyticsConsent);
+    window.addEventListener(MARKETING_CONSENT_EVENT, onMarketingConsent);
+    return () => {
+      window.removeEventListener(ANALYTICS_CONSENT_EVENT, onAnalyticsConsent);
+      window.removeEventListener(MARKETING_CONSENT_EVENT, onMarketingConsent);
+    };
   }, [identifier, product]);
 
   useEffect(() => {

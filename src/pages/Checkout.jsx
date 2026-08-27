@@ -25,6 +25,7 @@ import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 import { normalizeValidatedCheckoutCode } from '@/lib/checkoutPromotions';
 import { buildCustomerName, normalizeNamePart, resolveCustomerIdentity } from '@/lib/customerIdentity';
 import { trackGoogleAddPaymentInfo, trackGoogleAddShippingInfo } from '@/lib/googleAnalytics';
+import { trackMetaAddPaymentInfo } from '@/lib/metaPixel';
 
 const CHECKOUT_PROCESSING_WATCHDOG_MS = 20000;
 
@@ -1249,6 +1250,7 @@ function CheckoutFlow() {
               if (paymentAnalyticsTrackedRef.current) return;
               paymentAnalyticsTrackedRef.current = true;
               void trackGoogleAddPaymentInfo(items, paymentTotal, paymentType, checkoutCode?.code || '');
+              void trackMetaAddPaymentInfo(items, paymentTotal);
             }}
             onSuccess={(paymentIntentId) => {
               clearCart();

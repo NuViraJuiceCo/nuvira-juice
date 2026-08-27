@@ -5,8 +5,9 @@ import { ArrowLeft, ShieldCheck, FileText, AlertTriangle, ChevronDown, ChevronUp
 import { motion, AnimatePresence } from 'framer-motion';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import { resetAnalyticsConsent } from '@/lib/googleAnalytics';
+import { resetMarketingConsent } from '@/lib/metaPixel';
 
-const LAST_UPDATED = 'August 25, 2026';
+const LAST_UPDATED = 'August 27, 2026';
 
 const sections = [
   {
@@ -21,21 +22,22 @@ INFORMATION WE COLLECT
 • Order data: items purchased, order history, delivery preferences
 • Payment data: processed securely via Stripe — we never store card numbers
 • App usage: crash logs and page views (for app performance only)
-• Optional website analytics: pages visited and non-personal purchase totals/item details, only after you allow analytics
+• Optional website measurement: pages visited, product and cart activity, checkout steps, and non-personal purchase totals/item details, only after you allow the applicable choice
 
 HOW WE USE YOUR INFORMATION
 • To process and fulfill your orders
 • To send order status updates and notifications
 • To improve our products and service
-• We do NOT sell your personal information or use Google Analytics for personalized advertising
+• We do NOT sell your personal information
 
 THIRD-PARTY SERVICES
 • Stripe — payment processing (stripe.com/privacy)
 • Base44 — app infrastructure (base44.com/privacy)
 • Google Analytics — optional, consent-based website and purchase measurement (policies.google.com/privacy)
+• Meta Pixel — optional, consent-based ad and shopping-journey measurement (facebook.com/privacy/policy)
 
-ANALYTICS PRIVACY
-Google Analytics remains off until you choose “Allow analytics.” We do not send Google your name, email, phone number, street address, or payment details. Advertising storage, signals, and personalization remain disabled. You can reopen your analytics choice from this page at any time.
+MEASUREMENT PRIVACY
+Google Analytics remains off unless you enable Website analytics. Meta Pixel remains off unless you enable Marketing measurement. We do not include your name, email, phone number, street address, or payment details in these event parameters. Google advertising storage, signals, and personalization remain disabled. Meta measurement is limited to eligible website shopping and inquiry actions and is not loaded on account, sign-in, checkout-confirmation, order-tracking, or admin page views. These optional web tools are not enabled inside the native iOS or Android app. You can reopen both choices from this page at any time.
 
 DATA RETENTION
 Your data is retained as long as your account is active. You may request deletion at any time.
@@ -202,10 +204,13 @@ export default function Legal() {
         {!isNativeAppRuntime() && (
           <button
             type="button"
-            onClick={() => resetAnalyticsConsent()}
+            onClick={() => {
+              resetAnalyticsConsent();
+              resetMarketingConsent();
+            }}
             className="mb-3 inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-4 text-xs font-semibold text-foreground"
           >
-            Review analytics choice
+            Review measurement choices
           </button>
         )}
         <p className="text-[10px] text-muted-foreground">

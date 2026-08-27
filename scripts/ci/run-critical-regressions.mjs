@@ -89,6 +89,7 @@ const harnesses = [
   'scripts/migration/run-g134-native-android-google-pay-tests.mjs',
   'scripts/migration/run-g135-google-guest-wallet-checkout-tests.mjs',
   'scripts/migration/run-g136-stripe-guest-provider-sandbox-tests.mjs',
+  'scripts/migration/run-g137-marketing-measurement-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

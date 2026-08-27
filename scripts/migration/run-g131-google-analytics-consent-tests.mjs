@@ -29,8 +29,9 @@ const checks = [
   ['analytics is consent gated and excluded from native apps', () => {
     assert.match(analytics, /getAnalyticsConsent\(\) !== 'granted'/);
     assert.match(analytics, /isNativeAppRuntime\(\)/);
-    assert.match(consent, /Only necessary/);
-    assert.match(consent, /Allow analytics/);
+    assert.match(consent, /No thanks/);
+    assert.match(consent, /Website analytics/);
+    assert.match(consent, />\s*Save\s*</);
   }],
   ['advertising storage and personalization remain denied', () => {
     assert.match(analytics, /ad_storage: 'denied'/);
@@ -65,14 +66,14 @@ const checks = [
   }],
   ['consent UI is mounted globally and privacy policy is accurate', () => {
     assert.match(app, /<AnalyticsConsent \/>/);
-    assert.match(legal, /Google Analytics remains off until you choose/);
-    assert.match(legal, /Review analytics choice/);
+    assert.match(legal, /Google Analytics remains off unless you enable Website analytics/);
+    assert.match(legal, /Review measurement choices/);
   }],
   ['analytics privacy and purchase regression is permanently gated', () => {
     assert.match(critical, /run-g131-google-analytics-consent-tests\.mjs/);
   }],
   ['recommended GA4 commerce milestones are wired through the real customer journey', () => {
-    for (const eventName of ['view_item', 'add_to_cart', 'view_cart', 'begin_checkout', 'add_shipping_info', 'add_payment_info']) {
+    for (const eventName of ['view_item_list', 'select_item', 'view_item', 'add_to_cart', 'remove_from_cart', 'view_cart', 'begin_checkout', 'add_shipping_info', 'add_payment_info', 'search', 'generate_lead']) {
       assert.match(analytics, new RegExp(`['"]${eventName}['"]`));
     }
     assert.match(cartContext, /trackGoogleAddToCart/);
