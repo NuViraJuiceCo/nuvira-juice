@@ -4,11 +4,11 @@ import { useAuth } from '@/lib/AuthContext';
 import { resolveCustomerIdentities } from '@/lib/identityResolver';
 import { toast } from 'sonner';
 import { Bell, BellOff } from 'lucide-react';
+import { trackGoogleRetentionEvent } from '@/lib/googleAnalytics';
 
 const PREFS = [
   { key: 'order_updates',        label: 'Order Updates',         desc: 'Order confirmation and status changes' },
   { key: 'delivery_updates',     label: 'Delivery Updates',      desc: 'Out for delivery and delivered' },
-  { key: 'subscription_updates', label: 'Subscription Updates',  desc: 'Renewals, payments, and billing alerts' },
   { key: 'production_reminders', label: 'Production Reminders',  desc: 'When your juices are being prepared' },
   { key: 'program_reminders',    label: 'Program Reminders',     desc: 'Gentle check-ins for programs you choose to start' },
   { key: 'promotions',           label: 'Promotions',            desc: 'New drops, offers, events, announcements' },
@@ -18,7 +18,7 @@ const PREFS = [
 export default function NotificationPreferencesPanel() {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState({
-    order_updates: true, delivery_updates: true, subscription_updates: true,
+    order_updates: true, delivery_updates: true,
     production_reminders: true, program_reminders: true, promotions: true, rewards_credits: true,
   });
   const [prefId, setPrefId] = useState(null);
@@ -37,7 +37,6 @@ export default function NotificationPreferencesPanel() {
           setPrefs({
             order_updates:        rec.order_updates        ?? true,
             delivery_updates:     rec.delivery_updates     ?? true,
-            subscription_updates: rec.subscription_updates ?? true,
             production_reminders: rec.production_reminders ?? true,
             program_reminders:    rec.program_reminders    ?? true,
             promotions:           rec.promotions           ?? true,
@@ -74,6 +73,12 @@ export default function NotificationPreferencesPanel() {
         setPrefId(created.id);
       }
       setPrefOwnerEmail(canonicalEmail);
+      trackGoogleRetentionEvent('notification_preferences_update', {
+        optional_enabled_count: ['production_reminders', 'program_reminders', 'promotions', 'rewards_credits']
+          .filter((key) => prefs[key]).length,
+        optional_total_count: 4,
+        program_reminders_enabled: prefs.program_reminders === true,
+      });
       toast.success('Notification preferences saved.');
     } catch (err) {
       console.error('[NotificationPreferencesPanel] Save failed:', err);
@@ -87,12 +92,12 @@ export default function NotificationPreferencesPanel() {
     <div>
       <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Notification Preferences</h2>
       <p className="text-xs text-muted-foreground mb-4">
-        Order, delivery, and subscription alerts are always on to keep you informed. Toggle promotions and other updates to your preference.
+        Order and delivery alerts are always on to keep you informed. Toggle promotions and other updates to your preference.
       </p>
       <div className="space-y-2 mb-4">
         {PREFS.map(({ key, label, desc }) => {
           const enabled = prefs[key];
-          const isOperational = ['order_updates', 'delivery_updates', 'subscription_updates'].includes(key);
+          const isOperational = ['order_updates', 'delivery_updates'].includes(key);
           return (
             <div key={key} className="flex items-center justify-between gap-3 py-3 border-b border-border/30 last:border-0">
               <div className="flex items-start gap-2.5 flex-1 min-w-0">

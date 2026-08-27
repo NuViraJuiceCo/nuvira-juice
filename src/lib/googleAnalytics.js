@@ -260,11 +260,84 @@ const GOOGLE_ECOMMERCE_EVENTS = new Set([
   'add_payment_info',
 ]);
 
+const GOOGLE_RETENTION_EVENTS = new Set([
+  'program_journey_start',
+  'program_check_in',
+  'program_journey_complete',
+  'program_reminder_update',
+  'notification_preferences_update',
+  'delivery_area_check',
+]);
+const PROGRAM_KEYS = new Set(['radiance', 'hydration', 'reset']);
+const PROGRAM_PERIODS = new Set(['morning', 'midday', 'afternoon', 'evening']);
+const DELIVERY_OUTCOMES = new Set(['eligible', 'waitlist']);
+const DELIVERY_ZONE_TYPES = new Set(['core', 'extended', 'route_review', 'unavailable']);
+
 function safeAnalyticsLabel(value, fallback = '') {
   return String(value || fallback)
     .replace(/[\r\n\t]+/g, ' ')
     .trim()
     .slice(0, 80);
+}
+
+function boundedInteger(value, min, max) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min || number > max) return null;
+  return number;
+}
+
+function strictBoolean(value) {
+  return value === true || value === false ? value : null;
+}
+
+function buildGoogleRetentionParams(eventName, details = {}) {
+  if (!GOOGLE_RETENTION_EVENTS.has(eventName)) return null;
+  if (!details || typeof details !== 'object') return null;
+
+  if (eventName.startsWith('program_')) {
+    const programKey = String(details.program_key || '').toLowerCase();
+    const programDays = boundedInteger(details.program_days, 2, 3);
+    if (!PROGRAM_KEYS.has(programKey) || ![2, 3].includes(programDays)) return null;
+
+    const params = { program_key: programKey, program_days: programDays };
+    if (eventName === 'program_journey_start' || eventName === 'program_reminder_update') {
+      const remindersEnabled = strictBoolean(details.reminders_enabled);
+      if (remindersEnabled === null) return null;
+      params.reminders_enabled = remindersEnabled;
+    }
+    if (eventName === 'program_check_in' || eventName === 'program_journey_complete') {
+      const completedSteps = boundedInteger(details.completed_steps, 0, 24);
+      const totalSteps = boundedInteger(details.total_steps, 1, 24);
+      if (completedSteps === null || totalSteps === null || completedSteps > totalSteps) return null;
+      params.completed_steps = completedSteps;
+      params.total_steps = totalSteps;
+    }
+    if (eventName === 'program_check_in') {
+      const dayNumber = boundedInteger(details.day_number, 1, 3);
+      const dayPeriod = String(details.day_period || '').toLowerCase();
+      if (dayNumber === null || !PROGRAM_PERIODS.has(dayPeriod)) return null;
+      params.day_number = dayNumber;
+      params.day_period = dayPeriod;
+    }
+    return params;
+  }
+
+  if (eventName === 'notification_preferences_update') {
+    const enabledCount = boundedInteger(details.optional_enabled_count, 0, 4);
+    const totalCount = boundedInteger(details.optional_total_count, 4, 4);
+    const programRemindersEnabled = strictBoolean(details.program_reminders_enabled);
+    if (enabledCount === null || totalCount !== 4 || programRemindersEnabled === null) return null;
+    return {
+      optional_enabled_count: enabledCount,
+      optional_total_count: totalCount,
+      program_reminders_enabled: programRemindersEnabled,
+    };
+  }
+
+  const outcome = String(details.availability_outcome || '').toLowerCase();
+  const zoneType = String(details.zone_type || '').toLowerCase();
+  if (!DELIVERY_OUTCOMES.has(outcome) || !DELIVERY_ZONE_TYPES.has(zoneType)) return null;
+  return { availability_outcome: outcome, zone_type: zoneType };
 }
 
 function trackGoogleLifecycleEvent(eventName, params = {}) {
@@ -278,6 +351,12 @@ function trackGoogleLifecycleEvent(eventName, params = {}) {
   prepareDataLayer();
   window.gtag('event', eventName, params);
   return true;
+}
+
+export function trackGoogleRetentionEvent(eventName, details = {}) {
+  const params = buildGoogleRetentionParams(eventName, details);
+  if (!params) return false;
+  return trackGoogleLifecycleEvent(eventName, params);
 }
 
 export function trackGoogleLogin(method = 'email') {

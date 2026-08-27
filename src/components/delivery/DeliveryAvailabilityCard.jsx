@@ -9,6 +9,7 @@ import {
 } from '@/lib/deliveryAvailability';
 import WaitlistForm from '@/components/delivery/WaitlistForm';
 import { Link } from 'react-router-dom';
+import { trackGoogleRetentionEvent } from '@/lib/googleAnalytics';
 
 export default function DeliveryAvailabilityCard() {
   const [zip, setZip] = useState('');
@@ -63,6 +64,12 @@ export default function DeliveryAvailabilityCard() {
       });
 
       setStatus(isEligible ? 'eligible' : 'ineligible');
+      trackGoogleRetentionEvent('delivery_area_check', {
+        availability_outcome: isEligible ? 'eligible' : 'waitlist',
+        zone_type: ['core', 'extended', 'route_review'].includes(eligibility?.zone_type)
+          ? eligibility.zone_type
+          : 'unavailable',
+      });
     } catch {
       // Network/unexpected error — do NOT mark ineligible; let customer try again
       setStatus('idle');
