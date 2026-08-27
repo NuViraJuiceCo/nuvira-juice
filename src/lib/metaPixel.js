@@ -14,6 +14,31 @@ const META_STANDARD_EVENTS = new Set([
   'AddPaymentInfo',
   'Lead',
 ]);
+const META_CATALOG_CONTENT_IDS = Object.freeze({
+  '69d490ce699b5f1ac4dde495': '43220774813786',
+  aura: '43220774813786',
+  '69d490ce699b5f1ac4dde496': '43220774846554',
+  're-nu': '43220774846554',
+  renu: '43220774846554',
+  '69d490ce699b5f1ac4dde497': '43220774944858',
+  oasis: '43220774944858',
+  '69d490ce699b5f1ac4dde498': '43222070198362',
+  'the-nuvira-trio': '43222070198362',
+  '69d5b9df48ee4ce27d9eb8fa': '43255063445594',
+  'orange-juice': '43255063445594',
+  '69d5b9df48ee4ce27d9eb8fb': '43222071181402',
+  'pineapple-juice': '43222071181402',
+  '69d5b9df48ee4ce27d9eb8fc': '43222071115866',
+  'watermelon-juice': '43222071115866',
+  '69e95a6b3b4d04fb9b9599d5': '43296833044570',
+  'radiance-shot': '43296833044570',
+  '69e95a6b3b4d04fb9b9599d6': '43296833011802',
+  'hydration-shot': '43296833011802',
+  '69e95a6b3b4d04fb9b9599d7': '43296833077338',
+  'reset-shot': '43296833077338',
+  '6a511e652e19910e6f789c2c': '43629081722970',
+  'large-nuvira-tote-bag': '43629081722970',
+});
 const SENSITIVE_QUERY_KEYS = /^(?:session_id|payment_intent|payment_intent_client_secret|token|secret|code|email|order_number)$/i;
 const PAGE_VIEW_BLOCKED_PREFIXES = [
   '/admin',
@@ -83,18 +108,73 @@ function safeLabel(value, fallback = '') {
     .slice(0, 80);
 }
 
-function buildContents(items) {
-  return (Array.isArray(items) ? items : [])
-    .map((item, index) => ({
-      id: safeLabel(item?.product_id || item?.id, `item-${index + 1}`),
-      quantity: Math.max(1, Math.round(Number(item?.quantity) || 1)),
-      item_price: validMoney(item?.price),
-    }))
-    .filter((item) => item.id && item.item_price > 0);
+function catalogLookupKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
-function contentsValue(contents) {
-  return Math.round(contents.reduce((sum, item) => sum + (item.item_price * item.quantity), 0) * 100) / 100;
+export function normalizeMetaCatalogContentId(value) {
+  const match = String(value || '').trim().match(/(?:ProductVariant\/)?(\d{10,20})$/);
+  return match?.[1] || '';
+}
+
+export function metaCatalogContentIdForItem(item = {}) {
+  for (const candidate of [
+    item.meta_catalog_content_id,
+    item.shopify_variant_id,
+    item.shopify_pos_variant_id,
+  ]) {
+    const normalized = normalizeMetaCatalogContentId(candidate);
+    if (normalized) return normalized;
+  }
+  for (const candidate of [item.product_id, item.id, item.slug, item.title, item.name]) {
+    const raw = String(candidate || '').trim().toLowerCase();
+    const resolved = META_CATALOG_CONTENT_IDS[raw]
+      || META_CATALOG_CONTENT_IDS[catalogLookupKey(raw)];
+    if (resolved) return resolved;
+  }
+  return '';
+}
+
+function catalogLinesForItem(item) {
+  const quantity = Math.max(1, Math.round(Number(item?.quantity) || 1));
+  const itemPrice = validMoney(item?.price);
+  const directId = metaCatalogContentIdForItem(item);
+  if (directId && itemPrice > 0) return [{ id: directId, quantity, item_price: itemPrice }];
+
+  const components = Array.isArray(item?.bundle_composition) ? item.bundle_composition : [];
+  const componentQuantity = components.reduce(
+    (sum, component) => sum + Math.max(0, Math.round(Number(component?.quantity) || 0)),
+    0,
+  );
+  if (!item?.is_program || componentQuantity <= 0 || itemPrice <= 0) return [];
+  const allocatedPrice = validMoney(itemPrice / componentQuantity);
+  return components.map((component) => ({
+    id: metaCatalogContentIdForItem(component),
+    quantity: quantity * Math.max(0, Math.round(Number(component?.quantity) || 0)),
+    item_price: allocatedPrice,
+  })).filter((component) => component.id && component.quantity > 0);
+}
+
+function buildContents(items) {
+  return (Array.isArray(items) ? items : []).flatMap(catalogLinesForItem);
+}
+
+function itemsValue(items) {
+  return Math.round((Array.isArray(items) ? items : []).reduce((sum, item) => (
+    sum + (validMoney(item?.price) * Math.max(1, Math.round(Number(item?.quantity) || 1)))
+  ), 0) * 100) / 100;
+}
+
+function catalogParams(contents) {
+  if (!contents.length) return {};
+  return {
+    content_ids: contents.map((entry) => entry.id),
+    contents,
+  };
 }
 
 function eventId(eventName) {
@@ -210,52 +290,47 @@ export function trackMetaPageView(pathname = '/') {
 
 export function trackMetaViewContent(item) {
   const contents = buildContents([{ ...item, quantity: 1 }]);
-  if (!contents.length) return Promise.resolve(false);
   return trackMetaStandardEvent('ViewContent', {
-    content_ids: contents.map((entry) => entry.id),
-    contents,
+    ...catalogParams(contents),
     content_name: safeLabel(item?.title || item?.name, 'NuVira product'),
     content_category: safeLabel(item?.category, item?.is_program ? 'Juice Program' : 'Juice'),
     content_type: 'product',
     currency: 'USD',
-    value: contentsValue(contents),
+    value: itemsValue([{ ...item, quantity: 1 }]),
   });
 }
 
 export function trackMetaAddToCart(item, quantity = 1) {
-  const contents = buildContents([{ ...item, quantity }]);
-  if (!contents.length) return Promise.resolve(false);
+  const trackedItems = [{ ...item, quantity }];
+  const contents = buildContents(trackedItems);
   return trackMetaStandardEvent('AddToCart', {
-    content_ids: contents.map((entry) => entry.id),
-    contents,
+    ...catalogParams(contents),
     content_type: 'product',
     currency: 'USD',
-    value: contentsValue(contents),
+    value: itemsValue(trackedItems),
   });
 }
 
 export function trackMetaInitiateCheckout(items, value) {
   const contents = buildContents(items);
-  if (!contents.length) return Promise.resolve(false);
   return trackMetaStandardEvent('InitiateCheckout', {
-    content_ids: contents.map((entry) => entry.id),
-    contents,
+    ...catalogParams(contents),
     content_type: 'product',
     currency: 'USD',
-    num_items: contents.reduce((sum, item) => sum + item.quantity, 0),
-    value: value === undefined ? contentsValue(contents) : validMoney(value),
+    num_items: contents.length
+      ? contents.reduce((sum, item) => sum + item.quantity, 0)
+      : (Array.isArray(items) ? items : []).reduce((sum, item) => sum + Math.max(1, Math.round(Number(item?.quantity) || 1)), 0),
+    value: value === undefined ? itemsValue(items) : validMoney(value),
   });
 }
 
 export function trackMetaAddPaymentInfo(items, value) {
   const contents = buildContents(items);
-  if (!contents.length) return Promise.resolve(false);
   return trackMetaStandardEvent('AddPaymentInfo', {
-    content_ids: contents.map((entry) => entry.id),
-    contents,
+    ...catalogParams(contents),
     content_type: 'product',
     currency: 'USD',
-    value: value === undefined ? contentsValue(contents) : validMoney(value),
+    value: value === undefined ? itemsValue(items) : validMoney(value),
   });
 }
 

@@ -2,6 +2,19 @@ const META_PIXEL_ID = '719023677458304';
 const META_GRAPH_API_VERSION = 'v26.0';
 const META_EVENTS_ENDPOINT = `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${META_PIXEL_ID}/events`;
 const META_PURCHASE_LOG_PREFIX = 'meta_capi_purchase';
+const META_CATALOG_CONTENT_IDS = Object.freeze({
+  '69d490ce699b5f1ac4dde495': '43220774813786', aura: '43220774813786',
+  '69d490ce699b5f1ac4dde496': '43220774846554', 're-nu': '43220774846554', renu: '43220774846554',
+  '69d490ce699b5f1ac4dde497': '43220774944858', oasis: '43220774944858',
+  '69d490ce699b5f1ac4dde498': '43222070198362', 'the-nuvira-trio': '43222070198362',
+  '69d5b9df48ee4ce27d9eb8fa': '43255063445594', 'orange-juice': '43255063445594',
+  '69d5b9df48ee4ce27d9eb8fb': '43222071181402', 'pineapple-juice': '43222071181402',
+  '69d5b9df48ee4ce27d9eb8fc': '43222071115866', 'watermelon-juice': '43222071115866',
+  '69e95a6b3b4d04fb9b9599d5': '43296833044570', 'radiance-shot': '43296833044570',
+  '69e95a6b3b4d04fb9b9599d6': '43296833011802', 'hydration-shot': '43296833011802',
+  '69e95a6b3b4d04fb9b9599d7': '43296833077338', 'reset-shot': '43296833077338',
+  '6a511e652e19910e6f789c2c': '43629081722970', 'large-nuvira-tote-bag': '43629081722970',
+});
 
 function envValue(env, name) {
   return String(env?.get?.(name) || '').trim();
@@ -33,14 +46,48 @@ function validMoney(value) {
   return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) / 100 : 0;
 }
 
-function buildContents(items) {
-  return (Array.isArray(items) ? items : [])
-    .map((item, index) => ({
-      id: String(item?.product_id || item?.id || `item-${index + 1}`).trim().slice(0, 100),
-      quantity: Math.max(1, Math.round(Number(item?.quantity) || 1)),
-      item_price: validMoney(item?.price),
-    }))
-    .filter((item) => item.id && item.item_price > 0);
+function catalogLookupKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+export function normalizeMetaCatalogContentId(value) {
+  const match = String(value || '').trim().match(/(?:ProductVariant\/)?(\d{10,20})$/);
+  return match?.[1] || '';
+}
+
+export function metaCatalogContentIdForItem(item = {}) {
+  for (const candidate of [item.meta_catalog_content_id, item.shopify_variant_id, item.shopify_pos_variant_id]) {
+    const normalized = normalizeMetaCatalogContentId(candidate);
+    if (normalized) return normalized;
+  }
+  for (const candidate of [item.product_id, item.id, item.slug, item.title, item.name, item.product_name]) {
+    const raw = String(candidate || '').trim().toLowerCase();
+    const resolved = META_CATALOG_CONTENT_IDS[raw] || META_CATALOG_CONTENT_IDS[catalogLookupKey(raw)];
+    if (resolved) return resolved;
+  }
+  return '';
+}
+
+export function buildMetaCatalogContents(items) {
+  return (Array.isArray(items) ? items : []).flatMap((item) => {
+    const quantity = Math.max(1, Math.round(Number(item?.quantity) || 1));
+    const itemPrice = validMoney(item?.price);
+    const directId = metaCatalogContentIdForItem(item);
+    if (directId && itemPrice > 0) return [{ id: directId, quantity, item_price: itemPrice }];
+
+    const components = Array.isArray(item?.bundle_composition) ? item.bundle_composition : [];
+    const componentQuantity = components.reduce(
+      (sum, component) => sum + Math.max(0, Math.round(Number(component?.quantity) || 0)),
+      0,
+    );
+    if (!item?.is_program || componentQuantity <= 0 || itemPrice <= 0) return [];
+    const allocatedPrice = validMoney(itemPrice / componentQuantity);
+    return components.map((component) => ({
+      id: metaCatalogContentIdForItem(component),
+      quantity: quantity * Math.max(0, Math.round(Number(component?.quantity) || 0)),
+      item_price: allocatedPrice,
+    })).filter((component) => component.id && component.quantity > 0);
+  });
 }
 
 function isTestOrder(order, metadata) {
@@ -143,7 +190,7 @@ export async function sendMetaPurchaseConversion({
   if (phone) userData.ph = [await sha256Hex(phone)];
   if (!userData.em && !userData.ph) return { sent: false, reason: 'matching_data_unavailable' };
 
-  const contents = buildContents(order?.items?.length ? order.items : checkoutData?.items);
+  const contents = buildMetaCatalogContents(order?.items?.length ? order.items : checkoutData?.items);
   const eventId = eventIdForPayment(paymentIntentId);
   const payload = {
     data: [{
@@ -157,9 +204,11 @@ export async function sendMetaPurchaseConversion({
         currency: String(paymentIntent.currency || 'usd').toUpperCase(),
         value: validMoney(Number(paymentIntent.amount_received || 0) / 100),
         content_type: 'product',
-        content_ids: contents.map((item) => item.id),
-        contents,
-        num_items: contents.reduce((sum, item) => sum + item.quantity, 0),
+        ...(contents.length ? {
+          content_ids: contents.map((item) => item.id),
+          contents,
+          num_items: contents.reduce((sum, item) => sum + item.quantity, 0),
+        } : {}),
       },
     }],
     ...(sandboxAllowed ? { test_event_code: testEventCode } : {}),
