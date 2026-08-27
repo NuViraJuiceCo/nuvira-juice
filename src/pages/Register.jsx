@@ -10,6 +10,7 @@ import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { toast } from "@/components/ui/use-toast";
 import { safeReturnTo } from "@/lib/authReturnTo";
+import { prepareGoogleProviderAuthRedirect, trackGoogleSignUp } from "@/lib/googleAnalytics";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -46,6 +47,7 @@ export default function Register() {
       if (result?.access_token) {
         base44.auth.setToken(result.access_token);
       }
+      trackGoogleSignUp('email');
       window.location.href = safeReturnTo();
     } catch (err) {
       setError(err.message || "Invalid verification code");
@@ -68,7 +70,10 @@ export default function Register() {
   };
 
   const handleGoogle = () => {
-    base44.auth.loginWithProvider("google", safeReturnTo());
+    base44.auth.loginWithProvider(
+      "google",
+      prepareGoogleProviderAuthRedirect(safeReturnTo(), 'sign_up', 'google')
+    );
   };
 
   if (showOtp) {

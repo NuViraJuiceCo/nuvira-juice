@@ -43,7 +43,8 @@ const checks = [
   ['page views strip queries and redact order identifiers', () => {
     assert.match(analytics, /split\('\?'\)/);
     assert.match(analytics, /\/order-tracker\/:order/);
-    assert.match(analytics, /page_location: `\$\{window\.location\.origin\}\$\{pagePath\}`/);
+    assert.match(analytics, /page_location: buildAnalyticsPageLocation\(pathname, window\.location\.search\)/);
+    assert.match(analytics, /CAMPAIGN_QUERY_KEYS/);
   }],
   ['purchase tracking requires a paid non-test order', () => {
     assert.match(analytics, /order\.is_test_order === true/);
@@ -182,6 +183,8 @@ const context = vm.createContext({
   document: documentMock,
   CustomEvent: class CustomEvent { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
   console,
+  URL,
+  URLSearchParams,
   encodeURIComponent,
   queueMicrotask,
   setTimeout,
