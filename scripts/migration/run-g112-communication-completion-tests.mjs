@@ -16,6 +16,7 @@ const sitemap = read('base44/functions/generateSitemap/entry.ts');
 const localSeo = read('src/pages/LocalSeoLanding.jsx');
 const about = read('src/pages/About.jsx');
 const whyNuvira = read('src/pages/WhyNuVira.jsx');
+const home = read('src/pages/Home.jsx');
 
 const customerFormFiles = [
   'src/pages/Contact.jsx',
@@ -74,7 +75,9 @@ assert.match(localSeo, /Hydration and Radiance are available for 2 or 3 days/);
 assert.match(localSeo, /Reset remains a 3-day program/);
 assert.match(localSeo, /8- or 12-bottle structure/);
 assert.doesNotMatch(sitemap, /['"]\/subscribe['"]/);
-assert.match(about, /Subscriptions will be introduced only when the recurring fulfillment experience is ready/);
+assert.doesNotMatch(about, /subscription/i);
+assert.match(about, /Every offering is built around fresh, scheduled production and clear delivery timing/);
+assert.doesNotMatch(home, /SubscriptionCard|Subscription visibility card/);
 assert.doesNotMatch(whyNuvira, /subscription deliveries arrive|active subscription/i);
 for (const publicStoryPage of [about, whyNuvira]) {
   assert.match(publicStoryPage, /min-w-0 max-w-[45]xl break-words font-heading text-\[2rem\]/);
