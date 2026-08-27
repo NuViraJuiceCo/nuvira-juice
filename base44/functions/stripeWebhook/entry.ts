@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
+import { sendMetaPurchaseConversion } from './metaConversions.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g136-public-diagnostic-v2';
@@ -14,6 +15,15 @@ const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
   'legacy_migration',
   'unknown',
 ]);
+
+async function attemptMetaPurchaseConversion(args: Record<string, any>) {
+  try {
+    return await sendMetaPurchaseConversion(args);
+  } catch {
+    console.warn('[Meta CAPI] unexpected conversion helper failure');
+    return { sent: false, reason: 'unexpected_conversion_failure' };
+  }
+}
 
 function resolveFinalScheduleSource(source, fallback = 'backend_cadence') {
   const candidate = source || fallback;
@@ -194,6 +204,15 @@ async function handleCheckoutProviderSandboxEvent(base44, event) {
     });
   }
 
+  const metaResult = await attemptMetaPurchaseConversion({
+    base44,
+    event,
+    paymentIntent: pi,
+    order,
+    checkoutData: checkoutSession.checkout_data || {},
+    allowTestOrder: true,
+  });
+
   return Response.json({
     received: true,
     sandbox: true,
@@ -210,6 +229,9 @@ async function handleCheckoutProviderSandboxEvent(base44, event) {
     inventory_write_performed: false,
     production_write_performed: false,
     customer_record_write_performed: false,
+    meta_capi_test_attempted: metadata.meta_capi_test_enabled === 'true',
+    meta_capi_test_accepted: metaResult?.sent === true,
+    meta_capi_test_result: metaResult?.reason || (metaResult?.sent ? 'accepted' : 'not_requested'),
   });
 }
 
@@ -1192,6 +1214,13 @@ Deno.serve(async (req) => {
         // Idempotency: already finalized
         if (order.payment_captured === true) {
           console.log(`[PI succeeded] Order ${orderNumber} already finalized, skipping`);
+          await attemptMetaPurchaseConversion({
+            base44,
+            event,
+            paymentIntent: pi,
+            order,
+            checkoutData,
+          });
           return Response.json({ received: true });
         }
 
@@ -1261,6 +1290,14 @@ Deno.serve(async (req) => {
 
         await base44.asServiceRole.entities.Order.update(order.id, finalOrderUpdate);
         console.log(`[PI succeeded] Order ${orderNumber} finalized`);
+
+        await attemptMetaPurchaseConversion({
+          base44,
+          event,
+          paymentIntent: pi,
+          order: { ...order, ...finalOrderUpdate },
+          checkoutData,
+        });
 
         // Validate referral code
         if (order.referral_code && customerEmail) {
@@ -1479,6 +1516,14 @@ Deno.serve(async (req) => {
         await linkPendingBagReturn(base44, meta.bag_return_request_id, customerEmail, newOrder.id)
           .catch(error => console.warn(`[PI succeeded] Safety-net bag return link failed: ${error.message}`));
         console.log(`[PI succeeded] Safety-net Order created: ${newOrder.id}`);
+
+        await attemptMetaPurchaseConversion({
+          base44,
+          event,
+          paymentIntent: pi,
+          order: newOrder,
+          checkoutData,
+        });
 
         // Project the safety-net order to native operations.
         base44.asServiceRole.functions.invoke('syncOrderToHub', {
