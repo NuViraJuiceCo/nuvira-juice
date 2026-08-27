@@ -18,7 +18,7 @@ export const LOCAL_BUSINESS_SCHEMA = {
   "logo": BRAND_ICON,
   "image": DEFAULT_IMAGE,
   "description": DEFAULT_DESCRIPTION,
-  "telephone": "+1-559-826-2823",
+  "telephone": "+1-636-697-6028",
   "email": "support@nuvirajuice.com",
   "address": {
     "@type": "PostalAddress",
