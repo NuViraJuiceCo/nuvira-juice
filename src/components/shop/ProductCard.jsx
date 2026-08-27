@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
 import { productPath } from '@/lib/seo-slugs';
 import { motion } from 'framer-motion';
+import { trackGoogleSelectItem } from '@/lib/googleAnalytics';
 
 // Tap-vs-scroll guard: only fire click if touch didn't move more than 8px
 function useTapGuard() {
@@ -46,9 +47,18 @@ export default function ProductCard({ product, compact = false }) {
     addItem(product, 1, extra);
   };
 
+  const handleSelect = () => {
+    void trackGoogleSelectItem(product);
+  };
+
   if (compact) {
     return (
-      <Link to={detailPath} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
+      <Link
+        to={detailPath}
+        onClick={tapGuard.guardClick(handleSelect)}
+        onTouchStart={tapGuard.onTouchStart}
+        onTouchMove={tapGuard.onTouchMove}
+      >
         <motion.div
             whileTap={{ scale: 0.94 }}
             transition={{ type: 'spring', stiffness: 400, damping: 28 }}
@@ -102,7 +112,12 @@ export default function ProductCard({ product, compact = false }) {
   }
 
   return (
-      <Link to={detailPath} onTouchStart={tapGuard.onTouchStart} onTouchMove={tapGuard.onTouchMove}>
+      <Link
+        to={detailPath}
+        onClick={tapGuard.guardClick(handleSelect)}
+        onTouchStart={tapGuard.onTouchStart}
+        onTouchMove={tapGuard.onTouchMove}
+      >
       <motion.div
          whileTap={{ scale: 0.97 }}
          transition={{ type: 'spring', stiffness: 400, damping: 28 }}

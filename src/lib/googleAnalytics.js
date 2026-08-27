@@ -193,8 +193,11 @@ function buildPurchaseItems(items) {
 }
 
 const GOOGLE_ECOMMERCE_EVENTS = new Set([
+  'view_item_list',
+  'select_item',
   'view_item',
   'add_to_cart',
+  'remove_from_cart',
   'view_cart',
   'begin_checkout',
   'add_shipping_info',
@@ -226,6 +229,10 @@ export async function trackGoogleEcommerceEvent(eventName, payload = {}) {
 
   const coupon = safeAnalyticsLabel(payload.coupon);
   if (coupon) params.coupon = coupon;
+  const itemListId = safeAnalyticsLabel(payload.itemListId);
+  const itemListName = safeAnalyticsLabel(payload.itemListName);
+  if (itemListId) params.item_list_id = itemListId;
+  if (itemListName) params.item_list_name = itemListName;
   if (eventName === 'add_shipping_info') {
     params.shipping_tier = safeAnalyticsLabel(payload.shippingTier, 'Local delivery');
   }
@@ -241,8 +248,22 @@ export function trackGoogleViewItem(item) {
   return trackGoogleEcommerceEvent('view_item', { items: [item] });
 }
 
+export function trackGoogleViewItemList(items, itemListId = 'shop', itemListName = 'Shop') {
+  return trackGoogleEcommerceEvent('view_item_list', { items, itemListId, itemListName });
+}
+
+export function trackGoogleSelectItem(item, itemListId = 'shop', itemListName = 'Shop') {
+  return trackGoogleEcommerceEvent('select_item', { items: [item], itemListId, itemListName });
+}
+
 export function trackGoogleAddToCart(item, quantity = 1) {
   return trackGoogleEcommerceEvent('add_to_cart', {
+    items: [{ ...item, quantity: Math.max(1, Math.round(Number(quantity) || 1)) }],
+  });
+}
+
+export function trackGoogleRemoveFromCart(item, quantity = 1) {
+  return trackGoogleEcommerceEvent('remove_from_cart', {
     items: [{ ...item, quantity: Math.max(1, Math.round(Number(quantity) || 1)) }],
   });
 }
@@ -261,6 +282,28 @@ export function trackGoogleAddShippingInfo(items, value, shippingTier = 'Local d
 
 export function trackGoogleAddPaymentInfo(items, value, paymentType = 'Card or wallet', coupon = '') {
   return trackGoogleEcommerceEvent('add_payment_info', { items, value, paymentType, coupon });
+}
+
+export function sanitizeSearchTerm(value) {
+  const term = safeAnalyticsLabel(value);
+  if (term.length < 2) return '';
+  if (/\S+@\S+\.\S+/.test(term)) return '';
+  if (/(?:\+?\d[\s().-]*){7,}/.test(term)) return '';
+  return term;
+}
+
+export async function trackGoogleSearch(searchTerm) {
+  const term = sanitizeSearchTerm(searchTerm);
+  if (!term || getAnalyticsConsent() !== 'granted' || !(await loadGoogleAnalytics())) return false;
+  window.gtag('event', 'search', { search_term: term });
+  return true;
+}
+
+export async function trackGoogleGenerateLead(leadType = 'customer_inquiry') {
+  const source = safeAnalyticsLabel(leadType, 'customer_inquiry');
+  if (!source || getAnalyticsConsent() !== 'granted' || !(await loadGoogleAnalytics())) return false;
+  window.gtag('event', 'generate_lead', { lead_source: source });
+  return true;
 }
 
 export function isEligibleGooglePurchase(order) {

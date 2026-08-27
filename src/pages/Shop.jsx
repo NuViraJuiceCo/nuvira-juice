@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import SEO from '@/components/SEO';
 import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
@@ -12,6 +12,15 @@ import ProgramCards from '@/components/home/ProgramCards';
 import { absoluteUrl, productPath } from '@/lib/seo-slugs';
 import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
+import {
+  ANALYTICS_CONSENT_EVENT,
+  trackGoogleSearch,
+  trackGoogleViewItemList,
+} from '@/lib/googleAnalytics';
+import {
+  MARKETING_CONSENT_EVENT,
+  trackMetaSearch,
+} from '@/lib/metaPixel';
 
 const ALL_CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -26,6 +35,10 @@ const ALL_CATEGORIES = [
 export default function Shop({ seoActive = true }) {
   const [category, setCategory] = useState('all');
   const [search, setSearch] = useState('');
+  const [measurementRevision, setMeasurementRevision] = useState(0);
+  const trackedGoogleListsRef = useRef(new Set());
+  const trackedGoogleSearchesRef = useRef(new Set());
+  const trackedMetaSearchesRef = useRef(new Set());
   const showWebsiteSeoLinks = seoActive && !isNativeAppRuntime();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -76,7 +89,8 @@ export default function Shop({ seoActive = true }) {
     // Search
     if (search.trim()) {
       const q = search.toLowerCase();
-      const wordBoundaryRegex = new RegExp(`\\b${q}`, 'i');
+      const escapedQuery = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordBoundaryRegex = new RegExp(`\\b${escapedQuery}`, 'i');
       result = result.filter(p => {
         // Direct product match
         const directMatch = wordBoundaryRegex.test(p.title || '') ||
@@ -106,7 +120,50 @@ export default function Shop({ seoActive = true }) {
     }
 
     return result;
-  }, [products, category, search, filterParam]);
+  }, [products, bundles, category, search, filterParam]);
+
+  useEffect(() => {
+    const refreshMeasurement = () => setMeasurementRevision((value) => value + 1);
+    window.addEventListener(ANALYTICS_CONSENT_EVENT, refreshMeasurement);
+    window.addEventListener(MARKETING_CONSENT_EVENT, refreshMeasurement);
+    return () => {
+      window.removeEventListener(ANALYTICS_CONSENT_EVENT, refreshMeasurement);
+      window.removeEventListener(MARKETING_CONSENT_EVENT, refreshMeasurement);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isLoading || filtered.length === 0) return undefined;
+    const visibleItems = filtered.slice(0, 24);
+    const listId = filterParam || category || 'all';
+    const listName = search.trim() ? 'Shop search results' : `Shop: ${listId}`;
+    const signature = `${listId}:${search.trim().toLowerCase()}:${visibleItems.map((item) => item.id).join(',')}`;
+    if (trackedGoogleListsRef.current.has(signature)) return undefined;
+    const timer = window.setTimeout(() => {
+      void trackGoogleViewItemList(visibleItems, listId, listName).then((tracked) => {
+        if (tracked) trackedGoogleListsRef.current.add(signature);
+      });
+    }, search.trim() ? 400 : 100);
+    return () => window.clearTimeout(timer);
+  }, [category, filterParam, filtered, isLoading, measurementRevision, search]);
+
+  useEffect(() => {
+    const term = search.trim().toLowerCase();
+    if (term.length < 2) return undefined;
+    const timer = window.setTimeout(() => {
+      if (!trackedGoogleSearchesRef.current.has(term)) {
+        void trackGoogleSearch(term).then((tracked) => {
+          if (tracked) trackedGoogleSearchesRef.current.add(term);
+        });
+      }
+      if (!trackedMetaSearchesRef.current.has(term)) {
+        void trackMetaSearch(term).then((tracked) => {
+          if (tracked) trackedMetaSearchesRef.current.add(term);
+        });
+      }
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [measurementRevision, search]);
 
   const shopStructuredData = useMemo(() => ({
     "@context": "https://schema.org",

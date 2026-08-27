@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
-import { trackGoogleAddToCart, trackGoogleBeginCheckout } from '@/lib/googleAnalytics';
+import { trackGoogleAddToCart, trackGoogleBeginCheckout, trackGoogleRemoveFromCart } from '@/lib/googleAnalytics';
+import { trackMetaAddToCart, trackMetaInitiateCheckout } from '@/lib/metaPixel';
 
 const CartContext = createContext();
 const JOURNEY_SESSION_KEY = 'nuvira_customer_journey_session';
@@ -90,6 +91,7 @@ export function CartProvider({ children }) {
 
   const addItem = (product, quantity = 1, extra = {}) => {
     void trackGoogleAddToCart({ ...product, ...extra }, quantity);
+    void trackMetaAddToCart({ ...product, ...extra }, quantity);
     setItems(prev => {
       const nextLineKey = extra.cart_line_key || product.id;
       const existing = prev.find(i => (i.cart_line_key || i.product_id) === nextLineKey);
@@ -115,6 +117,8 @@ export function CartProvider({ children }) {
   };
 
   const removeItem = (lineKey) => {
+    const existing = items.find(i => (i.cart_line_key || i.product_id) === lineKey);
+    if (existing) void trackGoogleRemoveFromCart(existing, existing.quantity);
     setItems(prev => prev.filter(i => (i.cart_line_key || i.product_id) !== lineKey));
   };
 
@@ -122,6 +126,10 @@ export function CartProvider({ children }) {
     if (quantity <= 0) {
       removeItem(lineKey);
       return;
+    }
+    const existing = items.find(i => (i.cart_line_key || i.product_id) === lineKey);
+    if (existing && quantity < existing.quantity) {
+      void trackGoogleRemoveFromCart(existing, existing.quantity - quantity);
     }
     setItems(prev =>
       prev.map(i => (i.cart_line_key || i.product_id) === lineKey ? { ...i, quantity } : i)
@@ -136,6 +144,7 @@ export function CartProvider({ children }) {
   const trackCheckoutStarted = () => {
     if (items.length > 0) recordJourneyActivity('checkout_started', items);
     if (items.length > 0) void trackGoogleBeginCheckout(items, subtotal);
+    if (items.length > 0) void trackMetaInitiateCheckout(items, subtotal);
   };
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);

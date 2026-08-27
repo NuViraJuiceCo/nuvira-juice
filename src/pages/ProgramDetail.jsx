@@ -19,6 +19,7 @@ import {
 import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
 import { absoluteUrl } from '@/lib/seo-slugs';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
+import { MARKETING_CONSENT_EVENT, trackMetaViewContent } from '@/lib/metaPixel';
 
 const FALLBACK_WELLNESS_SHOTS = PUBLIC_PRODUCT_FALLBACKS.filter((product) => (
   product.category === 'shot' && product.is_available !== false
@@ -92,6 +93,7 @@ export default function ProgramDetail() {
   const [selectedDays, setSelectedDays] = useState(3);
   const [selectedShotCounts, setSelectedShotCounts] = useState({});
   const trackedProgramOptionRef = useRef('');
+  const trackedMetaProgramOptionRef = useRef('');
 
   useEffect(() => {
     setSelectedDays(3);
@@ -102,24 +104,38 @@ export default function ProgramDetail() {
     if (!program) return undefined;
     const option = programOptionForDays(program, selectedDays);
     const trackingKey = `${program.key}:${option.days}`;
-    const trackView = async () => {
+    const item = {
+      id: programProductId(program.key, option.days),
+      title: `${program.name} Program (${option.days}-Day)`,
+      price: option.price,
+      category: 'Juice Program',
+      is_program: true,
+      size: `${option.bottles} bottles`,
+    };
+    const trackGoogleView = async () => {
       if (trackedProgramOptionRef.current === trackingKey) return;
-      const tracked = await trackGoogleViewItem({
-        id: programProductId(program.key, option.days),
-        title: `${program.name} Program (${option.days}-Day)`,
-        price: option.price,
-        category: 'Juice Program',
-        is_program: true,
-        size: `${option.bottles} bottles`,
-      });
+      const tracked = await trackGoogleViewItem(item);
       if (tracked) trackedProgramOptionRef.current = trackingKey;
     };
-    const onConsent = (event) => {
-      if (event.detail === 'granted') void trackView();
+    const trackMetaView = async () => {
+      if (trackedMetaProgramOptionRef.current === trackingKey) return;
+      const tracked = await trackMetaViewContent(item);
+      if (tracked) trackedMetaProgramOptionRef.current = trackingKey;
     };
-    void trackView();
-    window.addEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
-    return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
+    const onAnalyticsConsent = (event) => {
+      if (event.detail === 'granted') void trackGoogleView();
+    };
+    const onMarketingConsent = (event) => {
+      if (event.detail === 'granted') void trackMetaView();
+    };
+    void trackGoogleView();
+    void trackMetaView();
+    window.addEventListener(ANALYTICS_CONSENT_EVENT, onAnalyticsConsent);
+    window.addEventListener(MARKETING_CONSENT_EVENT, onMarketingConsent);
+    return () => {
+      window.removeEventListener(ANALYTICS_CONSENT_EVENT, onAnalyticsConsent);
+      window.removeEventListener(MARKETING_CONSENT_EVENT, onMarketingConsent);
+    };
   }, [program, selectedDays]);
 
   const { data: shots = [] } = useQuery({

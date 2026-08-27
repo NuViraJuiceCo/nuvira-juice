@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import { submitCustomerInquiry } from '@/lib/customerCommunications';
+import { trackGoogleGenerateLead } from '@/lib/googleAnalytics';
+import { trackMetaLead } from '@/lib/metaPixel';
 
 export default function Contact() {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
@@ -27,6 +29,8 @@ export default function Contact() {
         message: form.message,
         source: 'contact_page',
       });
+      void trackGoogleGenerateLead('contact');
+      void trackMetaLead('contact');
       toast.success("Message sent! We'll get back to you soon.");
       setForm({ name: '', email: '', subject: '', message: '' });
     } catch {

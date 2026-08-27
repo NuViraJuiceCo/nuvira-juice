@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { submitCustomerInquiry } from '@/lib/customerCommunications';
+import { trackGoogleGenerateLead } from '@/lib/googleAnalytics';
+import { trackMetaLead } from '@/lib/metaPixel';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -47,6 +49,8 @@ export default function Partner() {
         source: 'partner_page',
         metadata: { business: form.business, business_type: form.type },
       });
+      void trackGoogleGenerateLead('partnership');
+      void trackMetaLead('partnership');
       toast.success("We got your inquiry! We'll be in touch within 48 hours.");
       setForm({ name: '', business: '', email: '', phone: '', type: '', notes: '' });
     } catch {
