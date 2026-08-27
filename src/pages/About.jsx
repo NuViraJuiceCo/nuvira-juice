@@ -80,7 +80,7 @@ const storyBlocks = [
     kicker: 'Our service',
     title: 'Built for delivery, events, and everyday routines.',
     body:
-      'Customers can order for home delivery, choose a 2- or 3-day program, or find us at events. Subscriptions will be introduced only when the recurring fulfillment experience is ready.',
+      'Customers can order for local delivery, choose a 2- or 3-day program, or find us at events. Every offering is built around fresh, scheduled production and clear delivery timing.',
     icon: Truck,
   },
 ];
