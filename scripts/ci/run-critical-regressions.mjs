@@ -96,6 +96,7 @@ const harnesses = [
   'scripts/migration/run-g142-meta-registration-measurement-tests.mjs',
   'scripts/migration/run-g143-snapchat-measurement-tests.mjs',
   'scripts/migration/run-g145-retention-measurement-tests.mjs',
+  'scripts/migration/run-g146-privacy-disclosure-tests.mjs',
 ];
 
 function fail(message, extra = {}) {
