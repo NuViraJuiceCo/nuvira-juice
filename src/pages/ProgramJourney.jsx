@@ -22,6 +22,8 @@ import { toast } from 'sonner';
 import { invokeCustomerGateway } from '@/api/base44Client';
 import { DAILY_PROGRAM_SCHEDULES, PROGRAM_BY_KEY } from '@/lib/program-catalog';
 import { createProgramCelebration } from '@/lib/program-celebration';
+import { resolveProgramJourneyMeasurements } from '@/lib/program-journey-measurement';
+import { trackGoogleRetentionEvent } from '@/lib/googleAnalytics';
 import { resolveOrderItemImage } from '@/lib/order-item-images';
 import SEO from '@/components/SEO';
 
@@ -706,8 +708,12 @@ export default function ProgramJourney({ previewMode = false }) {
   const mutation = useMutation({
     mutationFn: async (payload) => (await invokeCustomerGateway('manageProgramJourney', payload)).data,
     onSuccess: (data, variables) => {
+      const previousJourney = queryClient.getQueryData(['program-journey', id]);
       queryClient.setQueryData(['program-journey', id], data?.journey);
       queryClient.invalidateQueries({ queryKey: ['program-journeys'] });
+      for (const measurement of resolveProgramJourneyMeasurements(previousJourney, data?.journey, variables)) {
+        trackGoogleRetentionEvent(measurement.eventName, measurement.details);
+      }
       if (variables?.action === 'toggle_step' && variables?.completed === true) {
         const nextCelebration = createProgramCelebration({
           journey: data?.journey,
