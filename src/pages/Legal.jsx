@@ -208,7 +208,7 @@ export default function Legal() {
 
       {/* Footer note */}
       <div className="mx-4 mt-6 text-center space-y-1">
-        <Link to="/returns" className="mb-2 inline-flex min-h-11 items-center text-xs font-semibold text-primary underline">
+        <Link to="/returns.html" className="mb-2 inline-flex min-h-11 items-center text-xs font-semibold text-primary underline">
           View dedicated refund & return policy
         </Link>
         {!isNativeAppRuntime() && (

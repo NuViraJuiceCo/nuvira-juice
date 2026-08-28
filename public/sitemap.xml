@@ -122,12 +122,12 @@
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/returns</loc>
+    <loc>https://nuvirajuice.com/returns.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/delivery</loc>
+    <loc>https://nuvirajuice.com/delivery.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -164,57 +164,57 @@
 
   <!-- Products -->
   <url>
-    <loc>https://nuvirajuice.com/product/radiance-shot/</loc>
+    <loc>https://nuvirajuice.com/product/radiance-shot.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/aura/</loc>
+    <loc>https://nuvirajuice.com/product/aura.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/hydration-shot/</loc>
+    <loc>https://nuvirajuice.com/product/hydration-shot.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/re-nu/</loc>
+    <loc>https://nuvirajuice.com/product/re-nu.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/reset-shot/</loc>
+    <loc>https://nuvirajuice.com/product/reset-shot.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/oasis/</loc>
+    <loc>https://nuvirajuice.com/product/oasis.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/the-nuvira-trio/</loc>
+    <loc>https://nuvirajuice.com/product/the-nuvira-trio.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/orange-juice/</loc>
+    <loc>https://nuvirajuice.com/product/orange-juice.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/pineapple-juice/</loc>
+    <loc>https://nuvirajuice.com/product/pineapple-juice.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/watermelon-juice/</loc>
+    <loc>https://nuvirajuice.com/product/watermelon-juice.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://nuvirajuice.com/product/large-nuvira-tote-bag/</loc>
+    <loc>https://nuvirajuice.com/product/large-nuvira-tote-bag.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>

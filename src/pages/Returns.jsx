@@ -103,7 +103,7 @@ export default function Returns() {
         <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
           <span>Last updated: {LAST_UPDATED}</span>
           <Link to="/legal" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">Legal & Privacy</Link>
-          <Link to="/delivery" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">Delivery information</Link>
+          <Link to="/delivery.html" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">Delivery information</Link>
           <Link to="/support" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">Support</Link>
         </div>
       </main>

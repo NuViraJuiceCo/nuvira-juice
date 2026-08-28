@@ -445,7 +445,9 @@ const AuthenticatedApp = () => {
           <Route path="/rewards" element={<ProtectedRoute element={<Rewards />} user={user} />} />
           <Route path="/legal" element={<Legal />} />
           <Route path="/returns" element={<Returns />} />
+          <Route path="/returns.html" element={<Returns />} />
           <Route path="/delivery" element={<Delivery />} />
+          <Route path="/delivery.html" element={<Delivery />} />
           <Route path="/connect" element={<Connect />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/partner" element={<Partner />} />

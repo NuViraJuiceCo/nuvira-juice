@@ -1,6 +1,6 @@
 import { SITE_URL } from './seo-slugs.js';
 
-export const MERCHANT_RETURN_POLICY_PATH = '/returns';
+export const MERCHANT_RETURN_POLICY_PATH = '/returns.html';
 export const MERCHANT_RETURN_POLICY_URL = `${SITE_URL}${MERCHANT_RETURN_POLICY_PATH}`;
 export const MERCHANT_RETURN_POLICY_ID = `${MERCHANT_RETURN_POLICY_URL}#policy`;
 

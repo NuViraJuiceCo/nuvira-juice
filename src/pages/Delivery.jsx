@@ -144,7 +144,7 @@ export default function Delivery() {
 
         <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
           <Link to="/shop" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">Shop NuVira</Link>
-          <Link to="/returns" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">Refund & return policy</Link>
+          <Link to="/returns.html" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">Refund & return policy</Link>
           <Link to="/support" className="inline-flex min-h-11 items-center font-semibold text-primary hover:underline">Support</Link>
         </div>
       </main>
