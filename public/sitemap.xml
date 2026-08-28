@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- 
-  This is a static fallback sitemap.
-  A dynamic sitemap (including all live product URLs) is available at the backend function endpoint.
-  Submit the dynamic sitemap URL to Google Search Console for full coverage.
+  Canonical sitemap advertised by robots.txt.
+  The existing generateSitemap backend endpoint mirrors these public route contracts.
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 
