@@ -1,6 +1,6 @@
 import { SITE_URL } from './seo-slugs.js';
 
-export const DELIVERY_POLICY_PATH = '/delivery';
+export const DELIVERY_POLICY_PATH = '/delivery.html';
 export const DELIVERY_POLICY_URL = `${SITE_URL}${DELIVERY_POLICY_PATH}`;
 
 export const DELIVERY_WINDOWS = [

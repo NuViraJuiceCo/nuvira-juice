@@ -75,11 +75,12 @@ test('delivery page is public, discoverable, and linked at the decision points',
   const app = read('src/App.jsx');
   assert.match(app, /const Delivery = React\.lazy\(\(\) => import\('@\/pages\/Delivery'\)\)/);
   assert.match(app, /<Route path="\/delivery" element={<Delivery \/>} \/>/);
-  assert.match(read('public/sitemap.xml'), /<loc>https:\/\/nuvirajuice\.com\/delivery<\/loc>/);
-  assert.match(read('src/pages/Home.jsx'), /to="\/delivery"[^>]*>Delivery<\/Link>/);
-  assert.match(read('src/components/layout/SideNav.jsx'), /to="\/delivery"[^>]*>Delivery<\/Link>/);
-  assert.match(read('src/components/delivery/DeliveryAvailabilityCard.jsx'), /to="\/delivery"[\s\S]*?delivery windows, fees, and route details/);
-  assert.match(read('src/pages/ProductDetail.jsx'), /to="\/delivery"[\s\S]*?Delivery details/);
+  assert.match(app, /<Route path="\/delivery\.html" element={<Delivery \/>} \/>/);
+  assert.match(read('public/sitemap.xml'), /<loc>https:\/\/nuvirajuice\.com\/delivery\.html<\/loc>/);
+  assert.match(read('src/pages/Home.jsx'), /to="\/delivery\.html"[^>]*>Delivery<\/Link>/);
+  assert.match(read('src/components/layout/SideNav.jsx'), /to="\/delivery\.html"[^>]*>Delivery<\/Link>/);
+  assert.match(read('src/components/delivery/DeliveryAvailabilityCard.jsx'), /to="\/delivery\.html"[\s\S]*?delivery windows, fees, and route details/);
+  assert.match(read('src/pages/ProductDetail.jsx'), /to="\/delivery\.html"[\s\S]*?Delivery details/);
 });
 
 test('policy copy discloses address validation, route-review authorization, and waitlist limits', () => {
@@ -94,7 +95,7 @@ test('policy copy discloses address validation, route-review authorization, and 
 test('crawler HTML exposes the complete delivery contract without JavaScript', () => {
   const html = renderDeliveryPolicyCrawlerHtml(read('index.html'));
   const schema = deliveryPolicySchema(html);
-  assert.equal(DELIVERY_POLICY_URL, 'https://nuvirajuice.com/delivery');
+  assert.equal(DELIVERY_POLICY_URL, 'https://nuvirajuice.com/delivery.html');
   assert.equal((html.match(/<link rel="canonical"/g) || []).length, 1);
   assert.match(html, /<title>Local Delivery Information \| NuVira Juice Co\.<\/title>/);
   assert.match(html, /<noscript>[\s\S]*?<h1>Local Delivery Information<\/h1>/);
@@ -107,9 +108,10 @@ test('crawler HTML exposes the complete delivery contract without JavaScript', (
   assert.deepEqual(schema, DELIVERY_POLICY_SCHEMA);
 });
 
-test('build emits static delivery HTML without inventing fixed Offer shipping schema', () => {
+test('build emits explicit Base44-host-compatible delivery HTML without inventing fixed Offer shipping schema', () => {
   const buildPlugin = read('scripts/seo/product-crawler-pages.mjs');
   const productSeo = read('src/lib/product-seo.js');
+  assert.match(buildPlugin, /fileName: 'delivery\.html'/);
   assert.match(buildPlugin, /fileName: 'delivery\/index\.html'/);
   assert.match(buildPlugin, /renderDeliveryPolicyCrawlerHtml\(canonicalIndexHtml\)/);
   assert.doesNotMatch(productSeo, /OfferShippingDetails|shippingRate|shippingDestination|deliveryTime/);

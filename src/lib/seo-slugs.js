@@ -22,6 +22,7 @@ export function normalizeProductIdentifier(value = '') {
   return decodedValue
     .toLowerCase()
     .replace(/^\/?(product|products|shop)\//, '')
+    .replace(/\.html$/i, '')
     .replace(/\/+$/g, '');
 }
 
@@ -42,7 +43,7 @@ export function productLookupKeys(product = {}) {
 
 export function productPath(product) {
   const slug = slugifyProductTitle(product?.slug || product?.title || product?.id || '');
-  return `/product/${slug}/`;
+  return `/product/${slug}.html`;
 }
 
 export function absoluteUrl(path = '/') {

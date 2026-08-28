@@ -85,7 +85,7 @@ assert.doesNotMatch(productSeoSource, /'@type': 'OfferShippingDetails'/);
 assert.doesNotMatch(productSeoSource, /shippingRate:\s*\{[\s\S]{0,160}value: '0'/);
 assert.match(productSeoSource, /'@id': MERCHANT_RETURN_POLICY_ID/);
 assert.match(merchantPolicySource, /returnPolicyCategory: 'https:\/\/schema\.org\/MerchantReturnNotPermitted'/);
-assert.match(merchantPolicySource, /MERCHANT_RETURN_POLICY_PATH = '\/returns'/);
+assert.match(merchantPolicySource, /MERCHANT_RETURN_POLICY_PATH = '\/returns\.html'/);
 assert.match(merchantPolicySource, /MERCHANT_RETURN_POLICY_URL = `\$\{SITE_URL\}\$\{MERCHANT_RETURN_POLICY_PATH\}`/);
 assert.doesNotMatch(productSeoSource, /merchantReturnDays|ReturnByMail|FreeReturn/);
 

@@ -34,15 +34,23 @@ function safeJsonLd(value) {
 }
 
 export function renderProductCanonicalRedirect(indexHtml) {
-  const routes = PUBLIC_PRODUCT_FALLBACKS.map(product => `/product/${buildProductSeoMetadata(product).slug}`);
+  const redirects = Object.fromEntries([
+    ...PUBLIC_PRODUCT_FALLBACKS.map(product => {
+      const slug = buildProductSeoMetadata(product).slug;
+      return [`/product/${slug}`, `/product/${slug}.html`];
+    }),
+    ['/returns', '/returns.html'],
+    ['/delivery', '/delivery.html'],
+  ]);
   const redirectScript = [
     '    <script data-nuvira-product-canonical-redirect>',
     '      (function () {',
     '        if (globalThis.Capacitor?.isNativePlatform?.()) return;',
-    `        var routes = ${safeJsonLd(routes)};`,
+    `        var redirects = ${safeJsonLd(redirects)};`,
     "        var path = window.location.pathname.replace(/\\/+$/, '');",
-    "        if (routes.indexOf(path) === -1 || window.location.pathname === path + '/') return;",
-    "        window.location.replace(path + '/' + window.location.search + window.location.hash);",
+    '        var target = redirects[path];',
+    '        if (!target || window.location.pathname === target) return;',
+    '        window.location.replace(target + window.location.search + window.location.hash);',
     '      })();',
     '    </script>',
   ].join('\n');
@@ -153,7 +161,7 @@ export function renderDeliveryPolicyCrawlerHtml(indexHtml) {
     `        <p>${escapeHtml(DELIVERY_POLICY_CONTENT.routeReview)}</p>`,
     `        <p>${escapeHtml(DELIVERY_POLICY_CONTENT.waitlist)}</p>`,
     `        <p>${escapeHtml(DELIVERY_POLICY_CONTENT.exceptions)}</p>`,
-    '        <p><a href="/shop">Shop NuVira</a> <a href="/returns">Refund &amp; return policy</a></p>',
+    '        <p><a href="/shop">Shop NuVira</a> <a href="/returns.html">Refund &amp; return policy</a></p>',
     '      </main>',
     '    </noscript>',
   ].join('\n');
@@ -190,6 +198,11 @@ export function productCrawlerSeoPages() {
         const source = renderProductCrawlerHtml(canonicalIndexHtml, product);
         this.emitFile({
           type: 'asset',
+          fileName: `product/${metadata.slug}.html`,
+          source,
+        });
+        this.emitFile({
+          type: 'asset',
           fileName: `product/${metadata.slug}/index.html`,
           source,
         });
@@ -197,8 +210,18 @@ export function productCrawlerSeoPages() {
 
       this.emitFile({
         type: 'asset',
+        fileName: 'returns.html',
+        source: renderReturnPolicyCrawlerHtml(canonicalIndexHtml),
+      });
+      this.emitFile({
+        type: 'asset',
         fileName: 'returns/index.html',
         source: renderReturnPolicyCrawlerHtml(canonicalIndexHtml),
+      });
+      this.emitFile({
+        type: 'asset',
+        fileName: 'delivery.html',
+        source: renderDeliveryPolicyCrawlerHtml(canonicalIndexHtml),
       });
       this.emitFile({
         type: 'asset',

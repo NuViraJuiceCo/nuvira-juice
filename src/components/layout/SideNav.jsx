@@ -119,8 +119,8 @@ export default function SideNav() {
             <Link to="/about" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">About</Link>
             <Link to="/contact" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Contact</Link>
             <Link to="/support" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">FAQ</Link>
-            <Link to="/delivery" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Delivery</Link>
-            <Link to="/returns" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Returns</Link>
+            <Link to="/delivery.html" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Delivery</Link>
+            <Link to="/returns.html" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Returns</Link>
           </div>
           <p className="text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co.</p>
           <p className="text-[10px] text-muted-foreground">Wentzville, MO</p>

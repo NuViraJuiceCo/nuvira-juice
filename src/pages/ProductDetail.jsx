@@ -439,10 +439,10 @@ export default function ProductDetail() {
                       : 'Orders are planned around fresh production, cold storage, and local delivery timing.'}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-x-4">
-                    <Link to="/delivery" className="inline-flex min-h-11 items-center text-xs font-bold text-primary hover:underline">
+                    <Link to="/delivery.html" className="inline-flex min-h-11 items-center text-xs font-bold text-primary hover:underline">
                       Delivery details
                     </Link>
-                    <Link to="/returns" className="inline-flex min-h-11 items-center text-xs font-bold text-primary hover:underline">
+                    <Link to="/returns.html" className="inline-flex min-h-11 items-center text-xs font-bold text-primary hover:underline">
                       Refund & return policy
                     </Link>
                   </div>

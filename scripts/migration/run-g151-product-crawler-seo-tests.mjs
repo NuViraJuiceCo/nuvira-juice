@@ -53,7 +53,7 @@ test('the sitemap contains exactly the same 11 canonical product routes', () => 
     .map(match => match[1]);
   const catalogRoutes = PUBLIC_PRODUCT_FALLBACKS.map(product => buildProductSeoMetadata(product).canonicalUrl);
   assert.deepEqual([...sitemapRoutes].sort(), [...catalogRoutes].sort());
-  assert.equal(sitemapRoutes.every(route => route.endsWith('/')), true, 'product canonicals must resolve directory index HTML');
+  assert.equal(sitemapRoutes.every(route => route.endsWith('.html')), true, 'product canonicals must resolve explicit Base44 static HTML assets');
 });
 
 test('every generated product document is unique, crawler-readable, and catalog-matched', () => {
@@ -118,22 +118,32 @@ test('runtime and build paths share one catalog and one Product schema builder',
   assert.match(productDetail, /window\.location\.pathname !== canonicalPath/);
   assert.doesNotMatch(productDetail, /'@type': 'Product'/);
   assert.match(publicProducts, /public-product-catalog/);
-  assert.match(read('src/lib/seo-slugs.js'), /return `\/product\/\$\{slug\}\/`/);
+  assert.match(read('src/lib/seo-slugs.js'), /return `\/product\/\$\{slug\}\.html`/);
+  assert.match(read('src/lib/seo-slugs.js'), /\.replace\(\/\\\.html\$\/i, ''\)/);
   assert.match(viteConfig, /productCrawlerSeoPages\(\)/);
   assert.match(viteConfig, /scripts\/seo\/product-crawler-pages\.mjs/);
   assert.match(criticalRunner, /run-g151-product-crawler-seo-tests\.mjs/);
 });
 
-test('legacy web product routes normalize to canonical HTML without affecting native', () => {
+test('legacy web product and policy routes normalize to explicit static HTML without affecting native', () => {
   const html = renderProductCanonicalRedirect(indexHtml);
   assert.match(html, /data-nuvira-product-canonical-redirect/);
   assert.match(html, /globalThis\.Capacitor\?\.isNativePlatform\?\.\(\)/);
   assert.match(html, /window\.location\.pathname\.replace/);
-  assert.match(html, /window\.location\.replace\(path \+ '\/' \+ window\.location\.search \+ window\.location\.hash\)/);
+  assert.match(html, /window\.location\.replace\(target \+ window\.location\.search \+ window\.location\.hash\)/);
   assert.doesNotMatch(html, /window\.location\.(?:href|assign)\s*=/);
   for (const product of PUBLIC_PRODUCT_FALLBACKS) {
-    assert.ok(html.includes(`\"/product/${product.slug}\"`), `${product.slug} must be in the bounded redirect allowlist`);
+    assert.ok(html.includes(`\"/product/${product.slug}\":\"/product/${product.slug}.html\"`), `${product.slug} must be in the bounded redirect map`);
   }
+  assert.ok(html.includes('\"/returns\":\"/returns.html\"'));
+  assert.ok(html.includes('\"/delivery\":\"/delivery.html\"'));
+});
+
+test('build emits explicit Base44-host-compatible HTML assets for every canonical product URL', () => {
+  const source = read('scripts/seo/product-crawler-pages.mjs');
+  assert.match(source, /fileName: `product\/\$\{metadata\.slug\}\.html`/);
+  assert.match(source, /fileName: 'returns\.html'/);
+  assert.match(source, /fileName: 'delivery\.html'/);
 });
 
 test('live Product entity fields retain their commerce authority while static SEO identity is restored', () => {
@@ -150,7 +160,7 @@ test('live Product entity fields retain their commerce authority while static SE
   const schema = buildProductStructuredData(liveProduct);
 
   assert.equal(metadata.description, catalogProduct.seo_description);
-  assert.equal(metadata.canonicalUrl, 'https://nuvirajuice.com/product/aura/');
+  assert.equal(metadata.canonicalUrl, 'https://nuvirajuice.com/product/aura.html');
   assert.equal(metadata.image, liveProduct.image_url);
   assert.equal(metadata.price, '14.00');
   assert.equal(metadata.availability, 'https://schema.org/OutOfStock');
