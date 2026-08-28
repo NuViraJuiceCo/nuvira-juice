@@ -57,6 +57,7 @@ function entityApi(rows, writes, name) {
   return {
     get: async id => rows.find(row => row.id === id) || null,
     filter: async filter => rows.filter(row => Object.entries(filter).every(([key, value]) => row[key] === value)),
+    list: async () => rows,
     update: async (id, patch) => {
       writes.push({ name, id, patch });
       const row = rows.find(item => item.id === id);
@@ -105,6 +106,40 @@ async function call(handler, base44, body) {
 
 const statusHandler = loadHandler('base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminProductionQueueSummary/entry.ts');
 const linkHandler = loadHandler('base44/functions/getAdminOperationsDashboardSummary/handlers/saveAdminComplianceRecord/entry.ts');
+
+{
+  const uppercaseBatch = {
+    id: batch.id,
+    batch_id: 'BATCH-20260828-OASIS',
+    product_name: 'OASIS',
+    production_date: productionDate,
+    planned_units: 20,
+    status: 'planned',
+  };
+  const store = makeBase44({ productionBatch: uppercaseBatch });
+  store.base44.asServiceRole.entities.Recipe.list = async () => [{
+    id: 'recipe_oasis_g69',
+    product_name: 'Oasis',
+    bottle_size_oz: 12,
+    is_active: true,
+    ingredients: [
+      { ingredient_name: 'Watermelon', quantity_oz: 3.5, unit: 'oz' },
+      { ingredient_name: 'Pineapple', quantity_oz: 2, unit: 'oz' },
+    ],
+  }];
+  const { status, payload } = await call(statusHandler, store.base44, {
+    action: 'pre_start_status',
+    production_batch_id: uppercaseBatch.id,
+    batch_id: uppercaseBatch.batch_id,
+    production_date: productionDate,
+  });
+  assert.equal(status, 200);
+  assert.equal(payload.batch_defaults.recipe_resolved, true);
+  assert.equal(payload.batch_defaults.formula_or_recipe_used, 'Oasis');
+  assert.equal(payload.batch_defaults.ingredients_used.length, 2);
+  assert.equal(payload.batch_defaults.ingredients_used[0].quantity, 70);
+  assert.equal(payload.batch_defaults.ingredients_used[1].quantity, 40);
+}
 
 {
   const store = makeBase44(readyRows());
@@ -226,6 +261,8 @@ assert.ok(modalSource.includes('Measured pH and final quality checks are recorde
 assert.ok(modalSource.includes('Recipe defaults are loaded automatically'));
 assert.ok(modalSource.includes('Review setup'));
 assert.ok(modalSource.includes('Recipe plan for'));
+assert.ok(modalSource.includes("queryKey: ['active-production-recipes']"));
+assert.ok(modalSource.includes('findActiveRecipeForBatch(recipes, batch)'));
 assert.ok(modalSource.includes('the recorded amount differs from the recipe plan'));
 assert.ok(modalSource.includes('max-h-[calc(100dvh-2rem)]'));
 assert.ok(modalSource.includes('min-h-0 flex-1 space-y-4 overflow-y-auto'));
@@ -244,7 +281,7 @@ assert.equal(modalSource.includes('Promise.all'), false);
 console.log(JSON.stringify({
   ok: true,
   suite: 'g69-production-prestart-modal',
-  cases: 34,
+  cases: 41,
   writes_performed: false,
   live_calls_performed: false,
   provider_calls_performed: false,
