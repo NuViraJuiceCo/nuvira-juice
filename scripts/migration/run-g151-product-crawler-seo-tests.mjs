@@ -29,6 +29,25 @@ function productSchema(html) {
   return JSON.parse(match[1]);
 }
 
+function runCanonicalRedirect(html, pathname, { native = false } = {}) {
+  const match = html.match(/<script data-nuvira-product-canonical-redirect>([\s\S]*?)<\/script>/i);
+  assert.ok(match, 'canonical redirect script must be present');
+  const replacements = [];
+  const window = {
+    location: {
+      pathname,
+      search: '?utm_source=test',
+      hash: '#section',
+      replace: (value) => replacements.push(value),
+    },
+  };
+  const runtime = {
+    ...(native ? { Capacitor: { isNativePlatform: () => true } } : {}),
+  };
+  new Function('globalThis', 'window', match[1])(runtime, window);
+  return replacements;
+}
+
 test('shared public catalog defines exactly 11 stable, unique offers', () => {
   assert.equal(PUBLIC_PRODUCT_FALLBACKS.length, 11);
 
@@ -129,7 +148,7 @@ test('legacy web product and policy routes normalize to explicit static HTML wit
   const html = renderProductCanonicalRedirect(indexHtml);
   assert.match(html, /data-nuvira-product-canonical-redirect/);
   assert.match(html, /globalThis\.Capacitor\?\.isNativePlatform\?\.\(\)/);
-  assert.match(html, /window\.location\.pathname\.replace/);
+  assert.match(html, /window\.location\.pathname\.toLowerCase\(\)\.replace/);
   assert.match(html, /window\.location\.replace\(target \+ window\.location\.search \+ window\.location\.hash\)/);
   assert.doesNotMatch(html, /window\.location\.(?:href|assign)\s*=/);
   for (const product of PUBLIC_PRODUCT_FALLBACKS) {
@@ -137,6 +156,18 @@ test('legacy web product and policy routes normalize to explicit static HTML wit
   }
   assert.ok(html.includes('\"/returns\":\"/returns.html\"'));
   assert.ok(html.includes('\"/delivery\":\"/delivery.html\"'));
+  assert.ok(html.includes('\"/our-story\":\"/about\"'));
+  assert.ok(html.includes('\"/shipping-delivery-policy\":\"/delivery.html\"'));
+  assert.ok(html.includes('\"/about\":\"/about\"'));
+  assert.ok(html.includes('\"/events\":\"/events\"'));
+  assert.ok(html.includes('\"/shop\":\"/shop\"'));
+
+  assert.deepEqual(runCanonicalRedirect(html, '/our-story/'), ['/about?utm_source=test#section']);
+  assert.deepEqual(runCanonicalRedirect(html, '/shipping-delivery-policy/'), ['/delivery.html?utm_source=test#section']);
+  assert.deepEqual(runCanonicalRedirect(html, '/Events/'), ['/events?utm_source=test#section']);
+  assert.deepEqual(runCanonicalRedirect(html, '/SHOP/'), ['/shop?utm_source=test#section']);
+  assert.deepEqual(runCanonicalRedirect(html, '/shop'), []);
+  assert.deepEqual(runCanonicalRedirect(html, '/our-story/', { native: true }), []);
 });
 
 test('build emits explicit Base44-host-compatible HTML assets for every canonical product URL', () => {
