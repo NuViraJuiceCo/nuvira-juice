@@ -1,8 +1,39 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const SITE_URL = 'https://www.nuvirajuice.com';
+const SITE_URL = 'https://nuvirajuice.com';
 const BRAND = 'NuVira Juice Co.';
 const GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION = '2026-08-25.g132-structured-content';
+
+const CANONICAL_PRODUCT_SLUG_BY_ID: Record<string, string> = {
+  '69e95a6b3b4d04fb9b9599d5': 'radiance-shot',
+  '69d490ce699b5f1ac4dde495': 'aura',
+  '69e95a6b3b4d04fb9b9599d6': 'hydration-shot',
+  '69d490ce699b5f1ac4dde496': 're-nu',
+  '69e95a6b3b4d04fb9b9599d7': 'reset-shot',
+  '69d490ce699b5f1ac4dde497': 'oasis',
+  '69d490ce699b5f1ac4dde498': 'the-nuvira-trio',
+  '69d5b9df48ee4ce27d9eb8fa': 'orange-juice',
+  '69d5b9df48ee4ce27d9eb8fb': 'pineapple-juice',
+  '69d5b9df48ee4ce27d9eb8fc': 'watermelon-juice',
+  '6a511e652e19910e6f789c2c': 'large-nuvira-tote-bag',
+};
+
+function slugifyProductTitle(value = '') {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function getMerchantProductLink(product) {
+  const knownSlug = CANONICAL_PRODUCT_SLUG_BY_ID[String(product?.id || '')];
+  const fallbackSlug = slugifyProductTitle(product?.title || product?.shopify_handle || product?.id || '');
+  const slug = knownSlug || fallbackSlug;
+  if (!slug) throw new Error('Merchant product is missing a stable link identifier');
+  return `${SITE_URL}/product/${slug}.html`;
+}
 
 const GOOGLE_PRODUCT_CATEGORIES = {
   juice: '2887',
@@ -333,7 +364,7 @@ function buildProductEntry(product) {
   const structuredContent = getMerchantStructuredContent(product);
   const title = escapeXml(copy.title);
   const description = escapeXml(copy.description);
-  const link = `${SITE_URL}/shop/${id}`;
+  const link = getMerchantProductLink(product);
   const images = getMerchantImages(product);
   const imageLink = images.primary;
   const availability = getAvailability(product);
