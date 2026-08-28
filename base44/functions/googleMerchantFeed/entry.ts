@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 const SITE_URL = 'https://nuvirajuice.com';
 const BRAND = 'NuVira Juice Co.';
-const GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION = '2026-08-25.g132-structured-content';
+const GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION = '2026-08-28.g162-canonical-links';
 
 const CANONICAL_PRODUCT_SLUG_BY_ID: Record<string, string> = {
   '69e95a6b3b4d04fb9b9599d5': 'radiance-shot',
