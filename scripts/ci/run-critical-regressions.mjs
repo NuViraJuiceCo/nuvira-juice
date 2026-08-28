@@ -109,6 +109,7 @@ const harnesses = [
   'scripts/migration/run-g156-merchant-delivery-information-tests.mjs',
   'scripts/migration/run-g157-product-detail-touch-target-tests.mjs',
   'scripts/migration/run-g158-core-conversion-touch-target-tests.mjs',
+  'scripts/migration/run-g160-canonical-sitemap-contract-tests.mjs',
 ];
 
 function fail(message, extra = {}) {
