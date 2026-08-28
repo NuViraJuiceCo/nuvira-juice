@@ -51,7 +51,7 @@ export default function Login() {
           Don't have an account?{" "}
           <Link
             to={"/register" + (returnTo !== "/" ? "?returnTo=" + encodeURIComponent(returnTo) : "")}
-            className="text-primary font-medium hover:underline"
+            className="inline-flex min-h-11 items-center text-primary font-medium hover:underline"
           >
             Create one
           </Link>
@@ -103,7 +103,7 @@ export default function Login() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">Password</Label>
-            <Link to="/forgot-password" className="text-xs text-primary hover:underline">
+            <Link to="/forgot-password" className="inline-flex min-h-11 items-center text-xs text-primary hover:underline">
               Forgot password?
             </Link>
           </div>

@@ -1,6 +1,7 @@
 import { SITE_URL } from '@/lib/seo-slugs';
 
 export const BRAND_IMAGES = {
+  wordmark: '/images/brand/nuvira-wordmark.webp',
   bottlesCoolerWide: '/images/brand/nuvira-bottles-cooler-wide.jpg',
   bottlesCoolerVertical: '/images/brand/nuvira-bottles-cooler-vertical.jpg',
   eventBoothField: '/images/brand/nuvira-event-booth-field.jpg',

@@ -19,6 +19,9 @@ export default function MerchTeaser() {
             alt="Large NuVira tote bag"
             className="absolute inset-y-0 right-0 h-full w-40 object-cover opacity-80"
             loading="lazy"
+            decoding="async"
+            width="640"
+            height="960"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-foreground via-foreground/92 to-foreground/35" />
           <div className="relative z-10">

@@ -153,11 +153,11 @@ export default function HeroBanner({ banners = [] }) {
           </p>
 
           <div className="mt-7 grid w-full max-w-[22rem] grid-cols-1 items-center gap-3 min-[360px]:grid-cols-2 sm:flex sm:max-w-md sm:flex-wrap">
-            <Link to={banner.link_to || '/shop'} className="min-w-0">
-              <Button className="h-12 w-full rounded-full bg-[linear-gradient(135deg,#b8ef5b_0%,#35c848_48%,#0fa34a_100%)] px-5 text-sm font-bold text-white shadow-2xl shadow-black/30 hover:brightness-105 sm:w-auto sm:px-8 md:px-9">
+            <Button asChild className="h-12 w-full rounded-full bg-[linear-gradient(135deg,#b8ef5b_0%,#35c848_48%,#0fa34a_100%)] px-5 text-sm font-bold text-white shadow-2xl shadow-black/30 hover:brightness-105 sm:w-auto sm:px-8 md:px-9">
+              <Link to={banner.link_to || '/shop'} className="min-w-0">
                 Order Now <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
             <Link
               to="/shop?filter=bundles"
               className="inline-flex h-12 min-w-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 px-4 text-sm font-bold text-white/90 backdrop-blur-md transition hover:bg-white/15 sm:px-5"
@@ -166,14 +166,16 @@ export default function HeroBanner({ banners = [] }) {
             </Link>
 
             {activeBanners.length > 1 && (
-              <div className="col-span-2 flex items-center gap-1.5 pl-1 sm:col-span-1">
+              <div className="col-span-2 flex items-center gap-0 pl-1 sm:col-span-1">
                 {activeBanners.map((_, i) => (
                   <button
                     key={i}
                     onClick={() => setCurrent(i)}
                     aria-label={`Go to slide ${i + 1}`}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${i === current ? 'w-8 bg-white' : 'w-1.5 bg-white/35 hover:bg-white/60'}`}
-                  />
+                    className="group flex h-11 w-11 items-center justify-center rounded-full"
+                  >
+                    <span className={`h-1.5 rounded-full transition-all duration-300 ${i === current ? 'w-8 bg-white' : 'w-1.5 bg-white/35 group-hover:bg-white/60'}`} />
+                  </button>
                 ))}
               </div>
             )}

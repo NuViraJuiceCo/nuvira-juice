@@ -15,6 +15,7 @@ import FreeProductPicker from '@/components/FreeProductPicker';
 import MobileCarousel from '@/components/carousel/MobileCarousel';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
+import { trackGoogleRetentionEvent } from '@/lib/googleAnalytics';
 
 // ── Brand color tokens (fresh lime + deep green) ──────────────────────────
 const REFRESH_ACCENT = '#7BDC48';
@@ -420,22 +421,27 @@ export default function Rewards() {
     const r = { id: reward.id || reward.title, title: reward.title, description: reward.description, reward_type: reward.reward_type, points_required: reward.points_required, icon: reward.icon };
     localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(r));
     setActiveReward(r);
+    trackGoogleRetentionEvent('reward_apply', { reward_type: reward.reward_type });
     toast.success(`${reward.title} applied! Head to checkout to use it.`);
   };
 
   const handleFreeProductSelect = (product) => {
+    const rewardType = pendingReward?.reward_type;
     addItem({ ...product, id: `__free_reward_${product.id}__`, price: 0, title: `${pendingReward?.icon || '🎁'} ${product.title} (Free)` }, 1, { isFreeReward: true });
     setPickerOpen(false);
     setPendingReward(null);
+    trackGoogleRetentionEvent('reward_apply', { reward_type: rewardType });
     toast.success(`${product.title} added to your cart for free!`);
     navigate('/cart');
   };
 
   const handleRemoveReward = () => {
+    const rewardType = activeReward?.reward_type;
     if (user?.email) {
       localStorage.removeItem(`activeReward_${user.email}`);
     }
     setActiveReward(null);
+    trackGoogleRetentionEvent('reward_remove', { reward_type: rewardType });
     toast.success('Reward removed.');
   };
 

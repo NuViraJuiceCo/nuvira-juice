@@ -86,7 +86,9 @@ export const PROGRAMS = Object.freeze([
     durationOptions: Object.freeze([twoDayRadiance, threeDayRadiance]),
     shotPairing: PROGRAM_SHOT_PAIRINGS.radiance,
     emoji: '✨',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/32667c02e_DSC02688.jpg',
+    image: '/images/programs/radiance-card.webp',
+    imageWidth: 720,
+    imageHeight: 1080,
     imagePosition: 'object-[center_40%]',
     palette: Object.freeze({
       ink: '#3A2417',
@@ -109,7 +111,9 @@ export const PROGRAMS = Object.freeze([
     durationOptions: Object.freeze([twoDayHydration, threeDayHydration]),
     shotPairing: PROGRAM_SHOT_PAIRINGS.hydration,
     emoji: '◌',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/bc50c9427_DSC02532.jpg',
+    image: '/images/programs/hydration-card.webp',
+    imageWidth: 720,
+    imageHeight: 1080,
     imagePosition: 'object-[center_35%]',
     palette: Object.freeze({
       ink: '#381619',
@@ -132,7 +136,9 @@ export const PROGRAMS = Object.freeze([
     durationOptions: Object.freeze([threeDayReset]),
     shotPairing: PROGRAM_SHOT_PAIRINGS.reset,
     emoji: '🌿',
-    image: 'https://media.base44.com/images/public/69d48d0c39891f7945481152/3e9fe43e6_DSC02709.jpg',
+    image: '/images/programs/reset-card.webp',
+    imageWidth: 720,
+    imageHeight: 1043,
     imagePosition: 'object-[center_40%]',
     palette: Object.freeze({
       ink: '#102D22',

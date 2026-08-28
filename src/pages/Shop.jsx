@@ -254,7 +254,7 @@ export default function Shop({ seoActive = true }) {
             placeholder="Search juices, bundles, merch..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-10 rounded-xl bg-secondary/50 border-0 text-sm"
+            className="pl-9 h-11 rounded-xl bg-secondary/50 border-0 text-sm"
           />
         </div>
       </div>
@@ -269,7 +269,7 @@ export default function Shop({ seoActive = true }) {
           <button
             key={cat.key}
             onClick={() => { setCategory(cat.key); setSearchParams({}); }}
-            className={`shrink-0 px-4 py-1.5 rounded-full border text-xs font-semibold transition-all ${
+            className={`shrink-0 min-h-11 px-4 rounded-full border text-xs font-semibold transition-all ${
               category === cat.key
                 ? 'nuvira-filter-pill-active'
                 : 'nuvira-filter-pill text-foreground/75 hover:text-foreground'
@@ -309,7 +309,7 @@ export default function Shop({ seoActive = true }) {
             <p className="text-muted-foreground text-sm mb-5">New Drops Are On The Way</p>
             <button
               onClick={() => { setCategory('all'); setSearchParams({}); }}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-full text-sm font-semibold"
+              className="min-h-11 px-6 bg-primary text-primary-foreground rounded-full text-sm font-semibold"
             >
               Shop All Juices
             </button>
@@ -340,28 +340,28 @@ export default function Shop({ seoActive = true }) {
               Fresh cold-pressed juice, 2- and 3-day programs, and event options for Wentzville and the St. Louis area.
             </p>
             <div className="grid grid-cols-2 gap-2 mt-4">
-              <Link to="/cold-pressed-juice-delivery" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+              <Link to="/cold-pressed-juice-delivery" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
                 Cold-Pressed Delivery
               </Link>
-              <Link to="/juice-cleanse-wentzville" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+              <Link to="/juice-cleanse-wentzville" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
                 3-Day Juice Programs
               </Link>
-              <Link to="/all-natural-juice-wentzville" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+              <Link to="/all-natural-juice-wentzville" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
                 All-Natural Juice
               </Link>
-              <Link to="/juice-catering-st-louis" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+              <Link to="/juice-catering-st-louis" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
                 Juice Catering
               </Link>
-              <Link to="/cold-pressed-juice-ofallon-mo" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+              <Link to="/cold-pressed-juice-ofallon-mo" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
                 O'Fallon Juice
               </Link>
-              <Link to="/juice-delivery-st-charles-mo" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+              <Link to="/juice-delivery-st-charles-mo" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
                 St. Charles Delivery
               </Link>
-              <Link to="/wellness-shots-wentzville" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+              <Link to="/wellness-shots-wentzville" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
                 Wellness Shots
               </Link>
-              <Link to="/fresh-juice-for-events-st-louis" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+              <Link to="/fresh-juice-for-events-st-louis" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
                 Event Juice
               </Link>
             </div>

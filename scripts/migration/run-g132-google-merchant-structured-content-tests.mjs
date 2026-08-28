@@ -7,6 +7,8 @@ const read = path => fs.readFileSync(new URL(`../../${path}`, import.meta.url), 
 const apiSource = read('base44/functions/syncProductsToGMC/entry.ts');
 const xmlSource = read('base44/functions/googleMerchantFeed/entry.ts');
 const productDetailSource = read('src/pages/ProductDetail.jsx');
+const productSeoSource = read('src/lib/product-seo.js');
+const merchantPolicySource = read('src/lib/merchant-policy.js');
 const criticalSource = read('scripts/ci/run-critical-regressions.mjs');
 
 function extractObjectLiteral(source, constantName) {
@@ -79,8 +81,13 @@ assert.match(xmlSource, /'X-Feed-Revision': GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVI
 
 assert.doesNotMatch(productDetailSource, /'@type': 'OfferShippingDetails'/);
 assert.doesNotMatch(productDetailSource, /shippingRate:\s*\{[\s\S]{0,160}value: '0'/);
-assert.match(productDetailSource, /returnPolicyCategory: 'https:\/\/schema\.org\/MerchantReturnNotPermitted'/);
-assert.doesNotMatch(productDetailSource, /merchantReturnDays|ReturnByMail|FreeReturn/);
+assert.doesNotMatch(productSeoSource, /'@type': 'OfferShippingDetails'/);
+assert.doesNotMatch(productSeoSource, /shippingRate:\s*\{[\s\S]{0,160}value: '0'/);
+assert.match(productSeoSource, /'@id': MERCHANT_RETURN_POLICY_ID/);
+assert.match(merchantPolicySource, /returnPolicyCategory: 'https:\/\/schema\.org\/MerchantReturnNotPermitted'/);
+assert.match(merchantPolicySource, /MERCHANT_RETURN_POLICY_PATH = '\/returns'/);
+assert.match(merchantPolicySource, /MERCHANT_RETURN_POLICY_URL = `\$\{SITE_URL\}\$\{MERCHANT_RETURN_POLICY_PATH\}`/);
+assert.doesNotMatch(productSeoSource, /merchantReturnDays|ReturnByMail|FreeReturn/);
 
 assert.match(criticalSource, /run-g132-google-merchant-structured-content-tests\.mjs/);
 

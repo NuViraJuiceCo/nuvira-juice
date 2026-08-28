@@ -1,6 +1,5 @@
 import React, { Suspense } from 'react';
 import { HelmetProvider } from 'react-helmet-async';
-import { Toaster as AppToaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -30,7 +29,18 @@ import {
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 const ProductDetail = React.lazy(() => import('@/pages/ProductDetail'));
-const LocalSeoLanding = React.lazy(() => import('@/pages/LocalSeoLanding'));
+const ColdPressedJuiceDelivery = React.lazy(() => import('@/pages/ColdPressedJuiceDelivery'));
+const FreshJuiceDeliveryStLouis = React.lazy(() => import('@/pages/FreshJuiceDeliveryStLouis'));
+const ColdPressedJuiceWentzville = React.lazy(() => import('@/pages/ColdPressedJuiceWentzville'));
+const JuiceCleanseWentzville = React.lazy(() => import('@/pages/JuiceCleanseWentzville'));
+const AllNaturalJuiceWentzville = React.lazy(() => import('@/pages/AllNaturalJuiceWentzville'));
+const JuiceCateringStLouis = React.lazy(() => import('@/pages/JuiceCateringStLouis'));
+const ColdPressedJuiceOfallonMo = React.lazy(() => import('@/pages/ColdPressedJuiceOfallonMo'));
+const JuiceDeliveryStCharlesMo = React.lazy(() => import('@/pages/JuiceDeliveryStCharlesMo'));
+const JuiceDeliveryLakeSaintLouis = React.lazy(() => import('@/pages/JuiceDeliveryLakeSaintLouis'));
+const WellnessShotsWentzville = React.lazy(() => import('@/pages/WellnessShotsWentzville'));
+const CorporateJuiceCateringStLouis = React.lazy(() => import('@/pages/CorporateJuiceCateringStLouis'));
+const FreshJuiceForEventsStLouis = React.lazy(() => import('@/pages/FreshJuiceForEventsStLouis'));
 const ShopifyCartPermalink = React.lazy(() => import('@/pages/ShopifyCartPermalink'));
 const Checkout = React.lazy(() => import('@/pages/Checkout'));
 const OrderConfirmation = React.lazy(() => import('@/pages/OrderConfirmation'));
@@ -53,6 +63,8 @@ const Subscribe = React.lazy(() => import('@/pages/Subscribe'));
 const Referral = React.lazy(() => import('@/pages/Referral'));
 const Rewards = React.lazy(() => import('@/pages/Rewards'));
 const Legal = React.lazy(() => import('@/pages/Legal'));
+const Returns = React.lazy(() => import('@/pages/Returns'));
+const Delivery = React.lazy(() => import('@/pages/Delivery'));
 const Connect = React.lazy(() => import('@/pages/Connect'));
 const Contact = React.lazy(() => import('@/pages/Contact'));
 const Partner = React.lazy(() => import('@/pages/Partner'));
@@ -432,22 +444,24 @@ const AuthenticatedApp = () => {
           <Route path="/referral" element={<Referral />} />
           <Route path="/rewards" element={<ProtectedRoute element={<Rewards />} user={user} />} />
           <Route path="/legal" element={<Legal />} />
+          <Route path="/returns" element={<Returns />} />
+          <Route path="/delivery" element={<Delivery />} />
           <Route path="/connect" element={<Connect />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/partner" element={<Partner />} />
           <Route path="/book-event" element={<BookEvent />} />
-          <Route path="/cold-pressed-juice-delivery" element={<LocalSeoLanding pageKey="cold-pressed-juice-delivery" />} />
-          <Route path="/fresh-juice-delivery-st-louis" element={<LocalSeoLanding pageKey="fresh-juice-delivery-st-louis" />} />
-          <Route path="/cold-pressed-juice-wentzville" element={<LocalSeoLanding pageKey="cold-pressed-juice-wentzville" />} />
-          <Route path="/juice-cleanse-wentzville" element={<LocalSeoLanding pageKey="juice-cleanse-wentzville" />} />
-          <Route path="/all-natural-juice-wentzville" element={<LocalSeoLanding pageKey="all-natural-juice-wentzville" />} />
-          <Route path="/juice-catering-st-louis" element={<LocalSeoLanding pageKey="juice-catering-st-louis" />} />
-          <Route path="/cold-pressed-juice-ofallon-mo" element={<LocalSeoLanding pageKey="cold-pressed-juice-ofallon-mo" />} />
-          <Route path="/juice-delivery-st-charles-mo" element={<LocalSeoLanding pageKey="juice-delivery-st-charles-mo" />} />
-          <Route path="/juice-delivery-lake-saint-louis" element={<LocalSeoLanding pageKey="juice-delivery-lake-saint-louis" />} />
-          <Route path="/wellness-shots-wentzville" element={<LocalSeoLanding pageKey="wellness-shots-wentzville" />} />
-          <Route path="/corporate-juice-catering-st-louis" element={<LocalSeoLanding pageKey="corporate-juice-catering-st-louis" />} />
-          <Route path="/fresh-juice-for-events-st-louis" element={<LocalSeoLanding pageKey="fresh-juice-for-events-st-louis" />} />
+          <Route path="/cold-pressed-juice-delivery" element={<ColdPressedJuiceDelivery />} />
+          <Route path="/fresh-juice-delivery-st-louis" element={<FreshJuiceDeliveryStLouis />} />
+          <Route path="/cold-pressed-juice-wentzville" element={<ColdPressedJuiceWentzville />} />
+          <Route path="/juice-cleanse-wentzville" element={<JuiceCleanseWentzville />} />
+          <Route path="/all-natural-juice-wentzville" element={<AllNaturalJuiceWentzville />} />
+          <Route path="/juice-catering-st-louis" element={<JuiceCateringStLouis />} />
+          <Route path="/cold-pressed-juice-ofallon-mo" element={<ColdPressedJuiceOfallonMo />} />
+          <Route path="/juice-delivery-st-charles-mo" element={<JuiceDeliveryStCharlesMo />} />
+          <Route path="/juice-delivery-lake-saint-louis" element={<JuiceDeliveryLakeSaintLouis />} />
+          <Route path="/wellness-shots-wentzville" element={<WellnessShotsWentzville />} />
+          <Route path="/corporate-juice-catering-st-louis" element={<CorporateJuiceCateringStLouis />} />
+          <Route path="/fresh-juice-for-events-st-louis" element={<FreshJuiceForEventsStLouis />} />
           <Route path="/operations" element={<AdminRedirect to="/admin/operations" user={user} />} />
           <Route path="/dashboard" element={<AdminRedirect to="/admin/operations" user={user} />} />
           <Route path="/orders" element={<AdminRedirect to="/admin/orders" user={user} />} />
@@ -563,7 +577,6 @@ function App() {
             <AuthenticatedApp />
             <AnalyticsConsent />
           </Router>
-          <AppToaster />
           <SonnerToaster position="top-center" richColors />
         </QueryClientProvider>
       </AuthProvider>

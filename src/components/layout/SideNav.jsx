@@ -7,8 +7,7 @@ import { isAdminUser } from '@/lib/admin-access';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import { adminNavGroups, isAdminNavActive } from './adminNavItems';
 import { useActiveProgramJourney } from '@/lib/program-journey-state';
-
-const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
+import { BRAND_IMAGES } from '@/lib/brandImages';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
@@ -37,7 +36,7 @@ export default function SideNav() {
     <aside className="hidden md:flex flex-col w-60 shrink-0 bg-card border-r border-nuvira min-h-screen fixed left-0 top-0 h-screen overflow-y-auto shadow-sm">
       {/* Logo */}
       <Link to="/" className="px-6 border-b border-border block" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingBottom: '1.5rem' }}>
-        <img src={LOGO_URL} alt="NuVira Juice Co. — Cold-Pressed Juice Delivery" className="h-8" />
+        <img src={BRAND_IMAGES.wordmark} alt="NuVira Juice Co. — Cold-Pressed Juice Delivery" className="h-8 w-auto" width="82" height="32" />
         <p className="text-[10px] text-muted-foreground mt-1">Real. Living. Nutrition.</p>
       </Link>
 
@@ -116,10 +115,12 @@ export default function SideNav() {
       {/* Footer */}
       {showWebsiteFooter && (
         <div className="px-6 py-4 border-t border-border space-y-1">
-          <div className="flex gap-3 mb-2">
-            <Link to="/about" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">About</Link>
-            <Link to="/contact" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
-            <Link to="/support" className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
+          <div className="flex flex-wrap gap-x-3 mb-2">
+            <Link to="/about" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">About</Link>
+            <Link to="/contact" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Contact</Link>
+            <Link to="/support" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">FAQ</Link>
+            <Link to="/delivery" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Delivery</Link>
+            <Link to="/returns" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Returns</Link>
           </div>
           <p className="text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co.</p>
           <p className="text-[10px] text-muted-foreground">Wentzville, MO</p>

@@ -41,8 +41,8 @@ export function productLookupKeys(product = {}) {
 }
 
 export function productPath(product) {
-  const slug = slugifyProductTitle(product?.title || product?.id || '');
-  return `/product/${slug}`;
+  const slug = slugifyProductTitle(product?.slug || product?.title || product?.id || '');
+  return `/product/${slug}/`;
 }
 
 export function absoluteUrl(path = '/') {

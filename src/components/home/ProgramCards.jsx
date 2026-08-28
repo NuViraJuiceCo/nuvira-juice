@@ -42,6 +42,9 @@ export default function ProgramCards() {
                       alt={program.name}
                       className={`w-full h-full object-cover ${program.imagePosition || 'object-center'}`}
                       loading="lazy"
+                      decoding="async"
+                      width={program.imageWidth}
+                      height={program.imageHeight}
                     />
                     <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60" />
                     <div className="absolute bottom-3 left-4">
@@ -87,6 +90,9 @@ export default function ProgramCards() {
                       alt={program.name}
                       className={`w-full h-full object-cover ${program.imagePosition || 'object-center'}`}
                       loading="lazy"
+                      decoding="async"
+                      width={program.imageWidth}
+                      height={program.imageHeight}
                     />
                     <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60" />
                     <div className="absolute bottom-3 left-4">

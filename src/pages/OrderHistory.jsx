@@ -23,6 +23,7 @@ function parseLocalDate(dateStr) {
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
+import { trackGoogleRetentionEvent } from '@/lib/googleAnalytics';
 
 const statusLabels = {
   order_received: 'Received',
@@ -184,8 +185,16 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
   const handleReorder = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    order.items?.forEach(item => {
+    const reorderItems = order.items || [];
+    reorderItems.forEach(item => {
       addItem({ id: item.product_id, title: item.title, price: item.price, image_url: item.image_url }, item.quantity || 1);
+    });
+    const itemCount = reorderItems.reduce((sum, item) => sum + Math.max(1, Math.round(Number(item.quantity) || 1)), 0);
+    trackGoogleRetentionEvent('reorder_start', {
+      reorder_source: 'order_history',
+      item_count: Math.min(99, itemCount),
+      distinct_item_count: Math.min(50, reorderItems.length),
+      contains_program: reorderItems.some(item => item?.is_program === true || String(item?.product_id || '').startsWith('program_')),
     });
     toast.success('Items added to cart!');
     navigate('/cart');

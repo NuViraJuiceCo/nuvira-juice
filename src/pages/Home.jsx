@@ -23,9 +23,8 @@ import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import ActiveProgramJourneyCard from '@/components/program/ActiveProgramJourneyCard';
+import { BRAND_IMAGES } from '@/lib/brandImages';
 
-
-const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
 export default function Home({ seoActive = true }) {
   const { user } = useAuth();
@@ -131,7 +130,7 @@ export default function Home({ seoActive = true }) {
         style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))' }}
       >
         <div>
-          <img src={LOGO_URL} alt="NuVira Juice Company" className="h-8" width="82" height="32" />
+          <img src={BRAND_IMAGES.wordmark} alt="NuVira Juice Company" className="h-8 w-auto" width="82" height="32" />
           {displayFirstName && (
             <motion.p
               initial={{ opacity: 0 }}
@@ -144,7 +143,7 @@ export default function Home({ seoActive = true }) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Link to="/notifications" aria-label="View notifications" className="relative w-9 h-9 flex items-center justify-center rounded-full bg-muted shadow-sm">
+          <Link to="/notifications" aria-label="View notifications" className="relative flex h-11 w-11 items-center justify-center rounded-full bg-muted shadow-sm">
             <Bell className="w-4 h-4 text-foreground" />
             {unreadCount > 0 && (
               <motion.span
@@ -220,38 +219,40 @@ export default function Home({ seoActive = true }) {
       {showWebsiteFooter && (
         <footer className="hidden px-5 pt-6 pb-2 border-t border-border/30 mt-4 md:block">
           <div className="grid grid-cols-2 gap-2 mb-4">
-            <Link to="/cold-pressed-juice-delivery" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            <Link to="/cold-pressed-juice-delivery" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
               Cold-Pressed Delivery
             </Link>
-            <Link to="/fresh-juice-delivery-st-louis" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            <Link to="/fresh-juice-delivery-st-louis" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
               St. Louis Juice Delivery
             </Link>
-            <Link to="/cold-pressed-juice-wentzville" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            <Link to="/cold-pressed-juice-wentzville" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
               Wentzville Juice
             </Link>
-            <Link to="/juice-catering-st-louis" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            <Link to="/juice-catering-st-louis" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
               Event Juice Catering
             </Link>
-            <Link to="/cold-pressed-juice-ofallon-mo" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            <Link to="/cold-pressed-juice-ofallon-mo" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
               O'Fallon Juice
             </Link>
-            <Link to="/juice-delivery-st-charles-mo" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            <Link to="/juice-delivery-st-charles-mo" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
               St. Charles Delivery
             </Link>
-            <Link to="/juice-delivery-lake-saint-louis" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            <Link to="/juice-delivery-lake-saint-louis" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
               Lake Saint Louis
             </Link>
-            <Link to="/wellness-shots-wentzville" className="rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
+            <Link to="/wellness-shots-wentzville" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 py-2 text-xs font-semibold text-foreground/80">
               Wellness Shots
             </Link>
           </div>
           <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 mb-3">
-            <Link to="/about" className="text-xs text-muted-foreground hover:text-foreground transition-colors">About Us</Link>
-            <Link to="/contact" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
-            <Link to="/support" className="text-xs text-muted-foreground hover:text-foreground transition-colors">FAQ</Link>
-            <Link to="/legal" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Legal</Link>
+            <Link to="/about" className="inline-flex min-h-11 items-center text-xs text-muted-foreground transition-colors hover:text-foreground">About Us</Link>
+            <Link to="/contact" className="inline-flex min-h-11 items-center text-xs text-muted-foreground transition-colors hover:text-foreground">Contact</Link>
+            <Link to="/support" className="inline-flex min-h-11 items-center text-xs text-muted-foreground transition-colors hover:text-foreground">FAQ</Link>
+            <Link to="/delivery" className="inline-flex min-h-11 items-center text-xs text-muted-foreground transition-colors hover:text-foreground">Delivery</Link>
+            <Link to="/returns" className="inline-flex min-h-11 items-center text-xs text-muted-foreground transition-colors hover:text-foreground">Returns</Link>
+            <Link to="/legal" className="inline-flex min-h-11 items-center text-xs text-muted-foreground transition-colors hover:text-foreground">Legal</Link>
           </div>
-          <p className="text-center text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co. · Based in Wentzville, MO · <a href="mailto:support@nuvirajuice.com" className="hover:text-foreground transition-colors">support@nuvirajuice.com</a></p>
+          <p className="text-center text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co. · Based in Wentzville, MO · <a href="mailto:support@nuvirajuice.com" className="inline-flex min-h-11 items-center transition-colors hover:text-foreground">support@nuvirajuice.com</a></p>
         </footer>
       )}
     </div>

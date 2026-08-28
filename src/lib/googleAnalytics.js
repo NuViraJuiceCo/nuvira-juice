@@ -267,11 +267,25 @@ const GOOGLE_RETENTION_EVENTS = new Set([
   'program_reminder_update',
   'notification_preferences_update',
   'delivery_area_check',
+  'reward_apply',
+  'reward_remove',
+  'reorder_start',
 ]);
 const PROGRAM_KEYS = new Set(['radiance', 'hydration', 'reset']);
 const PROGRAM_PERIODS = new Set(['morning', 'midday', 'afternoon', 'evening']);
 const DELIVERY_OUTCOMES = new Set(['eligible', 'waitlist']);
 const DELIVERY_ZONE_TYPES = new Set(['core', 'extended', 'route_review', 'unavailable']);
+const REWARD_TYPES = new Set([
+  'free_shot',
+  'free_bottle',
+  'double_points',
+  'discount',
+  'discount_10pct',
+  'free_delivery',
+  'bundle_upgrade',
+  'vip_box',
+]);
+const REORDER_SOURCES = new Set(['order_history']);
 
 function safeAnalyticsLabel(value, fallback = '') {
   return String(value || fallback)
@@ -331,6 +345,30 @@ function buildGoogleRetentionParams(eventName, details = {}) {
       optional_enabled_count: enabledCount,
       optional_total_count: totalCount,
       program_reminders_enabled: programRemindersEnabled,
+    };
+  }
+
+  if (eventName === 'reward_apply' || eventName === 'reward_remove') {
+    const rewardType = String(details.reward_type || '').trim().toLowerCase();
+    if (!REWARD_TYPES.has(rewardType)) return null;
+    return { reward_type: rewardType };
+  }
+
+  if (eventName === 'reorder_start') {
+    const reorderSource = String(details.reorder_source || '').trim().toLowerCase();
+    const itemCount = boundedInteger(details.item_count, 1, 99);
+    const distinctItemCount = boundedInteger(details.distinct_item_count, 1, 50);
+    const containsProgram = strictBoolean(details.contains_program);
+    if (!REORDER_SOURCES.has(reorderSource)
+      || itemCount === null
+      || distinctItemCount === null
+      || distinctItemCount > itemCount
+      || containsProgram === null) return null;
+    return {
+      reorder_source: reorderSource,
+      item_count: itemCount,
+      distinct_item_count: distinctItemCount,
+      contains_program: containsProgram,
     };
   }
 

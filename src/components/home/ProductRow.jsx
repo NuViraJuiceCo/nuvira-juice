@@ -22,7 +22,7 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
          </div>
          {linkTo && (
-           <Link to={linkTo} className="text-xs text-primary font-semibold flex items-center gap-0.5 bg-primary/8 px-3 py-1 rounded-full">
+           <Link to={linkTo} className="flex min-h-11 items-center gap-0.5 rounded-full bg-primary/8 px-3 text-xs font-semibold text-primary">
              See All <ChevronRight className="w-3 h-3" />
            </Link>
          )}
