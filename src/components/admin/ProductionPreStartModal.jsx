@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ChevronLeft, ClipboardList, Plus, RefreshCw, SprayCan, Thermometer, Trash2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { unwrapBase44Result } from '@/lib/base44-result';
+import { buildRecipeBatchDefaults, findActiveRecipeForBatch, mergeRecipeBatchDefaults } from '@/lib/productionRecipeDefaults';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 
@@ -157,10 +158,33 @@ export default function ProductionPreStartModal({ batch, open, onOpenChange, onR
       });
       const result = unwrapBase44Result(response);
       if (!result?.success) throw new Error(result?.error || 'pre_start_status_unavailable');
-      setStatus(result);
-      setForm(previous => applyBatchDefaults(previous, result.batch_defaults));
-      onReadyChange?.(result.ready === true, result);
-      return result;
+
+      let batchDefaults = result.batch_defaults;
+      if (!batchDefaults?.recipe_resolved) {
+        try {
+          const recipes = await queryClient.fetchQuery({
+            queryKey: ['active-production-recipes'],
+            queryFn: async () => {
+              const rows = await base44.entities.Recipe.list('product_name', 100);
+              return (Array.isArray(rows) ? rows : []).filter(recipe => recipe?.is_active !== false);
+            },
+            staleTime: 5 * 60 * 1000,
+          });
+          const recipe = findActiveRecipeForBatch(recipes, batch);
+          batchDefaults = mergeRecipeBatchDefaults(
+            batchDefaults,
+            buildRecipeBatchDefaults(recipe, batch),
+          );
+        } catch {
+          // The backend result remains authoritative when the read-only recipe fallback is unavailable.
+        }
+      }
+
+      const resolvedResult = { ...result, batch_defaults: batchDefaults };
+      setStatus(resolvedResult);
+      setForm(previous => applyBatchDefaults(previous, batchDefaults));
+      onReadyChange?.(resolvedResult.ready === true, resolvedResult);
+      return resolvedResult;
     } catch (error) {
       setStatus(null);
       onReadyChange?.(false, null);

@@ -298,6 +298,33 @@ function exactNamedRows(rows, field, value, { requireActive = false } = {}) {
   ));
 }
 
+function canonicalProductKey(value) {
+  const normalized = lower(value)
+    .replace(/[®™]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  if (!normalized) return '';
+  if (/\bre\s*nu\b/.test(normalized)) return 're-nu';
+  if (/\bhydrat(?:e|ion|ing)?\b/.test(normalized)) return 'hydration-shot';
+  if (/\bradiance\b/.test(normalized)) return 'radiance-shot';
+  if (/\breset\b/.test(normalized)) return 'reset-shot';
+  if (/\bwatermelon\b/.test(normalized)) return 'watermelon-juice';
+  if (/\bpineapple\b/.test(normalized)) return 'pineapple-juice';
+  if (/\borange\b/.test(normalized)) return 'orange-juice';
+  if (/\boasis\b/.test(normalized)) return 'oasis';
+  if (/\baura\b/.test(normalized)) return 'aura';
+  return normalized;
+}
+
+function canonicalNamedRows(rows, field, value, { requireActive = false } = {}) {
+  const expected = canonicalProductKey(value);
+  if (!expected) return [];
+  return (Array.isArray(rows) ? rows : []).filter(row => (
+    canonicalProductKey(row?.[field]) === expected && (!requireActive || row?.is_active !== false)
+  ));
+}
+
 function roundedQuantity(value) {
   return Math.round(Number(value) * 10000) / 10000;
 }
@@ -323,8 +350,16 @@ async function resolveBatchDefaults(base44, batch) {
       ? productEntity.filter({ title: productName }, '-updated_date', 5).catch(() => [])
       : [],
   ]);
-  const recipeMatches = exactNamedRows(recipeRows, 'product_name', productName, { requireActive: true });
-  const productMatches = exactNamedRows(productRows, 'title', productName);
+  let recipeMatches = exactNamedRows(recipeRows, 'product_name', productName, { requireActive: true });
+  let productMatches = exactNamedRows(productRows, 'title', productName);
+  if (recipeMatches.length === 0 && recipeEntity?.list) {
+    const allRecipes = await recipeEntity.list('-updated_date', 100).catch(() => []);
+    recipeMatches = canonicalNamedRows(allRecipes, 'product_name', productName, { requireActive: true });
+  }
+  if (productMatches.length === 0 && productEntity?.list) {
+    const allProducts = await productEntity.list('-updated_date', 100).catch(() => []);
+    productMatches = canonicalNamedRows(allProducts, 'title', productName);
+  }
   const recipe = recipeMatches.length === 1 ? recipeMatches[0] : null;
   const product = productMatches.length === 1 ? productMatches[0] : null;
   const warnings = [];
