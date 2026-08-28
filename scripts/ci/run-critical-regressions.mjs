@@ -97,6 +97,18 @@ const harnesses = [
   'scripts/migration/run-g143-snapchat-measurement-tests.mjs',
   'scripts/migration/run-g145-retention-measurement-tests.mjs',
   'scripts/migration/run-g146-privacy-disclosure-tests.mjs',
+  'scripts/migration/run-g147-retention-conversion-measurement-tests.mjs',
+  'scripts/migration/run-g148-route-seo-page-boundary-tests.mjs',
+  'scripts/migration/run-g149-android-app-links-tests.mjs',
+  'scripts/migration/run-g150-mobile-performance-tests.mjs',
+  'scripts/migration/run-g151-product-crawler-seo-tests.mjs',
+  'scripts/migration/run-g152-mobile-accessibility-structure-tests.mjs',
+  'scripts/migration/run-g153-single-toast-runtime-tests.mjs',
+  'scripts/migration/run-g154-local-font-delivery-tests.mjs',
+  'scripts/migration/run-g155-merchant-return-policy-tests.mjs',
+  'scripts/migration/run-g156-merchant-delivery-information-tests.mjs',
+  'scripts/migration/run-g157-product-detail-touch-target-tests.mjs',
+  'scripts/migration/run-g158-core-conversion-touch-target-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

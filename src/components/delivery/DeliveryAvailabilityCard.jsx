@@ -249,6 +249,11 @@ export default function DeliveryAvailabilityCard() {
             </motion.div>
           )}
         </AnimatePresence>
+        <div className="border-t border-border/50 px-5 py-2.5">
+          <Link to="/delivery" className="inline-flex min-h-11 items-center text-xs font-bold text-primary hover:underline">
+            View delivery windows, fees, and route details
+          </Link>
+        </div>
       </div>
     </div>
   );

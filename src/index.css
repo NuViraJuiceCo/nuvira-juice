@@ -8,7 +8,15 @@
   src: url('/fonts/playfair-display-latin.woff2') format('woff2');
 }
 
-/* The body font is loaded asynchronously via index.html. */
+/* Keep the body font local as well. The official Inter Latin asset is variable
+   across the weights used by the customer and operations interfaces. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('/fonts/inter-latin.woff2') format('woff2');
+}
 
 @tailwind base;
 @tailwind components;

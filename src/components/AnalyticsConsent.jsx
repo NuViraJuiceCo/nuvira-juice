@@ -113,6 +113,7 @@ export default function AnalyticsConsent() {
                 checked={analyticsAllowed}
                 onCheckedChange={(checked) => setAnalyticsAllowed(checked === true)}
                 aria-label="Allow Google Analytics"
+                className="relative h-11 w-11 border-0 bg-transparent shadow-none after:absolute after:left-1/2 after:top-1/2 after:h-4 after:w-4 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-sm after:border after:border-primary data-[state=checked]:bg-transparent data-[state=checked]:after:bg-primary [&>span]:relative [&>span]:z-10"
               />
               <span className="mt-2 block text-xs font-semibold leading-tight text-foreground">Website analytics</span>
               <span className="mt-1.5 block text-[10.5px] leading-relaxed text-muted-foreground">Visits, shopping steps, and completed purchases.</span>
@@ -122,6 +123,7 @@ export default function AnalyticsConsent() {
                 checked={marketingAllowed}
                 onCheckedChange={(checked) => setMarketingAllowed(checked === true)}
                 aria-label="Allow advertising measurement"
+                className="relative h-11 w-11 border-0 bg-transparent shadow-none after:absolute after:left-1/2 after:top-1/2 after:h-4 after:w-4 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-sm after:border after:border-primary data-[state=checked]:bg-transparent data-[state=checked]:after:bg-primary [&>span]:relative [&>span]:z-10"
               />
               <span className="mt-2 block text-xs font-semibold leading-tight text-foreground">Ad insights</span>
               <span className="mt-1.5 block text-[10.5px] leading-relaxed text-muted-foreground">Ad results and privacy-safe purchase matching.</span>
@@ -131,14 +133,14 @@ export default function AnalyticsConsent() {
             <button
               type="button"
               onClick={useNecessaryOnly}
-              className="h-10 whitespace-nowrap rounded-xl border border-border bg-background px-4 text-xs font-semibold text-foreground"
+              className="h-11 whitespace-nowrap rounded-xl border border-border bg-background px-4 text-xs font-semibold text-foreground"
             >
               No thanks
             </button>
             <button
               type="button"
               onClick={saveChoices}
-              className="nuvira-gradient-button h-10 whitespace-nowrap rounded-xl px-4 text-xs font-semibold"
+              className="nuvira-gradient-button h-11 whitespace-nowrap rounded-xl px-4 text-xs font-semibold"
             >
               Save
             </button>

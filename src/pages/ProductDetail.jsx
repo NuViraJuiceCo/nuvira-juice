@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import SEO from '@/components/SEO';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -23,12 +23,12 @@ import {
 import HealthAdvisory from '@/components/HealthAdvisory';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
-import { absoluteUrl, normalizeProductIdentifier, productLookupKeys, productPath } from '@/lib/seo-slugs';
+import { normalizeProductIdentifier, productLookupKeys, productPath } from '@/lib/seo-slugs';
 import { findPublicProductFallback } from '@/lib/public-products';
+import { buildProductSeoMetadata, buildProductStructuredData } from '@/lib/product-seo';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
-import { BRAND_OG_IMAGE, brandImageUrl } from '@/lib/brandImages';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
 import { MARKETING_CONSENT_EVENT, trackMetaViewContent } from '@/lib/metaPixel';
 import { trackSnapViewContent } from '@/lib/snapPixel';
@@ -217,8 +217,10 @@ export default function ProductDetail() {
   }, [identifier, product]);
 
   useEffect(() => {
-    if ((id || handle) && product) {
-      navigate(productPath(product), { replace: true });
+    if (!product) return;
+    const canonicalPath = productPath(product);
+    if ((id || handle) || window.location.pathname !== canonicalPath) {
+      navigate(canonicalPath, { replace: true });
     }
   }, [handle, id, product, navigate]);
 
@@ -266,55 +268,19 @@ export default function ProductDetail() {
     : ['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'];
   const productHighlights = buildProductHighlights(product, isMerchProduct);
   const blendDetail = inferBlendDetail(product, isMerchProduct);
-  const detailUrl = absoluteUrl(productPath(product));
-  const productImage = product.image_url ? brandImageUrl(product.image_url) : BRAND_OG_IMAGE;
-  const seoTitle = `${product.title} | ${productDescriptor} | Wentzville, MO`;
-  const seoDescription = product.short_description || product.description || (
-    isMerchProduct
-      ? `${product.title} from NuVira Juice Co.`
-      : `${product.title} - fresh cold-pressed juice from NuVira Juice Co. Delivered in Wentzville, O'Fallon, and St. Louis, MO.`
-  );
-  const seoKeywords = isMerchProduct
-    ? `${product.title}, NuVira merch, NuVira Juice Co., ${product.category} Wentzville MO`
-    : `${product.title}, cold pressed juice, NuVira Juice, ${product.category} Wentzville MO, fresh juice delivery St. Louis`;
-
-  const productStructuredData = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: product.title,
-    description: product.description || product.short_description || seoDescription,
-    image: productImage,
-    brand: { '@type': 'Brand', name: 'NuVira Juice Co.' },
-    offers: {
-      '@type': 'Offer',
-      url: detailUrl,
-      priceCurrency: 'USD',
-      price: product.price?.toFixed(2),
-      availability: product.is_available !== false ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-      seller: { '@type': 'Organization', name: 'NuVira Juice Co.' },
-      hasMerchantReturnPolicy: {
-        '@type': 'MerchantReturnPolicy',
-        applicableCountry: 'US',
-        returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
-      },
-    },
-    additionalProperty: product.ingredients ? [{
-      '@type': 'PropertyValue',
-      name: 'Ingredients',
-      value: product.ingredients,
-    }] : undefined,
-  };
+  const productSeo = buildProductSeoMetadata(product);
+  const productStructuredData = buildProductStructuredData(product);
 
   const purchaseBar = (
     <div
       className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 px-4 md:left-60 md:bottom-4 md:px-6"
     >
       <div className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 rounded-2xl border border-border/60 bg-card/95 p-2.5 shadow-[0_18px_44px_rgba(4,29,21,0.24)] backdrop-blur-xl">
-        <div className="flex shrink-0 items-center gap-2.5 rounded-xl bg-secondary px-3 py-2.5">
+        <div className="flex shrink-0 items-center gap-1 rounded-xl bg-secondary p-1">
           <button
             type="button"
             onClick={() => setQuantity(Math.max(1, quantity - 1))}
-            className="active:scale-90 transition-transform hover:opacity-60"
+            className="flex h-11 w-11 items-center justify-center rounded-lg transition-transform hover:bg-background/40 hover:opacity-80 active:scale-95"
             aria-label="Decrease quantity"
           >
             <Minus className="w-3.5 h-3.5" />
@@ -323,7 +289,7 @@ export default function ProductDetail() {
           <button
             type="button"
             onClick={() => setQuantity(quantity + 1)}
-            className="active:scale-90 transition-transform hover:opacity-60"
+            className="flex h-11 w-11 items-center justify-center rounded-lg transition-transform hover:bg-background/40 hover:opacity-80 active:scale-95"
             aria-label="Increase quantity"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -333,7 +299,7 @@ export default function ProductDetail() {
           type="button"
           onClick={handleAddToCart}
           aria-label={`Add ${quantity} ${product.title} to cart for $${((product.price || 0) * quantity).toFixed(2)}`}
-          className="nuvira-gradient-button flex-1 h-10 rounded-xl font-semibold text-sm inline-flex items-center justify-center"
+          className="nuvira-gradient-button h-11 min-h-11 flex-1 rounded-xl text-sm font-semibold inline-flex items-center justify-center"
         >
           <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
           {`Add to cart · $${((product.price || 0) * quantity).toFixed(2)}`}
@@ -345,17 +311,17 @@ export default function ProductDetail() {
   return (
     <div className="min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+11rem)] md:pb-32">
       <SEO
-        title={seoTitle}
-        description={seoDescription}
-        image={productImage}
+        title={productSeo.title}
+        description={productSeo.description}
+        image={productSeo.image}
         type="product"
-        keywords={seoKeywords}
-        canonicalUrl={detailUrl}
+        keywords={productSeo.keywords}
+        canonicalUrl={productSeo.canonicalUrl}
         structuredData={productStructuredData}
       />
 
       <div className="hidden md:flex items-center gap-2 px-6 pt-5 pb-3">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
+        <button onClick={() => navigate(-1)} className="inline-flex min-h-11 min-w-11 items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
       </div>
@@ -392,7 +358,7 @@ export default function ProductDetail() {
             <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/55 via-black/12 to-transparent pointer-events-none" />
             <button
               onClick={() => navigate(-1)}
-              className="md:hidden absolute left-4 w-10 h-10 bg-card/90 text-foreground backdrop-blur-md rounded-full flex items-center justify-center shadow-lg"
+              className="md:hidden absolute left-4 w-11 h-11 bg-card/90 text-foreground backdrop-blur-md rounded-full flex items-center justify-center shadow-lg"
               style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
               aria-label="Go back"
             >
@@ -472,6 +438,14 @@ export default function ProductDetail() {
                       ? 'Merch ships or travels with your NuVira order when available.'
                       : 'Orders are planned around fresh production, cold storage, and local delivery timing.'}
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-x-4">
+                    <Link to="/delivery" className="inline-flex min-h-11 items-center text-xs font-bold text-primary hover:underline">
+                      Delivery details
+                    </Link>
+                    <Link to="/returns" className="inline-flex min-h-11 items-center text-xs font-bold text-primary hover:underline">
+                      Refund & return policy
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>

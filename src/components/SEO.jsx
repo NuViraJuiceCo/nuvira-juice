@@ -2,6 +2,7 @@ import React from 'react';
 import { Helmet } from 'react-helmet-async';
 import { SITE_URL } from '@/lib/seo-slugs';
 import { BRAND_OG_IMAGE } from '@/lib/brandImages';
+import { MERCHANT_RETURN_POLICY } from '@/lib/merchant-policy';
 
 const SITE_NAME = 'NuVira Juice Co.';
 const BRAND_ICON = `${SITE_URL}/icons/icon-512.png`;
@@ -47,6 +48,7 @@ export const LOCAL_BUSINESS_SCHEMA = {
     "areaServed": "US-MO",
     "availableLanguage": "English"
   },
+  "hasMerchantReturnPolicy": MERCHANT_RETURN_POLICY,
   "hasOfferCatalog": {
     "@type": "OfferCatalog",
     "name": "NuVira juice, wellness, and event services",

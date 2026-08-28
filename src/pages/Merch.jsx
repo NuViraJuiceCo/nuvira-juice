@@ -147,7 +147,7 @@ export default function Merch() {
         </div>
 
         <div className="relative overflow-hidden rounded-2xl h-64 md:h-80">
-          <img src={TOTE_URL} alt="Large NuVira tote bag" className="w-full h-full object-cover object-[center_45%]" />
+          <img src={TOTE_URL} alt="Large NuVira tote bag" className="w-full h-full object-cover object-[center_45%]" width="640" height="960" />
           <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/35 to-black/10" />
           <div className="absolute inset-0 flex items-end p-5 md:p-10">
             <div className="max-w-xl">

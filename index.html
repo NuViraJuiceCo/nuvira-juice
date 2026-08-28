@@ -7,10 +7,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="preload" href="/fonts/playfair-display-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" /></noscript>
+    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" as="image" href="/images/brand/nuvira-about-bottle-cooler.webp" imagesrcset="/images/brand/nuvira-about-bottle-cooler-840.webp 840w, /images/brand/nuvira-about-bottle-cooler.webp 1440w" imagesizes="100vw" fetchpriority="high" />
     <script type="module">
       if (!globalThis.Capacitor?.isNativePlatform?.() && window.location.pathname === '/') {
@@ -104,6 +101,13 @@
       ],
       "priceRange": "$$",
       "servesCuisine": "Juice Bar",
+      "hasMerchantReturnPolicy": {
+        "@type": "MerchantReturnPolicy",
+        "@id": "https://nuvirajuice.com/returns#policy",
+        "applicableCountry": "US",
+        "returnPolicyCategory": "https://schema.org/MerchantReturnNotPermitted",
+        "merchantReturnLink": "https://nuvirajuice.com/returns"
+      },
       "sameAs": [
         "https://www.instagram.com/nuvirajuiceco/",
         "https://www.facebook.com/nuvirajuiceco",

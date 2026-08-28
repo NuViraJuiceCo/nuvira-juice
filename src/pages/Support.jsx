@@ -36,10 +36,6 @@ const faqs = [
     a: 'Yes! You can mix and match flavors or choose from our curated bundles to fit your lifestyle and wellness goals.',
   },
   {
-    q: 'Can I subscribe to receive juices regularly?',
-    a: 'Subscriptions are not available yet. We will introduce recurring delivery only after the fulfillment experience is ready. One-time bottles, bundles, and programs are available now.',
-  },
-  {
     q: 'Do you have bulk or corporate packages?',
     a: 'We sure do! We provide special pricing for bulk orders and corporate wellness programs — perfect for teams, events, and offices. Email us to learn more.',
   },

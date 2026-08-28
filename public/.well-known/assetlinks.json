@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.nuvirajuice.app",
+      "sha256_cert_fingerprints": [
+        "92:81:EE:2B:13:E7:30:0A:BD:FB:AB:18:0C:BB:83:A1:6D:09:38:F8:4E:24:8E:2D:39:FA:5E:F4:49:98:59:3A"
+      ]
+    }
+  }
+]

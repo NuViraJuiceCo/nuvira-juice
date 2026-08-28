@@ -151,9 +151,9 @@ export default function Cart() {
         </div>
         <h2 className="font-heading text-lg font-semibold">Your cart is empty</h2>
         <p className="text-sm text-muted-foreground mt-1 mb-4">Time to add some fresh juice!</p>
-        <Link to="/shop">
-          <Button className="rounded-full px-6 nuvira-gradient-button">Browse Juices</Button>
-        </Link>
+        <Button asChild className="h-11 min-h-11 rounded-full px-6 nuvira-gradient-button">
+          <Link to="/shop">Browse Juices</Link>
+        </Button>
       </div>
     );
   }

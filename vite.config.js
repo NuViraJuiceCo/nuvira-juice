@@ -2,6 +2,7 @@ import base44 from "@base44/vite-plugin"
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
+import { productCrawlerSeoPages } from './scripts/seo/product-crawler-pages.mjs'
 
 const useBase44Plugin = process.env.DISABLE_BASE44_VITE_PLUGIN !== 'true';
 
@@ -28,5 +29,6 @@ export default defineConfig({
         ]
       : []),
     react(),
+    productCrawlerSeoPages(),
   ]
 });
