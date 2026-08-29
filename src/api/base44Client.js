@@ -6,6 +6,16 @@ const { appId, token, functionsVersion, appBaseUrl } = appParams;
 const serverUrl = Capacitor.isNativePlatform() ? appBaseUrl : '';
 
 const ADMIN_GATEWAY = 'getAdminOperationsDashboardSummary';
+const DIRECT_ADMIN_FUNCTIONS = new Map([
+  [
+    'executeNativeProductionBatchLifecycle',
+    'getAdminOperationsDashboardSummary/handlers/executeNativeProductionBatchLifecycle',
+  ],
+  [
+    'previewNativeProductionBatchLifecycle',
+    'getAdminOperationsDashboardSummary/handlers/previewNativeProductionBatchLifecycle',
+  ],
+]);
 const ADMIN_GATEWAY_ACTIONS = new Set([
   'adminCancelAndRefundSubscription',
   'appendAdminHubOrderNote',
@@ -142,6 +152,11 @@ export const invokeCustomerGateway = (action, payload = {}, options) =>
   invokeGateway(CUSTOMER_GATEWAY, action, payload, options);
 
 base44.functions.invoke = (name, data = {}, options) => {
+  const directAdminFunction = DIRECT_ADMIN_FUNCTIONS.get(name);
+  if (directAdminFunction) {
+    return invokeFunction(directAdminFunction, data, options);
+  }
+
   if (ADMIN_GATEWAY_ACTIONS.has(name) && name !== ADMIN_GATEWAY) {
     return invokeAdminGateway(name, data, options);
   }
