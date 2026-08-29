@@ -53,7 +53,9 @@ for (const field of [
 assert.match(helperSource, /mixed_event_and_customer_demand_requires_allocation/);
 assert.match(helperSource, /event_pos_inventory_requires_future_event_date/);
 assert.match(helperSource, /single_product_date_batch_required/);
-assert.match(helperSource, /verified_output_must_equal_event_allocation_total/);
+assert.match(helperSource, /verified_output_below_event_allocation_total/);
+assert.match(helperSource, /verified_output_exceeds_event_allocation_total/);
+assert.match(helperSource, /shopify_pos_inventory_sync_quantity: eligibility\.allocated_quantity/);
 assert.match(helperSource, /fulfillsOnlineOrders: false/);
 assert.match(helperSource, /inventoryPolicy: 'CONTINUE'/);
 assert.match(helperSource, /@idempotent\(key: \$idempotencyKey\)/);
@@ -66,7 +68,8 @@ assert.match(lifecycleSource, /syncVerifiedEventBatchToShopifyPos/);
 assert.match(previewSource, /eventPosInventoryEligibility/);
 assert.match(previewSource, /\.\/eventPosInventoryEligibility\.ts/);
 assert.doesNotMatch(previewSource, /\.\.\/executeNativeProductionBatchLifecycle/);
-assert.match(previewEligibilitySource, /verified_output_must_equal_event_allocation_total/);
+assert.match(previewEligibilitySource, /verified_output_below_event_allocation_total/);
+assert.match(previewEligibilitySource, /verified_output_exceeds_event_allocation_total/);
 assert.match(previewEligibilitySource, /mixed_event_and_customer_demand_requires_allocation/);
 assert.match(previewSource, /event_pos_inventory_allocation_not_ready/);
 assert.match(previewSource, /Shopify\.POS\.available_quantity/);
@@ -74,6 +77,8 @@ assert.match(queueSource, /shopify_pos_inventory_sync_quantity/);
 assert.match(queueSource, /event_allocation_count/);
 assert.match(queueSource, /normalizeText\(batch\.status\)\.toLowerCase\(\) !== 'archived'/);
 assert.match(uiSource, /Shopify POS opening stock/);
+assert.match(uiSource, /positive yield variance remains unallocated surplus/);
+assert.match(uiSource, /surplus.*bottle remains/);
 assert.match(uiSource, /One physical batch/);
 assert.match(uiSource, /Retry POS Stock Sync/);
 assert.match(manageSource, /previewEventPosInventoryReadiness/);
@@ -84,6 +89,7 @@ assert.match(gatewaySource, /g116b-preisolated-event-location-scope/);
 assert.match(gatewaySource, /g116-verified-event-production-shopify-pos-inventory-20260820/);
 assert.match(gatewaySource, /g127-product-date-batching-multi-event-pos-allocation-20260824/);
 assert.match(gatewaySource, /g127b-hide-superseded-product-batches-20260824/);
+assert.match(gatewaySource, /g165-production-yield-surplus-20260828/);
 assert.match(criticalSource, /run-g116-event-production-pos-inventory-tests\.mjs/);
 
 let moduleSource = helperSource
@@ -176,14 +182,23 @@ assert.equal(eventPosInventoryEligibility({
   order_sources: [...batch.order_sources, { order_id: 'customer_order', source_type: 'direct', quantity: 1 }],
 }).blocker, 'mixed_event_and_customer_demand_requires_allocation');
 assert.equal(eventPosInventoryEligibility(batch).quantity, 40);
+assert.equal(eventPosInventoryEligibility(batch).allocated_quantity, 40);
+assert.equal(eventPosInventoryEligibility(batch).surplus_quantity, 0);
 assert.deepEqual(eventPosInventoryEligibility(batch).allocations, [{ event_id: event.id, quantity: 40 }]);
-assert.equal(eventPosInventoryEligibility({ ...batch, final_usable_quantity: 39 }).blocker, 'verified_output_must_equal_event_allocation_total');
+assert.equal(eventPosInventoryEligibility({ ...batch, final_usable_quantity: 39 }).blocker, 'verified_output_below_event_allocation_total');
+const positiveYieldVariance = eventPosInventoryEligibility({ ...batch, final_usable_quantity: 41 });
+assert.equal(positiveYieldVariance.ready, true);
+assert.equal(positiveYieldVariance.quantity, 41);
+assert.equal(positiveYieldVariance.allocated_quantity, 40);
+assert.equal(positiveYieldVariance.surplus_quantity, 1);
+assert.deepEqual(positiveYieldVariance.warnings, ['verified_output_exceeds_event_allocation_total']);
 for (const candidate of [
   { product_name: 'OASIS' },
   { ...batch, final_usable_quantity: null },
   { ...batch, order_sources: [...batch.order_sources, { order_id: 'customer_order', source_type: 'direct', quantity: 1 }] },
   batch,
   { ...batch, final_usable_quantity: 39 },
+  { ...batch, final_usable_quantity: 41 },
 ]) {
   assert.deepEqual(
     previewEventPosInventoryEligibility(candidate),
@@ -335,6 +350,34 @@ assert.equal(state.rows.get('Product')[0].shopify_pos_variant_id, 'gid://shopify
 assert.equal(state.writes.filter(write => write.entity === 'InventoryItem').length, 0);
 
 providerCalls = [];
+const positiveYieldBatch = {
+  ...batch,
+  id: 'batch_oasis_positive_yield',
+  batch_id: 'EVENT-20990821-S2-OASIS-POSITIVE-YIELD',
+  actual_units: 41,
+  final_usable_quantity: 41,
+};
+const positiveYieldState = store({
+  Event: [event], ProductionBatch: [positiveYieldBatch], Product: [product], CommandLog: [],
+});
+const positiveYieldResult = await syncVerifiedEventBatchToShopifyPos({
+  base44: positiveYieldState.base44,
+  batch: positiveYieldBatch,
+  requestId: 'verify_s2_oasis_positive_yield',
+  user: { email: 'admin@example.test', role: 'admin' },
+});
+assert.equal(positiveYieldResult.success, true);
+assert.equal(positiveYieldResult.status, 'in_sync');
+assert.equal(positiveYieldResult.quantity, 40, 'only the planned event allocation is sent to Shopify POS');
+assert.equal(positiveYieldResult.verified_quantity, 41);
+assert.equal(positiveYieldResult.allocated_quantity, 40);
+assert.equal(positiveYieldResult.surplus_quantity, 1);
+assert.deepEqual(positiveYieldResult.warnings, ['verified_output_exceeds_event_allocation_total']);
+assert.equal(providerCalls.at(-1).variables.available, 40);
+assert.equal(positiveYieldState.rows.get('ProductionBatch')[0].shopify_pos_inventory_sync_quantity, 40);
+assert.equal(positiveYieldState.rows.get('ProductionBatch')[0].final_usable_quantity, 41);
+
+providerCalls = [];
 const sharedBatch = {
   ...batch,
   id: 'batch_shared',
@@ -475,7 +518,7 @@ globalThis.Deno = originalDeno;
 console.log(JSON.stringify({
   success: true,
   suite: 'g116-event-production-pos-inventory',
-  cases: 30,
+  cases: 46,
   live_provider_calls_performed: false,
   production_writes_performed: false,
   customer_notifications_sent: false,

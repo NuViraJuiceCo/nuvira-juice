@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { syncVerifiedEventBatchToShopifyPos } from './eventPosInventory.ts';
+import { eventPosInventoryEligibility, syncVerifiedEventBatchToShopifyPos } from './eventPosInventory.ts';
 
 const COMMAND_TYPE = 'native_production_batch_lifecycle';
 const SOURCE = 'customer_app_native_admin';
@@ -553,6 +553,13 @@ function planVerify({ batch, actorEmail, requestId, now, body, reason }) {
   const quantityProduced = safeNumber(batch.actual_units) ?? safeNumber(batch.final_usable_quantity);
   if (isEventOnlyBatch(batch) && !isPositiveNumber(batch.final_usable_quantity)) {
     blockers.push('event_final_usable_quantity_required_for_pos');
+  }
+  if (isEventOnlyBatch(batch) && isPositiveNumber(batch.final_usable_quantity)) {
+    const eventPosEligibility = eventPosInventoryEligibility(batch);
+    if (!eventPosEligibility.ready) {
+      blockers.push(eventPosEligibility.blocker || 'event_pos_inventory_allocation_not_ready');
+    }
+    warnings.push(...safeStringArray(eventPosEligibility.warnings));
   }
 
   if (!isPositiveNumber(pHResult)) blockers.push('missing_ph_result');

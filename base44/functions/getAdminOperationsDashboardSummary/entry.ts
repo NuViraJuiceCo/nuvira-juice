@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g165-production-yield-surplus-20260828.
 // Bundle revision: g127-product-date-batching-multi-event-pos-allocation-20260824.
 // Bundle revision: g127b-hide-superseded-product-batches-20260824.
 // Bundle revision: g126-distance-aware-driver-route-telemetry-20260823.

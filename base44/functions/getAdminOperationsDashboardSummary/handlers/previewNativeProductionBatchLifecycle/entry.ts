@@ -846,6 +846,7 @@ function planVerify({ batch, actorEmail, requestId, now, verificationInput }) {
     if (!eventPosEligibility.ready) {
       blockers.push(eventPosEligibility.blocker || 'event_pos_inventory_allocation_not_ready');
     }
+    warnings.push(...safeStringArray(eventPosEligibility.warnings));
   }
   if (staffOnDuty.length === 0) warnings.push('staff_on_duty_not_provided');
   if (correctiveActionRequired) {
