@@ -136,17 +136,26 @@ export function eventPosInventoryEligibility(batch) {
     return { applicable: true, ready: false, blocker: 'verified_final_usable_quantity_required' };
   }
   const allocatedQuantity = allocations.reduce((sum, allocation) => sum + allocation.quantity, 0);
-  if (allocatedQuantity !== quantity) {
+  if (quantity < allocatedQuantity) {
     return {
       applicable: true,
       ready: false,
-      blocker: 'verified_output_must_equal_event_allocation_total',
+      blocker: 'verified_output_below_event_allocation_total',
       quantity,
       allocated_quantity: allocatedQuantity,
       allocations,
     };
   }
-  return { applicable: true, ready: true, quantity, allocations };
+  const surplusQuantity = quantity - allocatedQuantity;
+  return {
+    applicable: true,
+    ready: true,
+    quantity,
+    allocated_quantity: allocatedQuantity,
+    surplus_quantity: surplusQuantity,
+    allocations,
+    warnings: surplusQuantity > 0 ? ['verified_output_exceeds_event_allocation_total'] : [],
+  };
 }
 
 function shopifyHost() {
@@ -815,7 +824,10 @@ export async function syncVerifiedEventBatchToShopifyPos({ base44, batch, reques
           success: false,
           status: result.status || 'error',
           error_code: result.error_code || 'event_pos_inventory_sync_failed',
-          quantity: eligibility.quantity,
+          quantity: eligibility.allocated_quantity,
+          verified_quantity: eligibility.quantity,
+          allocated_quantity: eligibility.allocated_quantity,
+          surplus_quantity: eligibility.surplus_quantity,
           allocations: projectedAllocations,
           provider_calls_performed: provider.calls > 0,
           inventory_mutation: provider.writes > 0,
@@ -836,7 +848,7 @@ export async function syncVerifiedEventBatchToShopifyPos({ base44, batch, reques
     const commandIds = projectedAllocations.map(row => row.command_id).filter(Boolean);
     await updateBatchSync(base44, batch.id, {
       shopify_pos_inventory_sync_status: 'in_sync',
-      shopify_pos_inventory_sync_quantity: eligibility.quantity,
+      shopify_pos_inventory_sync_quantity: eligibility.allocated_quantity,
       shopify_pos_inventory_synced_at: syncedAt,
       shopify_pos_inventory_command_id: commandIds.length === 1 ? commandIds[0] : null,
       shopify_pos_location_id: projectedAllocations.length === 1 ? projectedAllocations[0].location_id : null,
@@ -850,7 +862,11 @@ export async function syncVerifiedEventBatchToShopifyPos({ base44, batch, reques
       skipped: allocationResults.every(row => row.result.skipped === true),
       idempotent: allocationResults.every(row => row.result.idempotent === true),
       status: 'in_sync',
-      quantity: eligibility.quantity,
+      quantity: eligibility.allocated_quantity,
+      verified_quantity: eligibility.quantity,
+      allocated_quantity: eligibility.allocated_quantity,
+      surplus_quantity: eligibility.surplus_quantity,
+      warnings: eligibility.warnings,
       allocation_count: projectedAllocations.length,
       allocations: projectedAllocations,
       location_name: projectedAllocations.length === 1 ? projectedAllocations[0].location_name : `${projectedAllocations.length} event locations`,

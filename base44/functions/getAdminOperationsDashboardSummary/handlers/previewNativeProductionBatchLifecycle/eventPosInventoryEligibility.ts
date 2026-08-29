@@ -74,15 +74,24 @@ export function eventPosInventoryEligibility(batch) {
     return { applicable: true, ready: false, blocker: 'verified_final_usable_quantity_required' };
   }
   const allocatedQuantity = allocations.reduce((sum, allocation) => sum + allocation.quantity, 0);
-  if (allocatedQuantity !== quantity) {
+  if (quantity < allocatedQuantity) {
     return {
       applicable: true,
       ready: false,
-      blocker: 'verified_output_must_equal_event_allocation_total',
+      blocker: 'verified_output_below_event_allocation_total',
       quantity,
       allocated_quantity: allocatedQuantity,
       allocations,
     };
   }
-  return { applicable: true, ready: true, quantity, allocations };
+  const surplusQuantity = quantity - allocatedQuantity;
+  return {
+    applicable: true,
+    ready: true,
+    quantity,
+    allocated_quantity: allocatedQuantity,
+    surplus_quantity: surplusQuantity,
+    allocations,
+    warnings: surplusQuantity > 0 ? ['verified_output_exceeds_event_allocation_total'] : [],
+  };
 }

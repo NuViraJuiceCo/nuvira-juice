@@ -124,13 +124,21 @@ function eventPosSyncMessage(batch) {
   const allocationCount = Math.max(1, Number(batch?.event_allocation_count) || 0);
   const destinationLabel = allocationCount === 1 ? 'the linked event location' : `${allocationCount} linked event locations`;
   if (status === 'in_sync') {
-    return `Shopify POS opening stock: ${formatNumber(batch.shopify_pos_inventory_sync_quantity)} verified units across ${destinationLabel}.`;
+    const verifiedQuantity = Number(batch?.final_usable_quantity ?? batch?.actual_units);
+    const allocatedQuantity = Number(batch?.shopify_pos_inventory_sync_quantity);
+    const surplusQuantity = Number.isFinite(verifiedQuantity) && Number.isFinite(allocatedQuantity)
+      ? Math.max(0, verifiedQuantity - allocatedQuantity)
+      : 0;
+    const surplusLabel = surplusQuantity > 0
+      ? ` ${formatNumber(surplusQuantity)} surplus ${surplusQuantity === 1 ? 'bottle remains' : 'bottles remain'} unallocated.`
+      : '';
+    return `Shopify POS opening stock: ${formatNumber(batch.shopify_pos_inventory_sync_quantity)} allocated units across ${destinationLabel}.${surplusLabel}`;
   }
   if (status === 'error' || status === 'blocked') {
     return `Shopify POS stock needs review: ${formatLabel(batch.shopify_pos_inventory_sync_error || status)}.`;
   }
   if (status === 'syncing') return `Shopify POS opening stock is syncing across ${destinationLabel}.`;
-  return `Shopify POS opening stock will allocate the verified final quantity across ${destinationLabel}.`;
+  return `Shopify POS opening stock will use the planned event allocation across ${destinationLabel}; any positive yield variance remains unallocated surplus.`;
 }
 
 function batchSourceLabel(batch) {
