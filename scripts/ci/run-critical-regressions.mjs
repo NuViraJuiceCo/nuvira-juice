@@ -113,6 +113,7 @@ const harnesses = [
   'scripts/migration/run-g162-google-merchant-canonical-links-tests.mjs',
   'scripts/migration/run-g164-production-recipe-preload-tests.mjs',
   'scripts/migration/run-g165-isolated-production-lifecycle-routing-tests.mjs',
+  'scripts/migration/run-g166-event-pos-stock-alert-tests.mjs',
 ];
 
 function fail(message, extra = {}) {
