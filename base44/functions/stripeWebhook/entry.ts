@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
+import { sendGooglePurchaseMeasurement } from './googleMeasurement.js';
 import { sendMetaPurchaseConversion } from './metaConversions.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
@@ -22,6 +23,15 @@ async function attemptMetaPurchaseConversion(args: Record<string, any>) {
   } catch {
     console.warn('[Meta CAPI] unexpected conversion helper failure');
     return { sent: false, reason: 'unexpected_conversion_failure' };
+  }
+}
+
+async function attemptGooglePurchaseMeasurement(args: Record<string, any>) {
+  try {
+    return await sendGooglePurchaseMeasurement(args);
+  } catch {
+    console.warn('[Google Measurement] unexpected purchase helper failure');
+    return { sent: false, reason: 'unexpected_measurement_failure' };
   }
 }
 
@@ -1221,6 +1231,13 @@ Deno.serve(async (req) => {
             order,
             checkoutData,
           });
+          await attemptGooglePurchaseMeasurement({
+            base44,
+            event,
+            paymentIntent: pi,
+            order,
+            checkoutData,
+          });
           return Response.json({ received: true });
         }
 
@@ -1292,6 +1309,13 @@ Deno.serve(async (req) => {
         console.log(`[PI succeeded] Order ${orderNumber} finalized`);
 
         await attemptMetaPurchaseConversion({
+          base44,
+          event,
+          paymentIntent: pi,
+          order: { ...order, ...finalOrderUpdate },
+          checkoutData,
+        });
+        await attemptGooglePurchaseMeasurement({
           base44,
           event,
           paymentIntent: pi,
@@ -1518,6 +1542,13 @@ Deno.serve(async (req) => {
         console.log(`[PI succeeded] Safety-net Order created: ${newOrder.id}`);
 
         await attemptMetaPurchaseConversion({
+          base44,
+          event,
+          paymentIntent: pi,
+          order: newOrder,
+          checkoutData,
+        });
+        await attemptGooglePurchaseMeasurement({
           base44,
           event,
           paymentIntent: pi,

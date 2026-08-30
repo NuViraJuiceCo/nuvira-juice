@@ -24,7 +24,12 @@ import Zone3RouteReviewPanel from '@/components/checkout/Zone3RouteReviewPanel';
 import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 import { normalizeValidatedCheckoutCode } from '@/lib/checkoutPromotions';
 import { buildCustomerName, normalizeNamePart, resolveCustomerIdentity } from '@/lib/customerIdentity';
-import { trackGoogleAddPaymentInfo, trackGoogleAddShippingInfo } from '@/lib/googleAnalytics';
+import {
+  getAnalyticsConsent,
+  getGoogleMeasurementContext,
+  trackGoogleAddPaymentInfo,
+  trackGoogleAddShippingInfo,
+} from '@/lib/googleAnalytics';
 import { getMarketingConsent, trackMetaAddPaymentInfo } from '@/lib/metaPixel';
 import { trackSnapAddBilling } from '@/lib/snapPixel';
 
@@ -660,6 +665,11 @@ function CheckoutFlow() {
       setCheckoutStartStage(CHECKOUT_START_STAGES.CREATING_PAYMENT_ATTEMPT);
       paymentAttemptStarted = true;
 
+      const analyticsMeasurementConsent = getAnalyticsConsent() === 'granted';
+      const googleMeasurementContext = analyticsMeasurementConsent
+        ? await getGoogleMeasurementContext()
+        : null;
+
       const res = await base44.functions.invoke('createPaymentIntent', {
         items,
         subtotal,
@@ -712,6 +722,8 @@ function CheckoutFlow() {
         health_advisory_acknowledged: true,
         health_advisory_acknowledged_at: new Date().toISOString(),
         health_advisory_version: HEALTH_ADVISORY_CONFIG.version,
+        analytics_measurement_consent: analyticsMeasurementConsent ? 'granted' : 'denied',
+        google_measurement_context: googleMeasurementContext,
         marketing_measurement_consent: getMarketingConsent() === 'granted' ? 'granted' : 'denied',
       });
 

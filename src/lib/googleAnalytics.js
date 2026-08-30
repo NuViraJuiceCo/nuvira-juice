@@ -9,6 +9,7 @@ const GOOGLE_TAG_SCRIPT_ID = 'nuvira-google-analytics';
 const GOOGLE_AUTH_EVENT_PARAM = 'nuvira_auth_event';
 const GOOGLE_AUTH_EVENT_STORAGE_KEY = 'nuvira_ga4_auth_event_v1';
 const GOOGLE_AUTH_EVENT_TTL_MS = 10 * 60 * 1000;
+const GOOGLE_MEASUREMENT_CONTEXT_TIMEOUT_MS = 800;
 const CAMPAIGN_QUERY_KEYS = [
   'utm_id',
   'utm_source',
@@ -215,6 +216,60 @@ export async function loadGoogleAnalytics() {
   });
 
   return googleTagPromise;
+}
+
+function readGoogleTagValue(fieldName) {
+  if (!hasBrowserRuntime() || typeof window.gtag !== 'function') return Promise.resolve('');
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value = '') => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve(String(value || '').trim());
+    };
+    const timeoutId = setTimeout(() => finish(''), GOOGLE_MEASUREMENT_CONTEXT_TIMEOUT_MS);
+
+    try {
+      window.gtag('get', GOOGLE_ANALYTICS_MEASUREMENT_ID, fieldName, finish);
+    } catch {
+      finish('');
+    }
+  });
+}
+
+function normalizeGoogleClientId(value) {
+  const candidate = String(value || '').trim();
+  return /^\d{1,20}\.\d{1,20}$/.test(candidate) ? candidate : '';
+}
+
+function normalizeGoogleSessionId(value) {
+  const candidate = String(value || '').trim();
+  return /^\d{1,20}$/.test(candidate) && Number(candidate) > 0 ? candidate : '';
+}
+
+export async function getGoogleMeasurementContext() {
+  if (!hasBrowserRuntime() || isNativeAppRuntime() || getAnalyticsConsent() !== 'granted') return null;
+  const loaded = await Promise.race([
+    loadGoogleAnalytics(),
+    new Promise((resolve) => setTimeout(() => resolve(false), GOOGLE_MEASUREMENT_CONTEXT_TIMEOUT_MS)),
+  ]);
+  if (!loaded) return null;
+
+  const [clientId, sessionId] = await Promise.all([
+    readGoogleTagValue('client_id'),
+    readGoogleTagValue('session_id'),
+  ]);
+  const normalizedClientId = normalizeGoogleClientId(clientId);
+  const normalizedSessionId = normalizeGoogleSessionId(sessionId);
+  if (!normalizedClientId || !normalizedSessionId) return null;
+
+  return {
+    client_id: normalizedClientId,
+    session_id: normalizedSessionId,
+    captured_at: new Date().toISOString(),
+  };
 }
 
 export async function trackGooglePageView(pathname, title = '') {
