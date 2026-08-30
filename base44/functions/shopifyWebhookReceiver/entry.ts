@@ -4,6 +4,7 @@ import {
   posEventAttributionNeedsReview,
   resolvePosEventAttribution,
 } from './posEventAttribution.js';
+import { monitorEventPosInventorySale } from './eventPosInventoryAlerts.js';
 
 /**
  * Shopify Webhook Receiver
@@ -15,6 +16,8 @@ import {
  */
 
 const NATIVE_ORDER_TOPICS = new Set(['orders/create', 'orders/paid']);
+const SHOPIFY_API_VERSION = '2026-07';
+const EVENT_STOCK_MONITOR_REVISION = '2026-08-30.g166-event-pos-stock-alerts';
 const SHOPIFY_WEBHOOK_SECRET_ENV_NAMES = [
   'SHOPIFY_WEBHOOK_SECRET',
   'SHOPIFY_WEBHOOK_SIGNING_SECRET',
@@ -74,6 +77,129 @@ function getShopifyWebhookSecret() {
     if (value) return value;
   }
   return '';
+}
+
+function shopifyHost() {
+  return String(Deno.env.get('SHOPIFY_STORE_URL') || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/.*$/, '')
+    .replace(/\/+$/, '');
+}
+
+async function shopifyAccessToken(host) {
+  const directToken = String(Deno.env.get('SHOPIFY_API_TOKEN') || '').trim();
+  if (directToken) return directToken;
+  const clientId = String(Deno.env.get('SHOPIFY_CLIENT_ID') || '').trim();
+  if (!clientId) return '';
+  const secrets = [
+    Deno.env.get('SHOPIFY_CLIENT_SECRET'),
+    Deno.env.get('SHOPIFY_API_SECRET_KEY'),
+    Deno.env.get('SHOPIFY_API_SECRET'),
+    Deno.env.get('SHOPIFY_APP_SECRET'),
+    Deno.env.get('SHOPIFY_SHARED_SECRET'),
+  ].map(value => String(value || '').trim()).filter(Boolean);
+  for (const clientSecret of [...new Set(secrets)]) {
+    const response = await fetch(`https://${host}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: 'client_credentials' }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && payload?.access_token) return String(payload.access_token).trim();
+  }
+  return '';
+}
+
+function shopifyGid(value, resource) {
+  const raw = String(value || '').trim();
+  if (raw.startsWith(`gid://shopify/${resource}/`)) return raw;
+  return /^\d+$/.test(raw) ? `gid://shopify/${resource}/${raw}` : '';
+}
+
+function availableInventoryQuantity(level) {
+  const available = (Array.isArray(level?.quantities) ? level.quantities : [])
+    .find(quantity => String(quantity?.name || '').toLowerCase() === 'available');
+  const parsed = Number(available?.quantity);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+async function readEventPosInventoryLevels({ variantIds, locationId, lineItems }) {
+  const host = shopifyHost();
+  const token = host ? await shopifyAccessToken(host) : '';
+  if (!host || !token) throw new Error('shopify_inventory_credentials_missing');
+  const variantGids = variantIds.map(value => shopifyGid(value, 'ProductVariant')).filter(Boolean);
+  const locationGid = shopifyGid(locationId, 'Location');
+  if (!variantGids.length || !locationGid) throw new Error('shopify_inventory_target_invalid');
+  const response = await fetch(`https://${host}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Shopify-Access-Token': token,
+    },
+    body: JSON.stringify({
+      query: `query EventPosInventoryMonitor($variantIds: [ID!]!) {
+        nodes(ids: $variantIds) {
+          ... on ProductVariant {
+            id
+            title
+            product { id title }
+            inventoryItem {
+              id
+              tracked
+              inventoryLevels(first: 50) {
+                nodes {
+                  location { id name }
+                  quantities(names: ["available"]) { name quantity }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      variables: { variantIds: variantGids },
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || (Array.isArray(payload?.errors) && payload.errors.length > 0)) {
+    throw new Error(`shopify_inventory_read_failed:${response.status}`);
+  }
+  const lineTitleByVariant = new Map((Array.isArray(lineItems) ? lineItems : []).map(item => [
+    shopifyGid(item?.variant_id, 'ProductVariant'),
+    String(item?.title || '').trim(),
+  ]));
+  return (Array.isArray(payload?.data?.nodes) ? payload.data.nodes : []).flatMap(variant => {
+    const inventoryItem = variant?.inventoryItem;
+    if (!variant?.id || !inventoryItem?.id || inventoryItem?.tracked !== true) return [];
+    const level = (Array.isArray(inventoryItem?.inventoryLevels?.nodes) ? inventoryItem.inventoryLevels.nodes : [])
+      .find(row => row?.location?.id === locationGid);
+    const availableQuantity = availableInventoryQuantity(level);
+    if (availableQuantity === null) return [];
+    return [{
+      variantId: variant.id,
+      inventoryItemId: inventoryItem.id,
+      productTitle: String(variant?.product?.title || lineTitleByVariant.get(variant.id) || '').trim(),
+      availableQuantity,
+    }];
+  });
+}
+
+async function maybeMonitorEventPosInventory(base44, record, payload) {
+  try {
+    const result = await monitorEventPosInventorySale({
+      base44,
+      record,
+      orderPayload: payload,
+      readInventoryLevels: readEventPosInventoryLevels,
+      configuredAdminRecipients: Deno.env.get('ADMIN_PUSH_RECIPIENT_EMAILS') || '',
+      pushEnabled: Deno.env.get('ENABLE_ADMIN_PUSH_NOTIFICATIONS') === 'true',
+    });
+    console.log(`[${EVENT_STOCK_MONITOR_REVISION}] order=${safeLogText(record?.shopify_order_number || record?.shopify_order_id, 100)} monitored=${result?.monitored === true} reason=${result?.reason || 'complete'} items=${result?.item_count || 0}`);
+    return result;
+  } catch (error) {
+    console.warn(`[${EVENT_STOCK_MONITOR_REVISION}] failed safely: ${safeLogText(error?.message || error, 160) || 'unknown error'}`);
+    return { monitored: false, reason: 'event_inventory_monitor_failed_safely' };
+  }
 }
 
 function shopifyWebhookSecretDiagnostic() {
@@ -669,6 +795,7 @@ Deno.serve(async (req) => {
     }
 
     await reconcilePosEventAttributionAlert(base44, record, shopifyOrderId, orderNumber);
+    await maybeMonitorEventPosInventory(base44, record, payload);
 
     // Only actionable exceptions become alerts. Successful orders belong in
     // the operations dashboard, not an indefinitely unresolved notice queue.
@@ -703,6 +830,7 @@ Deno.serve(async (req) => {
     await syncIngestedOrderToHub(base44, record, topic);
 
   } else if (topic === 'orders/updated') {
+    let inventoryMonitorRecord;
     const mappedForNativeSafeSync = await mapIncomingShopifyOrder(base44, payload);
     nativeSafeSyncBridge = await maybeRunNativeSafeSyncWriter(base44, {
       record: existing.length > 0 ? { ...mappedForNativeSafeSync, id: existing[0].id } : mappedForNativeSafeSync,
@@ -710,6 +838,7 @@ Deno.serve(async (req) => {
     });
 
     if (nativeSafeSyncBridge.handled) {
+      inventoryMonitorRecord = nativeSafeSyncBridge.order || existing[0] || mappedForNativeSafeSync;
       console.log(`Native safeSync handled Shopify update webhook #${orderNumber}`);
     } else if (existing.length > 0) {
       const updates = await mapIncomingShopifyOrder(base44, payload);
@@ -756,6 +885,7 @@ Deno.serve(async (req) => {
         ],
       });
       await reconcilePosEventAttributionAlert(base44, updatedRecord, shopifyOrderId, orderNumber);
+      inventoryMonitorRecord = updatedRecord;
       console.log(`Updated ShopifyOrder #${orderNumber}`);
     } else {
       // Order not in Base44 yet — create it
@@ -770,8 +900,10 @@ Deno.serve(async (req) => {
       nativeOpsAttempted = shouldAttemptNativeOrderOps(created, topic);
       nativeOpsResult = await maybeRunNativeOrderOps(base44, created, topic);
       await reconcilePosEventAttributionAlert(base44, created, shopifyOrderId, orderNumber);
+      inventoryMonitorRecord = created;
       console.log(`Created missing ShopifyOrder #${orderNumber} from update event`);
     }
+    if (inventoryMonitorRecord) await maybeMonitorEventPosInventory(base44, inventoryMonitorRecord, payload);
 
   } else if (topic === 'orders/cancelled') {
     if (existing.length > 0) {
