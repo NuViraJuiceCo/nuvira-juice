@@ -128,6 +128,21 @@ function isValidCustomerEmail(value) {
   return normalized.length > 3 && normalized.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 }
 
+function normalizeGoogleMeasurementContext(value) {
+  const clientId = String(value?.client_id || '').trim();
+  const sessionId = String(value?.session_id || '').trim();
+  const capturedAt = String(value?.captured_at || '').trim();
+  if (!/^\d{1,20}\.\d{1,20}$/.test(clientId) || !/^\d{1,20}$/.test(sessionId) || Number(sessionId) <= 0) {
+    return null;
+  }
+  const capturedTimestamp = Date.parse(capturedAt);
+  return {
+    client_id: clientId,
+    session_id: sessionId,
+    captured_at: Number.isFinite(capturedTimestamp) ? new Date(capturedTimestamp).toISOString() : new Date().toISOString(),
+  };
+}
+
 function isValidGuestSecret(value) {
   const normalized = String(value || '').trim();
   return normalized.length >= 24 && normalized.length <= 180 && /^[A-Za-z0-9._:-]+$/.test(normalized);
@@ -826,6 +841,8 @@ Deno.serve(async (req) => {
       // Client-supplied idempotency key for duplicate-request protection
       checkout_idempotency_key,
       bag_return_request_id,
+      analytics_measurement_consent,
+      google_measurement_context,
       marketing_measurement_consent,
       meta_capi_test_enabled,
     } = requestBody;
@@ -1191,6 +1208,9 @@ Deno.serve(async (req) => {
     const resolvedScheduleSrc  = canonicalSchedule.schedulingReason || 'backend cadence';
 
     const eligibility = validatedEligibility;
+    const normalizedGoogleMeasurementContext = analytics_measurement_consent === 'granted'
+      ? normalizeGoogleMeasurementContext(google_measurement_context)
+      : null;
 
     // Metadata — centralized schedule fields from calculateNuViraFulfillmentSchedule
     // Keep this provider projection deliberately compact. Stripe accepts at most
@@ -1497,6 +1517,8 @@ Deno.serve(async (req) => {
           guest_order_token_hash:    isGuestCheckout ? await sha256Hex(guest_order_token) : null,
           internal_sandbox_checkout: internalSandboxCheckout,
           sandbox_test_id:           internalSandboxCheckout ? sandboxTestId : null,
+          analytics_measurement_consent: analytics_measurement_consent === 'granted' ? 'granted' : 'denied',
+          google_measurement_context: normalizedGoogleMeasurementContext,
           marketing_measurement_consent: marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
           meta_capi_test_enabled:     internalSandboxCheckout && meta_capi_test_enabled === true,
           health_advisory_acknowledged: true,
