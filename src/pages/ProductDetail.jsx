@@ -26,6 +26,7 @@ import { useCart } from '@/lib/cartContext';
 import { normalizeProductIdentifier, productLookupKeys, productPath } from '@/lib/seo-slugs';
 import { findPublicProductFallback } from '@/lib/public-products';
 import { buildProductSeoMetadata, buildProductStructuredData } from '@/lib/product-seo';
+import { buildProductGallery } from '@/lib/product-gallery-images';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
@@ -145,6 +146,7 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const trackedProductIdRef = useRef('');
   const trackedMetaProductIdRef = useRef('');
   const trackedSnapProductIdRef = useRef('');
@@ -224,6 +226,10 @@ export default function ProductDetail() {
     }
   }, [handle, id, product, navigate]);
 
+  useEffect(() => {
+    setSelectedImageIndex(0);
+  }, [product?.id]);
+
   const handleAddToCart = () => {
     if (!product) return;
     const extra = {};
@@ -270,6 +276,8 @@ export default function ProductDetail() {
   const blendDetail = inferBlendDetail(product, isMerchProduct);
   const productSeo = buildProductSeoMetadata(product);
   const productStructuredData = buildProductStructuredData(product);
+  const productGallery = buildProductGallery(product);
+  const selectedProductImage = productGallery[selectedImageIndex] || productGallery[0] || null;
 
   const purchaseBar = (
     <div
@@ -336,19 +344,19 @@ export default function ProductDetail() {
                 : 'h-[52vh] min-h-[330px] max-h-[470px] sm:h-[50vh] sm:max-h-[520px]'
             }`}
           >
-            {product.image_url ? (
+            {selectedProductImage?.src ? (
               <>
                 {isMerchProduct && (
                   <img
-                    src={product.image_url}
+                    src={selectedProductImage.src}
                     alt=""
                     aria-hidden="true"
                     className="absolute inset-0 h-full w-full scale-110 object-cover opacity-30 blur-2xl"
                   />
                 )}
                 <img
-                  src={product.image_url}
-                  alt={product.title}
+                  src={selectedProductImage.src}
+                  alt={selectedProductImage.alt}
                   className={`relative h-full w-full ${isMerchProduct ? 'object-contain p-3 md:p-8' : 'object-cover'}`}
                 />
               </>
@@ -365,6 +373,11 @@ export default function ProductDetail() {
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div className="absolute left-4 right-4 bottom-4 flex items-center justify-end gap-3">
+              {productGallery.length > 1 && (
+                <span className="rounded-full bg-black/55 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
+                  {selectedImageIndex + 1} / {productGallery.length}
+                </span>
+              )}
               {product.size && (
                 <span className="shrink-0 rounded-full bg-black/55 px-3 py-1.5 text-[11px] font-bold text-white backdrop-blur">
                   {product.size}
@@ -372,6 +385,38 @@ export default function ProductDetail() {
               )}
             </div>
           </div>
+
+          {productGallery.length > 1 && (
+            <div
+              role="group"
+              aria-label={`${product.title} product gallery`}
+              className="grid grid-cols-4 gap-2 px-4 pt-3 md:px-0"
+            >
+              {productGallery.map((image, index) => (
+                <button
+                  key={image.src}
+                  type="button"
+                  aria-label={`View image ${index + 1} of ${productGallery.length}: ${image.alt}`}
+                  aria-pressed={selectedImageIndex === index}
+                  onClick={() => setSelectedImageIndex(index)}
+                  className={`group relative aspect-[4/3] min-h-14 overflow-hidden rounded-xl border bg-secondary/50 shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                    selectedImageIndex === index
+                      ? 'border-primary ring-2 ring-primary/25'
+                      : 'border-border/60 hover:border-primary/50'
+                  }`}
+                >
+                  <img
+                    src={image.src}
+                    alt=""
+                    aria-hidden="true"
+                    loading={index === 0 ? 'eager' : 'lazy'}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  />
+                  <span className="sr-only">{image.alt}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
