@@ -11,17 +11,27 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const productDetailSource = fs.readFileSync(path.join(repoRoot, 'src/pages/ProductDetail.jsx'), 'utf8');
 const consumables = PUBLIC_PRODUCT_FALLBACKS.filter(product => product.category !== 'merch');
 const tote = PUBLIC_PRODUCT_FALLBACKS.find(product => product.category === 'merch');
-const expectedGalleryDirectoryByTitle = Object.freeze({
-  'Radiance Shot': 'radiance-shot',
-  AURA: 'aura',
-  'Hydration Shot': 'hydration-shot',
-  'RE-NU': 're-nu',
-  'Reset Shot': 'reset-shot',
-  OASIS: 'oasis',
-  'The NuVira Trio': 'nuvira-trio',
-  'Orange Juice': 'orange-juice',
-  'Pineapple Juice': 'pineapple-juice',
-  'Watermelon Juice': 'watermelon-juice',
+const expectedGalleryPathsByTitle = Object.freeze({
+  AURA: [
+    '/images/authentic-products/aura/aura-drinking.jpg',
+    '/images/authentic-products/aura/aura-conversation.jpg',
+    '/images/authentic-products/aura/aura-bench.jpg',
+  ],
+  'RE-NU': [
+    '/images/authentic-products/re-nu/re-nu-shared-drink.jpg',
+    '/images/authentic-products/re-nu/re-nu-conversation.jpg',
+    '/images/authentic-products/re-nu/re-nu-bench.jpg',
+  ],
+  OASIS: [
+    '/images/authentic-products/oasis/oasis-event-cooler.jpg',
+    '/images/authentic-products/oasis/oasis-sunset-bottle.jpg',
+    '/images/authentic-products/oasis/oasis-sunset-trio.jpg',
+  ],
+  'The NuVira Trio': [
+    '/images/authentic-products/trio/trio-outdoor-bag.jpg',
+    '/images/authentic-products/trio/trio-outdoor-lineup.jpg',
+    '/images/authentic-products/trio/trio-sunset-lineup.jpg',
+  ],
 });
 
 assert.equal(consumables.length, 10, 'Expected ten consumable catalog products');
@@ -33,26 +43,18 @@ for (const product of consumables) {
   const structuredData = buildProductStructuredData(product);
 
   const existingSecondaryCount = product.secondary_images?.length || 0;
+  const expectedAdditional = expectedGalleryPathsByTitle[product.title] || [];
   assert.equal(
     gallery.length,
-    4 + existingSecondaryCount,
-    `${product.title} should render all real catalog photos plus three supplemental images`,
+    1 + existingSecondaryCount + expectedAdditional.length,
+    `${product.title} should render only its verified catalog and authentic supplemental photos`,
   );
   assert.equal(gallery[0].src, product.image_url, `${product.title} must preserve the real catalog image as primary`);
-  assert.equal(additional.length, 3, `${product.title} should expose three supplemental images`);
-  assert.equal(absoluteAdditional.length, 3, `${product.title} should expose three absolute supplemental URLs`);
-  const expectedDirectory = expectedGalleryDirectoryByTitle[product.title];
-  assert.ok(expectedDirectory, `${product.title} needs an explicit product-to-gallery mapping`);
-  for (const imagePath of additional) {
-    assert.match(
-      imagePath,
-      new RegExp(`^/images/google-merchant/${expectedDirectory}/${expectedDirectory}-(?:kitchen|ingredients|outdoor|wellness|lifestyle)\\.jpg$`),
-      `${product.title} must never receive another product's photos`,
-    );
-  }
+  assert.deepEqual(additional, expectedAdditional, `${product.title} must never receive another product's photos`);
+  assert.equal(absoluteAdditional.length, expectedAdditional.length, `${product.title} absolute supplemental count must match`);
   assert.equal(
     structuredData.image.length,
-    4 + existingSecondaryCount,
+    1 + existingSecondaryCount + expectedAdditional.length,
     `${product.title} structured data should include the complete gallery`,
   );
   assert.equal(structuredData.image[0], product.image_url, `${product.title} structured data must keep the real image first`);
@@ -63,7 +65,7 @@ for (const product of consumables) {
   }
 
   for (const imageUrl of absoluteAdditional) {
-    assert.match(imageUrl, /^https:\/\/nuvirajuice\.com\/images\/google-merchant\//);
+    assert.match(imageUrl, /^https:\/\/nuvirajuice\.com\/images\/authentic-products\//);
   }
 }
 
@@ -80,10 +82,10 @@ const oasisWithExistingSecondary = {
   ],
 };
 const oasisGallery = buildProductGallery(oasisWithExistingSecondary);
-assert.equal(oasisGallery.length, 6, 'OASIS should retain unique real secondary photos before generated scenes');
+assert.equal(oasisGallery.length, 6, 'OASIS should retain unique real secondary photos before authentic scenes');
 assert.equal(oasisGallery[1].src, 'https://example.com/oasis-real-secondary.jpg');
 assert.equal(oasisGallery[2].src, '/images/oasis-detail.jpg');
-assert.match(oasisGallery[3].src, /\/images\/google-merchant\/oasis\/oasis-kitchen\.jpg$/);
+assert.equal(oasisGallery[3].src, '/images/authentic-products/oasis/oasis-event-cooler.jpg');
 const absoluteOasisGallery = buildProductGallery(oasisWithExistingSecondary, { absolute: true });
 assert.equal(absoluteOasisGallery[2].src, 'https://nuvirajuice.com/images/oasis-detail.jpg');
 
@@ -97,7 +99,8 @@ console.log(JSON.stringify({
   ok: true,
   suite: 'g169-product-gallery-images',
   consumable_products: consumables.length,
-  minimum_images_per_product: 4,
+  authentically_enriched_products: Object.keys(expectedGalleryPathsByTitle).length,
+  primary_only_products: consumables.length - Object.keys(expectedGalleryPathsByTitle).length,
   existing_secondary_images_preserved: true,
   real_primary_preserved: true,
   product_assignment_matrix_locked: true,

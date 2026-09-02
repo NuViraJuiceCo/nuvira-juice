@@ -1,0 +1,77 @@
+{
+  "policy": "Resized-only exports from NuVira-owned photography. No AI generation, compositing, relabeling, bottle replacement, or synthetic retouching.",
+  "assets": {
+    "public/images/authentic-products/aura/aura-drinking.jpg": {
+      "product": "AURA",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02532.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/aura/aura-conversation.jpg": {
+      "product": "AURA",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02522.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/aura/aura-bench.jpg": {
+      "product": "AURA",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02583.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/oasis/oasis-event-cooler.jpg": {
+      "product": "OASIS",
+      "source_collection": "NUVIRA event PHOTOS final-530",
+      "source_file": "DSC02797.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/oasis/oasis-sunset-bottle.jpg": {
+      "product": "OASIS",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02715.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/oasis/oasis-sunset-trio.jpg": {
+      "product": "OASIS",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02731.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/re-nu/re-nu-shared-drink.jpg": {
+      "product": "RE-NU",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02536.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/re-nu/re-nu-conversation.jpg": {
+      "product": "RE-NU",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02515.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/re-nu/re-nu-bench.jpg": {
+      "product": "RE-NU",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02581.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/trio/trio-outdoor-bag.jpg": {
+      "product": "The NuVira Trio",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02565.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/trio/trio-outdoor-lineup.jpg": {
+      "product": "The NuVira Trio",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02573.jpg",
+      "transform": "resize-only"
+    },
+    "public/images/authentic-products/trio/trio-sunset-lineup.jpg": {
+      "product": "The NuVira Trio",
+      "source_collection": "NUVIRA PHOTOS-5-2-WEB",
+      "source_file": "DSC02709.jpg",
+      "transform": "resize-only"
+    }
+  }
+}
