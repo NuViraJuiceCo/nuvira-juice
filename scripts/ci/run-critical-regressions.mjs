@@ -116,6 +116,7 @@ const harnesses = [
   'scripts/migration/run-g166-event-pos-stock-alert-tests.mjs',
   'scripts/migration/run-g167-google-measurement-protocol-tests.mjs',
   'scripts/migration/run-g168-google-merchant-additional-image-tests.mjs',
+  'scripts/migration/run-g169-product-gallery-images-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

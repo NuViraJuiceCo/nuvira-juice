@@ -1,5 +1,6 @@
 import { PUBLIC_PRODUCT_FALLBACKS } from './public-product-catalog.js';
 import { MERCHANT_RETURN_POLICY_ID } from './merchant-policy.js';
+import { buildProductGallery } from './product-gallery-images.js';
 import { SITE_URL, productLookupKeys, productPath, slugifyProductTitle } from './seo-slugs.js';
 
 const SITE_NAME = 'NuVira Juice Co.';
@@ -76,6 +77,8 @@ export function buildProductSeoMetadata(product = {}) {
 export function buildProductStructuredData(product = {}) {
   const resolvedProduct = resolveProductSeoRecord(product);
   const metadata = buildProductSeoMetadata(resolvedProduct);
+  const productImages = buildProductGallery(resolvedProduct, { absolute: true })
+    .map(item => item.src);
   const additionalProperty = [
     resolvedProduct.size ? {
       '@type': 'PropertyValue',
@@ -95,7 +98,7 @@ export function buildProductStructuredData(product = {}) {
     '@id': `${metadata.canonicalUrl}#product`,
     name: resolvedProduct.title,
     description: metadata.description,
-    image: [metadata.image],
+    image: productImages,
     sku: String(resolvedProduct.catalog_id || resolvedProduct.shopify_variant_id || resolvedProduct.id || ''),
     productID: String(resolvedProduct.id || resolvedProduct.catalog_id || ''),
     category: metadata.category,

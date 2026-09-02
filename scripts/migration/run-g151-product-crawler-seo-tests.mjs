@@ -103,7 +103,12 @@ test('every generated product document is unique, crawler-readable, and catalog-
     assert.equal(schema['@type'], 'Product');
     assert.equal(schema['@id'], `${metadata.canonicalUrl}#product`);
     assert.equal(schema.name, product.title);
-    assert.deepEqual(schema.image, [metadata.image]);
+    assert.equal(schema.image[0], metadata.image, `${product.slug} must keep the real catalog image first`);
+    assert.equal(
+      schema.image.length,
+      product.category === 'merch' ? 1 : 4 + (product.secondary_images?.length || 0),
+      `${product.slug} should expose its complete crawler-readable image gallery`,
+    );
     assert.equal(schema.sku, String(product.catalog_id));
     assert.equal(schema.productID, String(product.id));
     assert.equal(schema.brand?.name, 'NuVira Juice Co.');
