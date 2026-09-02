@@ -54,7 +54,7 @@ for (const functionPath of functionPaths) {
 const feedSource = fs.readFileSync(functionPaths[0], 'utf8');
 const apiSource = fs.readFileSync(functionPaths[1], 'utf8');
 
-assert.match(feedSource, /GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION = '2026-09-02\.g168-additional-images'/);
+assert.match(feedSource, /GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION = '2026-09-02\.g170-authentic-photography'/);
 assert.match(feedSource, /'X-Feed-Revision': GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION/);
 assert.match(feedSource, /const id = product\.id/);
 assert.match(feedSource, /<g:id>\$\{escapeXml\(id\)\}<\/g:id>/);

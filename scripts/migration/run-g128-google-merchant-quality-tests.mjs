@@ -38,24 +38,30 @@ function jpegDimensions(filePath) {
 
 const highResolutionProductImages = [
   'aura-main.jpg',
-  'aura-lifestyle.jpg',
   'hydration-shot-main.jpg',
   'nuvira-trio-main.jpg',
-  'nuvira-trio-lifestyle.jpg',
   'oasis-main.jpg',
-  'oasis-lifestyle.jpg',
   'orange-juice-main.jpg',
   'pineapple-juice-main.jpg',
   'radiance-shot-main.jpg',
   're-nu-main.jpg',
-  're-nu-lifestyle.jpg',
   'reset-shot-main.jpg',
   'watermelon-juice-main.jpg',
 ];
 
 const highResolutionMerchantLifestyleImages = [
-  'public/images/brand/nuvira-bottles-cooler-wide.jpg',
-  'public/images/brand/nuvira-trio-outdoor-event.jpg',
+  'public/images/authentic-products/aura/aura-drinking.jpg',
+  'public/images/authentic-products/aura/aura-conversation.jpg',
+  'public/images/authentic-products/aura/aura-bench.jpg',
+  'public/images/authentic-products/oasis/oasis-event-cooler.jpg',
+  'public/images/authentic-products/oasis/oasis-sunset-bottle.jpg',
+  'public/images/authentic-products/oasis/oasis-sunset-trio.jpg',
+  'public/images/authentic-products/re-nu/re-nu-shared-drink.jpg',
+  'public/images/authentic-products/re-nu/re-nu-conversation.jpg',
+  'public/images/authentic-products/re-nu/re-nu-bench.jpg',
+  'public/images/authentic-products/trio/trio-outdoor-bag.jpg',
+  'public/images/authentic-products/trio/trio-outdoor-lineup.jpg',
+  'public/images/authentic-products/trio/trio-sunset-lineup.jpg',
 ];
 
 for (const source of [xmlFeed, contentApi]) {
@@ -72,8 +78,12 @@ for (const source of [xmlFeed, contentApi]) {
   assert.match(source, /NuVira Hydration Wellness Shot – 2 oz/);
   assert.match(source, /NuVira Reusable Tote Bag – Large/);
   assert.doesNotMatch(source, /boost energy|clear the body|detox-forward/i);
-  assert.match(source, /nuvira-bottles-cooler-wide\.jpg/);
-  assert.match(source, /nuvira-trio-outdoor-event\.jpg/);
+  assert.match(source, /\/images\/authentic-products\/aura\/aura-drinking\.jpg/);
+  assert.match(source, /\/images\/authentic-products\/oasis\/oasis-event-cooler\.jpg/);
+  assert.match(source, /\/images\/authentic-products\/re-nu\/re-nu-shared-drink\.jpg/);
+  assert.match(source, /\/images\/authentic-products\/trio\/trio-outdoor-bag\.jpg/);
+  assert.doesNotMatch(source, /\/images\/google-merchant\//);
+  assert.doesNotMatch(source, /\/(?:aura|oasis|re-nu|nuvira-trio)-lifestyle\.jpg/);
 }
 
 assert.match(xmlFeed, /<g:additional_image_link>/);

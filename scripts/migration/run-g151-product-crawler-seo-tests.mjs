@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import { renderProductCanonicalRedirect, renderProductCrawlerHtml } from '../seo/product-crawler-pages.mjs';
 import { PUBLIC_PRODUCT_FALLBACKS } from '../../src/lib/public-product-catalog.js';
+import { productAdditionalImageUrls } from '../../src/lib/product-gallery-images.js';
 import { buildProductSeoMetadata, buildProductStructuredData } from '../../src/lib/product-seo.js';
 
 const root = process.cwd();
@@ -106,7 +107,7 @@ test('every generated product document is unique, crawler-readable, and catalog-
     assert.equal(schema.image[0], metadata.image, `${product.slug} must keep the real catalog image first`);
     assert.equal(
       schema.image.length,
-      product.category === 'merch' ? 1 : 4 + (product.secondary_images?.length || 0),
+      1 + (product.secondary_images?.length || 0) + productAdditionalImageUrls(product).length,
       `${product.slug} should expose its complete crawler-readable image gallery`,
     );
     assert.equal(schema.sku, String(product.catalog_id));

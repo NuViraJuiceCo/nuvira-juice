@@ -11,31 +11,37 @@ const functionPaths = [
 ];
 const criticalSource = fs.readFileSync('scripts/ci/run-critical-regressions.mjs', 'utf8');
 
-const generatedScenes = {
-  aura: ['aura-kitchen.jpg', 'aura-ingredients.jpg', 'aura-outdoor.jpg'],
-  oasis: ['oasis-kitchen.jpg', 'oasis-ingredients.jpg', 'oasis-wellness.jpg'],
-  're-nu': ['re-nu-kitchen.jpg', 're-nu-ingredients.jpg', 're-nu-outdoor.jpg'],
-  'the nuvira trio': ['nuvira-trio-kitchen.jpg', 'nuvira-trio-ingredients.jpg', 'nuvira-trio-lifestyle.jpg'],
-  'pineapple juice': ['pineapple-juice-kitchen.jpg', 'pineapple-juice-ingredients.jpg', 'pineapple-juice-lifestyle.jpg'],
-  'orange juice': ['orange-juice-kitchen.jpg', 'orange-juice-ingredients.jpg', 'orange-juice-lifestyle.jpg'],
-  'watermelon juice': ['watermelon-juice-kitchen.jpg', 'watermelon-juice-ingredients.jpg', 'watermelon-juice-lifestyle.jpg'],
-  'reset shot': ['reset-shot-kitchen.jpg', 'reset-shot-ingredients.jpg', 'reset-shot-lifestyle.jpg'],
-  'hydration shot': ['hydration-shot-kitchen.jpg', 'hydration-shot-ingredients.jpg', 'hydration-shot-lifestyle.jpg'],
-  'radiance shot': ['radiance-shot-kitchen.jpg', 'radiance-shot-ingredients.jpg', 'radiance-shot-lifestyle.jpg'],
+const authenticPhotos = {
+  aura: [
+    'aura/aura-drinking.jpg',
+    'aura/aura-conversation.jpg',
+    'aura/aura-bench.jpg',
+  ],
+  oasis: [
+    'oasis/oasis-event-cooler.jpg',
+    'oasis/oasis-sunset-bottle.jpg',
+    'oasis/oasis-sunset-trio.jpg',
+  ],
+  're-nu': [
+    're-nu/re-nu-shared-drink.jpg',
+    're-nu/re-nu-conversation.jpg',
+    're-nu/re-nu-bench.jpg',
+  ],
+  'the nuvira trio': [
+    'trio/trio-outdoor-bag.jpg',
+    'trio/trio-outdoor-lineup.jpg',
+    'trio/trio-sunset-lineup.jpg',
+  ],
 };
 
-const directoryByProduct = {
-  aura: 'aura',
-  oasis: 'oasis',
-  're-nu': 're-nu',
-  'the nuvira trio': 'nuvira-trio',
-  'pineapple juice': 'pineapple-juice',
-  'orange juice': 'orange-juice',
-  'watermelon juice': 'watermelon-juice',
-  'reset shot': 'reset-shot',
-  'hydration shot': 'hydration-shot',
-  'radiance shot': 'radiance-shot',
-};
+const primaryOnlyProducts = [
+  'pineapple juice',
+  'orange juice',
+  'watermelon juice',
+  'reset shot',
+  'hydration shot',
+  'radiance shot',
+];
 
 function extractObjectLiteral(source, constantName) {
   const marker = `const ${constantName} = `;
@@ -105,20 +111,19 @@ const literals = sources.map(source => extractObjectLiteral(source, 'MERCHANT_IM
 assert.equal(literals[0], literals[1], 'XML feed and Merchant API image mappings must remain identical');
 
 const imageSets = evaluateImageSets(literals[0]);
-const generatedUrls = [];
+const authenticUrls = [];
 
-for (const [product, scenes] of Object.entries(generatedScenes)) {
+for (const [product, photos] of Object.entries(authenticPhotos)) {
   const imageSet = imageSets[product];
   assert.ok(imageSet, `${product} must have a curated image set`);
   assert.ok(imageSet.primary, `${product} must retain a primary image`);
-  assert.doesNotMatch(imageSet.primary, /\/images\/google-merchant\//, `${product} primary must remain real catalog photography`);
+  assert.doesNotMatch(imageSet.primary, /\/images\/authentic-products\//, `${product} primary must remain its clean catalog photo`);
   assert.ok(imageSet.additional.length <= 10, `${product} exceeds Google's additional-image limit`);
 
-  const directory = directoryByProduct[product];
-  for (const scene of scenes) {
-    const url = `${SITE_URL}/images/google-merchant/${directory}/${scene}`;
-    assert.ok(imageSet.additional.includes(url), `${product} is missing ${scene}`);
-    generatedUrls.push(url);
+  const expectedUrls = photos.map(photo => `${SITE_URL}/images/authentic-products/${photo}`);
+  assert.deepEqual(imageSet.additional, expectedUrls, `${product} must use only its approved authentic photos`);
+  for (const url of expectedUrls) {
+    authenticUrls.push(url);
 
     const filePath = path.join('public', new URL(url).pathname);
     assert.ok(fs.existsSync(filePath), `${filePath} must exist`);
@@ -126,27 +131,36 @@ for (const [product, scenes] of Object.entries(generatedScenes)) {
     assert.ok(buffer.length > 0 && buffer.length <= 16 * 1024 * 1024, `${filePath} must be within Google's file-size limit`);
     const { width, height } = readJpegDimensions(buffer);
     assert.ok(width >= 500 && height >= 500, `${filePath} must meet the current Merchant image dimensions`);
-    assert.ok(
+    assert.equal(
       buffer.includes(Buffer.from('http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia')),
-      `${filePath} must retain AI-origin metadata`,
+      false,
+      `${filePath} must not carry generated-image metadata`,
     );
   }
 }
 
-assert.equal(generatedUrls.length, 30, 'ten consumables need three new images each');
-assert.equal(new Set(generatedUrls).size, 30, 'all generated image URLs must be unique');
+for (const product of primaryOnlyProducts) {
+  const imageSet = imageSets[product];
+  assert.ok(imageSet?.primary, `${product} must retain its real primary image`);
+  assert.deepEqual(imageSet.additional, [], `${product} must not receive an unverified supplemental image`);
+}
+
+assert.equal(authenticUrls.length, 12, 'four supported products need three authentic photos each');
+assert.equal(new Set(authenticUrls).size, 12, 'all authentic image URLs must be unique');
 assert.equal(imageSets['large nuvira tote bag'].additional.length, 1, 'tote media must remain outside the juice-image change');
-assert.match(sources[0], /GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION = '2026-09-02\.g168-additional-images'/);
+assert.doesNotMatch(literals[0], /\/images\/google-merchant\//, 'active Merchant mappings must not use the rejected generated set');
+assert.match(sources[0], /GOOGLE_MERCHANT_FEED_DEPLOYMENT_REVISION = '2026-09-02\.g170-authentic-photography'/);
 assert.match(criticalSource, /run-g168-google-merchant-additional-image-tests\.mjs/);
 
 console.log(JSON.stringify({
   ok: true,
   suite: 'g168-google-merchant-additional-images',
-  consumable_products: Object.keys(generatedScenes).length,
-  generated_additional_images: generatedUrls.length,
+  authentically_enriched_products: Object.keys(authenticPhotos).length,
+  primary_only_products: primaryOnlyProducts.length,
+  authentic_additional_images: authenticUrls.length,
   merchant_api_and_xml_parity: true,
   real_primary_images_preserved: true,
-  ai_origin_metadata_present: true,
+  generated_images_active: false,
   provider_calls_performed: false,
   production_writes_performed: false,
 }, null, 2));

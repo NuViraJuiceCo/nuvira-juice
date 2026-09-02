@@ -1,39 +1,80 @@
 import { SITE_URL, slugifyProductTitle } from './seo-slugs.js';
 
+const TRIO_GALLERY = Object.freeze([
+  {
+    path: '/images/authentic-products/trio/trio-outdoor-bag.jpg',
+    alt: 'with the complete juice lineup and reusable NuVira bag outdoors',
+    scene: 'authentic-outdoor-bag',
+  },
+  {
+    path: '/images/authentic-products/trio/trio-outdoor-lineup.jpg',
+    alt: 'complete juice lineup photographed outdoors',
+    scene: 'authentic-outdoor-lineup',
+  },
+  {
+    path: '/images/authentic-products/trio/trio-sunset-lineup.jpg',
+    alt: 'complete juice lineup photographed in natural sunset light',
+    scene: 'authentic-sunset-lineup',
+  },
+]);
+
+// Supplemental photography is intentionally limited to products represented in
+// NuVira's real photo library. Products without a verified lifestyle image keep
+// their clean catalog primary instead of receiving a generated or mismatched one.
 const PRODUCT_GALLERY_IMAGES = Object.freeze({
-  aura: ['kitchen', 'ingredients', 'outdoor'],
-  oasis: ['kitchen', 'ingredients', 'wellness'],
-  're-nu': ['kitchen', 'ingredients', 'outdoor'],
-  'the-nuvira-trio': ['kitchen', 'ingredients', 'lifestyle'],
-  'nuvira-trio': ['kitchen', 'ingredients', 'lifestyle'],
-  'orange-juice': ['kitchen', 'ingredients', 'lifestyle'],
-  'pineapple-juice': ['kitchen', 'ingredients', 'lifestyle'],
-  'watermelon-juice': ['kitchen', 'ingredients', 'lifestyle'],
-  'radiance-shot': ['kitchen', 'ingredients', 'lifestyle'],
-  'hydration-shot': ['kitchen', 'ingredients', 'lifestyle'],
-  'reset-shot': ['kitchen', 'ingredients', 'lifestyle'],
-});
-
-const GALLERY_DIRECTORY = Object.freeze({
-  aura: 'aura',
-  oasis: 'oasis',
-  're-nu': 're-nu',
-  'the-nuvira-trio': 'nuvira-trio',
-  'nuvira-trio': 'nuvira-trio',
-  'orange-juice': 'orange-juice',
-  'pineapple-juice': 'pineapple-juice',
-  'watermelon-juice': 'watermelon-juice',
-  'radiance-shot': 'radiance-shot',
-  'hydration-shot': 'hydration-shot',
-  'reset-shot': 'reset-shot',
-});
-
-const SCENE_LABELS = Object.freeze({
-  kitchen: 'in a bright kitchen setting',
-  ingredients: 'with its featured ingredients',
-  outdoor: 'in a fresh outdoor setting',
-  wellness: 'in a calm wellness setting',
-  lifestyle: 'in a premium lifestyle setting',
+  aura: Object.freeze([
+    {
+      path: '/images/authentic-products/aura/aura-drinking.jpg',
+      alt: 'being enjoyed directly from the bottle outdoors',
+      scene: 'authentic-drinking',
+    },
+    {
+      path: '/images/authentic-products/aura/aura-conversation.jpg',
+      alt: 'held during an outdoor conversation',
+      scene: 'authentic-conversation',
+    },
+    {
+      path: '/images/authentic-products/aura/aura-bench.jpg',
+      alt: 'held naturally during a relaxed outdoor moment',
+      scene: 'authentic-bench',
+    },
+  ]),
+  oasis: Object.freeze([
+    {
+      path: '/images/authentic-products/oasis/oasis-event-cooler.jpg',
+      alt: 'chilled and ready to serve at a NuVira event',
+      scene: 'authentic-event-cooler',
+    },
+    {
+      path: '/images/authentic-products/oasis/oasis-sunset-bottle.jpg',
+      alt: 'photographed outdoors in natural sunset light',
+      scene: 'authentic-sunset-bottle',
+    },
+    {
+      path: '/images/authentic-products/oasis/oasis-sunset-trio.jpg',
+      alt: 'with the complete juice lineup and NuVira bag at sunset',
+      scene: 'authentic-sunset-trio',
+    },
+  ]),
+  're-nu': Object.freeze([
+    {
+      path: '/images/authentic-products/re-nu/re-nu-shared-drink.jpg',
+      alt: 'being enjoyed directly from the bottle outdoors',
+      scene: 'authentic-shared-drink',
+    },
+    {
+      path: '/images/authentic-products/re-nu/re-nu-conversation.jpg',
+      alt: 'present during a relaxed outdoor conversation',
+      scene: 'authentic-conversation',
+    },
+    {
+      path: '/images/authentic-products/re-nu/re-nu-bench.jpg',
+      alt: 'held naturally during a relaxed outdoor moment',
+      scene: 'authentic-bench',
+    },
+  ]),
+  'the-nuvira-trio': TRIO_GALLERY,
+  'nuvira-trio': TRIO_GALLERY,
 });
 
 function productGalleryKey(product = {}) {
@@ -56,11 +97,9 @@ export function productAdditionalImageUrls(product = {}, { absolute = false } = 
   const key = productGalleryKey(product);
   if (!key) return [];
 
-  const directory = GALLERY_DIRECTORY[key];
-  return PRODUCT_GALLERY_IMAGES[key].map(scene => {
-    const imagePath = `/images/google-merchant/${directory}/${directory}-${scene}.jpg`;
-    return absolute ? absoluteImageUrl(imagePath) : imagePath;
-  });
+  return PRODUCT_GALLERY_IMAGES[key].map(image => (
+    absolute ? absoluteImageUrl(image.path) : image.path
+  ));
 }
 
 export function buildProductGallery(product = {}, { absolute = false } = {}) {
@@ -82,14 +121,11 @@ export function buildProductGallery(product = {}, { absolute = false } = {}) {
 
   if (!key) return items;
 
-  const directory = GALLERY_DIRECTORY[key];
-  for (const scene of PRODUCT_GALLERY_IMAGES[key]) {
+  for (const image of PRODUCT_GALLERY_IMAGES[key]) {
     items.push({
-      src: absolute
-        ? absoluteImageUrl(`/images/google-merchant/${directory}/${directory}-${scene}.jpg`)
-        : `/images/google-merchant/${directory}/${directory}-${scene}.jpg`,
-      alt: `${title} ${SCENE_LABELS[scene]}`,
-      scene,
+      src: absolute ? absoluteImageUrl(image.path) : image.path,
+      alt: `${title} ${image.alt}`,
+      scene: image.scene,
     });
   }
 
