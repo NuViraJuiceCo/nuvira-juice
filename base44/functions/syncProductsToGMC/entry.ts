@@ -241,6 +241,9 @@ const MERCHANT_IMAGE_SETS = {
     additional: [
       `${SITE_URL}/images/products/aura-lifestyle.jpg`,
       `${SITE_URL}/images/brand/nuvira-bottles-cooler-wide.jpg`,
+      `${SITE_URL}/images/google-merchant/aura/aura-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/aura/aura-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/aura/aura-outdoor.jpg`,
     ],
   },
   oasis: {
@@ -248,6 +251,9 @@ const MERCHANT_IMAGE_SETS = {
     additional: [
       `${SITE_URL}/images/products/oasis-lifestyle.jpg`,
       `${SITE_URL}/images/brand/nuvira-bottles-cooler-wide.jpg`,
+      `${SITE_URL}/images/google-merchant/oasis/oasis-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/oasis/oasis-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/oasis/oasis-wellness.jpg`,
     ],
   },
   're-nu': {
@@ -255,6 +261,9 @@ const MERCHANT_IMAGE_SETS = {
     additional: [
       `${SITE_URL}/images/products/re-nu-lifestyle.jpg`,
       `${SITE_URL}/images/brand/nuvira-bottles-cooler-wide.jpg`,
+      `${SITE_URL}/images/google-merchant/re-nu/re-nu-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/re-nu/re-nu-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/re-nu/re-nu-outdoor.jpg`,
     ],
   },
   'the nuvira trio': {
@@ -263,14 +272,59 @@ const MERCHANT_IMAGE_SETS = {
       `${SITE_URL}/images/products/nuvira-trio-lifestyle.jpg`,
       `${SITE_URL}/images/brand/nuvira-bottles-cooler-wide.jpg`,
       `${SITE_URL}/images/brand/nuvira-trio-outdoor-event.jpg`,
+      `${SITE_URL}/images/google-merchant/nuvira-trio/nuvira-trio-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/nuvira-trio/nuvira-trio-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/nuvira-trio/nuvira-trio-lifestyle.jpg`,
     ],
   },
-  'pineapple juice': { primary: `${SITE_URL}/images/products/pineapple-juice-main.jpg` },
-  'orange juice': { primary: `${SITE_URL}/images/products/orange-juice-main.jpg` },
-  'watermelon juice': { primary: `${SITE_URL}/images/products/watermelon-juice-main.jpg` },
-  'reset shot': { primary: `${SITE_URL}/images/products/reset-shot-main.jpg` },
-  'hydration shot': { primary: `${SITE_URL}/images/products/hydration-shot-main.jpg` },
-  'radiance shot': { primary: `${SITE_URL}/images/products/radiance-shot-main.jpg` },
+  'pineapple juice': {
+    primary: `${SITE_URL}/images/products/pineapple-juice-main.jpg`,
+    additional: [
+      `${SITE_URL}/images/google-merchant/pineapple-juice/pineapple-juice-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/pineapple-juice/pineapple-juice-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/pineapple-juice/pineapple-juice-lifestyle.jpg`,
+    ],
+  },
+  'orange juice': {
+    primary: `${SITE_URL}/images/products/orange-juice-main.jpg`,
+    additional: [
+      `${SITE_URL}/images/google-merchant/orange-juice/orange-juice-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/orange-juice/orange-juice-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/orange-juice/orange-juice-lifestyle.jpg`,
+    ],
+  },
+  'watermelon juice': {
+    primary: `${SITE_URL}/images/products/watermelon-juice-main.jpg`,
+    additional: [
+      `${SITE_URL}/images/google-merchant/watermelon-juice/watermelon-juice-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/watermelon-juice/watermelon-juice-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/watermelon-juice/watermelon-juice-lifestyle.jpg`,
+    ],
+  },
+  'reset shot': {
+    primary: `${SITE_URL}/images/products/reset-shot-main.jpg`,
+    additional: [
+      `${SITE_URL}/images/google-merchant/reset-shot/reset-shot-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/reset-shot/reset-shot-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/reset-shot/reset-shot-lifestyle.jpg`,
+    ],
+  },
+  'hydration shot': {
+    primary: `${SITE_URL}/images/products/hydration-shot-main.jpg`,
+    additional: [
+      `${SITE_URL}/images/google-merchant/hydration-shot/hydration-shot-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/hydration-shot/hydration-shot-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/hydration-shot/hydration-shot-lifestyle.jpg`,
+    ],
+  },
+  'radiance shot': {
+    primary: `${SITE_URL}/images/products/radiance-shot-main.jpg`,
+    additional: [
+      `${SITE_URL}/images/google-merchant/radiance-shot/radiance-shot-kitchen.jpg`,
+      `${SITE_URL}/images/google-merchant/radiance-shot/radiance-shot-ingredients.jpg`,
+      `${SITE_URL}/images/google-merchant/radiance-shot/radiance-shot-lifestyle.jpg`,
+    ],
+  },
   'large nuvira tote bag': {
     primary: `${SITE_URL}/assets/large-nuvira-tote-bag.jpg`,
     additional: [`${SITE_URL}/images/brand/nuvira-tote-bag.jpg`],
