@@ -126,3 +126,26 @@ export function buildProductStructuredData(product = {}) {
     additionalProperty: additionalProperty.length ? additionalProperty : undefined,
   };
 }
+
+export function shouldRenderClientProductStructuredData(structuredData, documentRef) {
+  const expectedId = String(structuredData?.['@id'] || '').trim();
+  if (!expectedId) return true;
+
+  const activeDocument = documentRef
+    ?? (typeof document !== 'undefined' ? document : null);
+  if (!activeDocument?.querySelectorAll) return true;
+
+  const crawlerSchemas = activeDocument.querySelectorAll(
+    'script[type="application/ld+json"][data-nuvira-product-schema]',
+  );
+
+  return !Array.from(crawlerSchemas).some((node) => {
+    try {
+      const parsed = JSON.parse(String(node?.textContent || ''));
+      return parsed?.['@type'] === 'Product'
+        && String(parsed?.['@id'] || '').trim() === expectedId;
+    } catch {
+      return false;
+    }
+  });
+}
