@@ -147,6 +147,7 @@ export default function ProductDetail() {
   const { addItem } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [failedGalleryImages, setFailedGalleryImages] = useState(() => new Set());
   const trackedProductIdRef = useRef('');
   const trackedMetaProductIdRef = useRef('');
   const trackedSnapProductIdRef = useRef('');
@@ -228,7 +229,21 @@ export default function ProductDetail() {
 
   useEffect(() => {
     setSelectedImageIndex(0);
+    setFailedGalleryImages(new Set());
   }, [product?.id]);
+
+  const handleGalleryImageError = (imageSrc, failedIndex) => {
+    setFailedGalleryImages((current) => {
+      if (current.has(imageSrc)) return current;
+      const next = new Set(current);
+      next.add(imageSrc);
+      return next;
+    });
+    setSelectedImageIndex((current) => {
+      if (current === failedIndex) return 0;
+      return current > failedIndex ? current - 1 : current;
+    });
+  };
 
   const handleAddToCart = () => {
     if (!product) return;
@@ -276,7 +291,9 @@ export default function ProductDetail() {
   const blendDetail = inferBlendDetail(product, isMerchProduct);
   const productSeo = buildProductSeoMetadata(product);
   const productStructuredData = buildProductStructuredData(product);
-  const productGallery = buildProductGallery(product);
+  const productGallery = buildProductGallery(product).filter(
+    image => !failedGalleryImages.has(image.src),
+  );
   const selectedProductImage = productGallery[selectedImageIndex] || productGallery[0] || null;
 
   const purchaseBar = (
@@ -357,6 +374,7 @@ export default function ProductDetail() {
                 <img
                   src={selectedProductImage.src}
                   alt={selectedProductImage.alt}
+                  onError={() => handleGalleryImageError(selectedProductImage.src, selectedImageIndex)}
                   className={`relative h-full w-full ${isMerchProduct ? 'object-contain p-3 md:p-8' : 'object-cover'}`}
                 />
               </>
@@ -410,6 +428,7 @@ export default function ProductDetail() {
                     alt=""
                     aria-hidden="true"
                     loading={index === 0 ? 'eager' : 'lazy'}
+                    onError={() => handleGalleryImageError(image.src, index)}
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                   />
                   <span className="sr-only">{image.alt}</span>
