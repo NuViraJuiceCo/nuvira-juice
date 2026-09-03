@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: g172-guest-loyalty-activation-20260902.
 // Bundle revision: g125-delivery-live-activity-20260822.
 // Bundle revision: g104-program-shot-pairing-and-sandbox-safety-20260810.
 // Bundle revision: g103-premium-program-journey-20260809 (retained regression provenance).
