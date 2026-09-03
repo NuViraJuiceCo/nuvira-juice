@@ -25,8 +25,8 @@
     "test:g50c": "node scripts/migration/run-g50c-release-source-ci-gate-tests.mjs"
   },
   "dependencies": {
-    "@base44/sdk": "^0.8.44",
-    "@base44/vite-plugin": "^1.0.33",
+    "@base44/sdk": "^0.8.46",
+    "@base44/vite-plugin": "^1.0.34",
     "@capacitor-firebase/messaging": "^8.2.0",
     "@capacitor/android": "8.3.4",
     "@capacitor/app": "^8.1.0",
