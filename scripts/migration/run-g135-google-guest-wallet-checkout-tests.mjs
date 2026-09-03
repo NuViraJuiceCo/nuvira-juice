@@ -73,7 +73,7 @@ assert.doesNotMatch(
 assert.match(confirmation, /lookupMode === 'guest_order'/);
 assert.match(confirmation, /sessionStorage\.getItem\('nuvira_guest_order_confirmation'\)/);
 assert.match(confirmation, /mode: 'guest_order_status'/);
-assert.match(confirmation, /Create Account to Track/);
+assert.match(confirmation, /Activate My Points/);
 assert.match(criticalSuite, /run-g135-google-guest-wallet-checkout-tests\.mjs/);
 
 console.log(JSON.stringify({

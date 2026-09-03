@@ -26,6 +26,10 @@ import {
 } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import SEO from '@/components/SEO';
+import {
+  GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE,
+  readGuestLoyaltyActivationContext,
+} from '@/lib/guestLoyaltyActivation';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
 const IS_NATIVE_PLATFORM = Capacitor.isNativePlatform();
@@ -60,11 +64,13 @@ export default function NativeLogin() {
     () => normalizeReturnRoute(searchParams.get('return_to')),
     [searchParams]
   );
+  const guestActivationContext = useMemo(() => readGuestLoyaltyActivationContext(), []);
+  const isRewardsActivation = returnTo === GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE;
   const isSignInReset = searchParams.get('reset_sign_in') === '1';
   const isNativeBrowserCallback = searchParams.get(NATIVE_BROWSER_CALLBACK_MARKER) === '1';
 
-  const [mode, setMode] = useState('login');
-  const [email, setEmail] = useState('');
+  const [mode, setMode] = useState(isRewardsActivation ? 'register' : 'login');
+  const [email, setEmail] = useState(isRewardsActivation ? guestActivationContext?.customer_email || '' : '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -299,15 +305,26 @@ export default function NativeLogin() {
             {isRegistering ? <UserPlus className="h-6 w-6" /> : isVerifying ? <ShieldCheck className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
           </div>
           <h1 className="font-heading text-3xl font-bold tracking-tight">
-            {isRegistering ? 'Create Account' : isVerifying ? 'Verify Email' : 'Sign In'}
+            {isRewardsActivation && isRegistering
+              ? 'Activate Your Points'
+              : isRegistering ? 'Create Account' : isVerifying ? 'Verify Email' : 'Sign In'}
           </h1>
           <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
-            {isRegistering
-              ? 'Create your NuVira account to order faster, earn rewards, and keep delivery details ready.'
+            {isRewardsActivation && isRegistering
+              ? guestActivationContext?.purchase_points > 0
+                ? `Use your checkout email to access ${Number(guestActivationContext.purchase_points).toLocaleString()} purchase points, rewards, and order tracking.`
+                : 'Use your checkout email to access your purchase points, rewards, and order tracking.'
+              : isRegistering
+                ? 'Create your NuVira account to order faster, earn rewards, and keep delivery details ready.'
               : isVerifying
                 ? 'Enter the code sent to your email to finish securing your account.'
                 : 'Access ordering, rewards, event check-in, and account details.'}
           </p>
+          {isRewardsActivation && (
+            <p className="mx-auto mt-3 max-w-xs rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-[11px] font-medium leading-relaxed text-primary">
+              Your purchase is already recorded. Use the same email {guestActivationContext?.customer_email ? 'shown below' : 'you used at checkout'} so your order and points connect to one profile.
+            </p>
+          )}
         </div>
 
         <div className="mb-4 grid grid-cols-3 rounded-2xl border border-border/60 bg-card/70 p-1 shadow-sm">
@@ -470,7 +487,7 @@ export default function NativeLogin() {
             {isSubmitting
               ? 'Please wait...'
               : isRegistering
-                ? 'Create Account'
+                ? isRewardsActivation ? 'Activate My Points' : 'Create Account'
                 : isVerifying
                   ? 'Verify and Sign In'
                   : 'Sign In'}

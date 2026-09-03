@@ -6,7 +6,7 @@ import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 import { SAFE_TOP_PADDING } from '@/components/layout/MobilePageHeader';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
-import { CheckCircle, Truck, ArrowRight, Home, Clock, Mail } from 'lucide-react';
+import { CheckCircle, Truck, ArrowRight, Home, Clock, Mail, Gift, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
@@ -17,6 +17,12 @@ import {
 } from '@/lib/googleAnalytics';
 import { MARKETING_CONSENT_EVENT } from '@/lib/metaPixel';
 import { trackSnapPurchase } from '@/lib/snapPixel';
+import {
+  GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE,
+  purchasePointsForTotal,
+  readGuestLoyaltyActivationContext,
+  saveGuestLoyaltyActivationContext,
+} from '@/lib/guestLoyaltyActivation';
 
 const POLLING_TIMEOUT_MS = 60000;
 const POLL_INTERVAL_MS = 3000;
@@ -56,6 +62,7 @@ export default function OrderConfirmation() {
   const timeoutRef = useRef(null);
   const startTime  = useRef(Date.now());
   const snapPurchaseTrackedRef = useRef('');
+  const guestActivationContext = isGuestCheckout ? readGuestLoyaltyActivationContext() : null;
 
   useEffect(() => {
     if (lookupMode === 'none') return;
@@ -87,6 +94,10 @@ export default function OrderConfirmation() {
           if (data?.found && data?.order) {
             setOrder(data.order);
             setLoading(false);
+            saveGuestLoyaltyActivationContext({
+              ...data.order,
+              guest_order_token: guestConfirmation.token,
+            });
             sessionStorage.removeItem('nuvira_guest_order_confirmation');
             clearInterval(pollRef.current);
             clearTimeout(timeoutRef.current);
@@ -284,6 +295,7 @@ export default function OrderConfirmation() {
   }
 
   if (!order && lookupMode === 'guest_order' && paymentOk) {
+    const pendingPurchasePoints = Number(guestActivationContext?.purchase_points || 0);
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center" style={{ paddingTop: SAFE_TOP_PADDING }}>
         <SEO title="Order Confirmed" noindex={true} />
@@ -292,12 +304,25 @@ export default function OrderConfirmation() {
         </div>
         <h1 className="font-heading text-2xl font-bold mb-2">Your Order is Confirmed!</h1>
         {resolvedOrderNumber && <p className="text-sm text-muted-foreground mb-2">Order #{resolvedOrderNumber}</p>}
-        <p className="text-sm text-muted-foreground max-w-sm mb-6 leading-relaxed">
-          Your receipt and delivery updates are being sent to the email you provided. Create an account with that same email whenever you want to track this order in NuVira.
+        <p className="text-sm text-muted-foreground max-w-sm mb-4 leading-relaxed">
+          Your receipt and delivery updates are being sent to the email you provided.
         </p>
+        <div className="mb-6 w-full max-w-sm rounded-2xl border border-primary/25 bg-primary/5 p-4 text-left">
+          <div className="flex items-start gap-3">
+            <Gift className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-bold text-foreground">
+                {pendingPurchasePoints > 0 ? `${pendingPurchasePoints.toLocaleString()} points earned` : 'Your purchase points are saved'}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Activate with the same checkout email to access rewards and this order in NuVira.
+              </p>
+            </div>
+          </div>
+        </div>
         <div className="space-y-2.5 w-full max-w-sm">
-          <Button onClick={() => redirectToLogin('/account/orders')} className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
-            Create Account / Sign In <ArrowRight className="w-4 h-4 ml-2" />
+          <Button onClick={() => redirectToLogin(GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE)} className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
+            Activate My Points <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
           <Link to="/" className="block">
             <Button variant="outline" className="w-full h-11 rounded-xl font-semibold text-sm"><Home className="w-4 h-4 mr-2" /> Back to Home</Button>
@@ -308,6 +333,8 @@ export default function OrderConfirmation() {
   }
 
   if (!order) return null;
+
+  const purchasePoints = Number(order.earned_points ?? purchasePointsForTotal(order.total));
 
   // ── Case 4: Order confirmed ────────────────────────────────────────────────
   return (
@@ -385,11 +412,28 @@ export default function OrderConfirmation() {
           </div>
         </div>
 
+        {isGuestCheckout && (
+          <div className="relative mb-6 overflow-hidden rounded-2xl border border-primary/25 bg-primary/5 p-4">
+            <Sparkles className="absolute -right-2 -top-2 h-16 w-16 text-primary/10" />
+            <div className="relative flex items-start gap-3">
+              <div className="nuvira-icon-badge flex h-10 w-10 shrink-0 items-center justify-center rounded-xl">
+                <Gift className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-lg font-bold text-foreground">{purchasePoints.toLocaleString()} points earned</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  We saved these points to your checkout email. Activate with that same email to access rewards and track this order.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="space-y-2.5">
           {isGuestCheckout ? (
-            <Button onClick={() => redirectToLogin('/account/orders')} className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
-              Create Account to Track <ArrowRight className="w-4 h-4 ml-2" />
+            <Button onClick={() => redirectToLogin(GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE)} className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
+              Activate My Points <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           ) : (
             <>

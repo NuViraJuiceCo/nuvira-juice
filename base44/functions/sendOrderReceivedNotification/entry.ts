@@ -33,6 +33,11 @@ function orderTrackerUrl(orderNumber) {
   return `${APP_ORIGIN}/native-login?return_to=${encodeURIComponent(returnTo)}`;
 }
 
+function rewardsActivationUrl() {
+  const returnTo = '/rewards?activated=1';
+  return `${APP_ORIGIN}/native-login?return_to=${encodeURIComponent(returnTo)}`;
+}
+
 function buildOrderConfirmationEmailKey(orderId, orderNumber) {
   if (orderId) return `order_confirmation_email_${orderId}`;
   if (orderNumber) return `order_confirmation_email_${orderNumber}`;
@@ -75,7 +80,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { order_id, customer_email, customer_name, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label, refund_notification, internal_sandbox_test, sandbox_test_id } = await req.json();
+    const { order_id, customer_email, customer_name, order_number, items, total, delivery_address, estimated_delivery_date, assigned_delivery_date, delivery_window_label, guest_checkout, refund_notification, internal_sandbox_test, sandbox_test_id } = await req.json();
     const idempotencyKey = buildOrderConfirmationEmailKey(order_id, order_number);
     const safeOrderNumber = cleanText(order_number || order_id, 120) || 'your order';
 
@@ -158,6 +163,11 @@ Deno.serve(async (req) => {
     }
 
     const trackingUrl = orderTrackerUrl(safeOrderNumber);
+    const activationUrl = rewardsActivationUrl();
+    const earnedPoints = Math.max(0, Math.floor(Number(total || 0) * 10));
+    const accountActionHtml = guest_checkout === true
+      ? `<div style="background:#eff8ef;border:1px solid #b8dabd;border-radius:12px;padding:16px;margin:20px 0;"><p style="margin:0 0 6px;font-size:18px;font-weight:bold;color:#173f2c;">${earnedPoints.toLocaleString('en-US')} points earned</p><p style="margin:0;color:#4d6255;">Your purchase points are saved to your checkout email. Activate with this same email to access rewards and track your order.</p></div><p style="text-align:center;"><a class="button" href="${escapeHtml(activationUrl)}">Activate My Points</a></p><p style="text-align:center;font-size:13px;"><a href="${escapeHtml(trackingUrl)}" style="color:#2d6a4f;">Already have an account? Sign in to view your order</a></p>`
+      : `<p>Track your order anytime in your account dashboard.</p><p style="text-align:center;"><a class="button" href="${escapeHtml(trackingUrl)}">View My Order</a></p>`;
     const html = `
 <!DOCTYPE html>
 <html>
@@ -215,8 +225,7 @@ Deno.serve(async (req) => {
         Total: $${money(total)}
       </div>
 
-      <p>Track your order anytime in your account dashboard.</p>
-      <p style="text-align:center;"><a class="button" href="${escapeHtml(trackingUrl)}">View My Order</a></p>
+      ${accountActionHtml}
       
       <p>Questions? Reply to this email or contact <a href="mailto:support@nuvirajuice.com">support@nuvirajuice.com</a>.</p>
       <p>Real. Living. Nutrition.<br>NuVira Juice Co.</p>

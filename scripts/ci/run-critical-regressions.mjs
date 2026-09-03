@@ -119,6 +119,7 @@ const harnesses = [
   'scripts/migration/run-g169-product-gallery-images-tests.mjs',
   'scripts/migration/run-g170-authentic-product-gallery-tests.mjs',
   'scripts/migration/run-g171-broken-product-gallery-tests.mjs',
+  'scripts/migration/run-g172-guest-loyalty-activation-tests.mjs',
 ];
 
 function fail(message, extra = {}) {

@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Switch } from '@/components/ui/switch';
 import { base44, invokeCustomerGateway } from '@/api/base44Client';
 import { redirectToLogin } from '@/lib/nativeAuthRedirect';
+import { saveGuestLoyaltyActivationContext } from '@/lib/guestLoyaltyActivation';
 import DeliveryDatePicker from '@/components/checkout/DeliveryDatePicker';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -866,6 +867,9 @@ function CheckoutFlow() {
               <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
                 No account is required. Google Pay, Apple Pay, and card are available at the secure payment step when supported on your device.
               </p>
+              <p className="mt-2 text-[11px] font-medium leading-relaxed text-primary">
+                You still earn 10 points per $1. After payment, use this same email to activate and access your rewards.
+              </p>
               <button
                 type="button"
                 onClick={() => redirectToLogin('/checkout')}
@@ -1276,6 +1280,14 @@ function CheckoutFlow() {
                   token: guestOrderToken.current,
                   timestamp: Date.now(),
                 }));
+                saveGuestLoyaltyActivationContext({
+                  order_number: pendingOrderNumber,
+                  customer_email: normalizedCustomerEmail,
+                  customer_name: buildCustomerName(firstName, lastName),
+                  contact_phone: phone.trim(),
+                  total: paymentTotal,
+                  guest_order_token: guestOrderToken.current,
+                });
               }
               navigate(`/order-confirmation?order_number=${pendingOrderNumber}&pi=${paymentIntentId}${isGuestCheckout ? '&guest_checkout=1' : ''}`);
             }}

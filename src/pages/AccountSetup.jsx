@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -12,23 +12,40 @@ import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { Loader2, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { trackGoogleProfileComplete } from '@/lib/googleAnalytics';
+import {
+  clearGuestLoyaltyActivationContext,
+  GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE,
+  guestActivationMatchesUser,
+  readGuestLoyaltyActivationContext,
+  splitGuestCustomerName,
+} from '@/lib/guestLoyaltyActivation';
+import { normalizeReturnRoute } from '@/lib/nativeAuthRedirect';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
 export default function AccountSetup() {
   const { user, isLoadingAuth } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const isAppleRelay = user?.email?.includes('privaterelay.appleid.com');
+  const setupReturnRoute = normalizeReturnRoute(searchParams.get('return_to'));
+  const guestActivationContext = React.useMemo(() => readGuestLoyaltyActivationContext(), []);
+  const hasGuestActivationIntent = setupReturnRoute === GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE;
+  const activationContextMatches = guestActivationMatchesUser(guestActivationContext, user?.email);
+  const isGuestRewardsActivation = hasGuestActivationIntent
+    && (!guestActivationContext || activationContextMatches);
+  const activeGuestContext = isGuestRewardsActivation ? guestActivationContext : null;
+  const guestName = splitGuestCustomerName(activeGuestContext?.customer_name);
   const [formData, setFormData] = useState({
-    first_name: user?.first_name || '',
-    last_name: user?.last_name || '',
-    phone: '',
+    first_name: user?.first_name || guestName.first_name || '',
+    last_name: user?.last_name || guestName.last_name || '',
+    phone: activeGuestContext?.contact_phone || '',
     birthday: '',
     address: { street: '', city: '', state: '', zip: '' },
-    contact_email: '',
+    contact_email: isAppleRelay ? activeGuestContext?.customer_email || '' : '',
   });
 
   // Fetch existing profile if available
@@ -77,11 +94,13 @@ export default function AccountSetup() {
   React.useEffect(() => {
     if (isComplete) {
       const timer = setTimeout(() => {
-        navigate('/shop');
+        navigate(isGuestRewardsActivation
+          ? GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE
+          : setupReturnRoute !== '/' ? setupReturnRoute : '/shop');
       }, 1500);
       return () => clearTimeout(timer);
     }
-  }, [isComplete, navigate]);
+  }, [isComplete, isGuestRewardsActivation, navigate, setupReturnRoute]);
 
   if (isLoadingAuth || !user) {
     return (
@@ -140,6 +159,8 @@ export default function AccountSetup() {
         phone: formData.phone,
         birthday: formData.birthday,
         address: addrString,
+        guest_order_number: isGuestRewardsActivation ? activeGuestContext?.order_number : null,
+        guest_order_token: isGuestRewardsActivation ? activeGuestContext?.guest_order_token : null,
       };
       const response = await base44.functions.fetch('completeAccountSetup', {
         method: 'POST',
@@ -156,9 +177,8 @@ export default function AccountSetup() {
         setIsComplete(true);
         // Force refetch immediately
         await queryClient.refetchQueries({ queryKey: ['user-onboarding-check'] });
-        setTimeout(() => {
-          navigate('/shop');
-        }, 1500);
+        await queryClient.invalidateQueries({ queryKey: ['account-dashboard'] });
+        clearGuestLoyaltyActivationContext();
       } else {
         const errorMsg = responseData?.error || 'Failed to complete setup';
         toast.error(errorMsg);
@@ -187,9 +207,13 @@ export default function AccountSetup() {
           >
             <CheckCircle className="w-8 h-8 text-green-600" />
           </motion.div>
-          <h2 className="font-heading text-2xl font-bold mb-2">All Set!</h2>
+          <h2 className="font-heading text-2xl font-bold mb-2">
+            {isGuestRewardsActivation ? 'Rewards Activated!' : 'All Set!'}
+          </h2>
           <p className="text-sm text-muted-foreground mb-4">
-            Your account is ready and you're enrolled in NuVira Rewards.
+            {isGuestRewardsActivation
+              ? 'Your account is ready. Your eligible purchase points and order history are now connected.'
+              : "Your account is ready and you're enrolled in NuVira Rewards."}
           </p>
           <p className="text-xs text-muted-foreground">Redirecting...</p>
         </motion.div>
@@ -210,9 +234,15 @@ export default function AccountSetup() {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <h1 className="font-heading text-2xl font-bold mb-2">Complete Your Profile</h1>
+          <h1 className="font-heading text-2xl font-bold mb-2">
+            {isGuestRewardsActivation ? 'Finish Activating Rewards' : 'Complete Your Profile'}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            We only need your name and phone to activate rewards. You can add delivery details when you order.
+            {isGuestRewardsActivation
+              ? activeGuestContext?.purchase_points > 0
+                ? `We found your guest purchase and prefilled what we could. Confirm your name and phone to access ${Number(activeGuestContext.purchase_points).toLocaleString()} purchase points.`
+                : 'Confirm your name and phone to connect the purchase points saved to your checkout email.'
+              : 'We only need your name and phone to activate rewards. You can add delivery details when you order.'}
           </p>
         </motion.div>
 

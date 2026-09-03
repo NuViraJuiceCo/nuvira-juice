@@ -183,6 +183,7 @@ async function handleCheckoutProviderSandboxEvent(base44, event) {
     delivery_address: order.delivery_address,
     assigned_delivery_date: order.assigned_delivery_date,
     delivery_window_label: order.delivery_window_label,
+    guest_checkout: true,
     internal_sandbox_test: true,
     sandbox_test_id: sandboxTestId,
   });
@@ -871,6 +872,7 @@ Deno.serve(async (req) => {
           assigned_production_day: resolvedProductionDate,
           production_date: resolvedProductionDate,
           delivery_window_label: resolvedWindowLabel,
+          guest_checkout: orderData.guest_checkout === true || session.metadata?.checkout_mode === 'guest',
           delivery_window_start: resolvedWindowStart,
           delivery_window_end: resolvedWindowEnd,
           assigned_delivery_window_start: resolvedWindowStart,
@@ -1432,6 +1434,7 @@ Deno.serve(async (req) => {
           delivery_address:       order.delivery_address,
           assigned_delivery_date: finalOrderUpdate.assigned_delivery_date || order.assigned_delivery_date,
           delivery_window_label:  finalOrderUpdate.delivery_window_label || order.delivery_window_label,
+          guest_checkout: checkoutData.guest_checkout === true || meta.checkout_mode === 'guest',
         }).catch(err => console.error('[PI succeeded] Email failed:', err.message));
 
         if (order.contact_phone) {
@@ -1576,6 +1579,7 @@ Deno.serve(async (req) => {
           items: [], total: amountPaid,
           assigned_delivery_date: meta.selected_delivery_date,
           delivery_window_label:  meta.delivery_window_label || '5 PM – 8 PM',
+          guest_checkout: meta.checkout_mode === 'guest',
         }).catch(() => {});
       }
 

@@ -6,11 +6,11 @@ import { redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
-import { Star, Gift, ShoppingBag, Users, Cake, Flame, Sparkles, ArrowRight, Loader2, RefreshCw } from 'lucide-react';
+import { Star, Gift, ShoppingBag, Users, Cake, Flame, Sparkles, ArrowRight, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
 import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import FreeProductPicker from '@/components/FreeProductPicker';
 import MobileCarousel from '@/components/carousel/MobileCarousel';
 import { useCart } from '@/lib/cartContext';
@@ -49,7 +49,7 @@ const DEFAULT_REWARDS = [
 const HOW_TO_EARN = [
   { icon: ShoppingBag, label: 'Place an Order',     pts: '10 pts / $1' },
   { icon: Users,       label: 'Refer a Friend',     pts: '50 pts' },
-  { icon: Flame,       label: 'First Order Bonus',  pts: '100 pts' },
+  { icon: Flame,       label: 'Join NuVira Rewards', pts: '250 pts' },
   { icon: Cake,        label: 'Birthday Bonus',     pts: '200 pts' },
 ];
 
@@ -320,6 +320,7 @@ export default function Rewards() {
   const { user } = useAuth();
   const { addItem } = useCart();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingReward, setPendingReward] = useState(null);
 
@@ -356,6 +357,7 @@ export default function Rewards() {
   const birthdayActive = isBirthdayRewardActive(birthday, user?.created_date);
   const rewards        = rewardTiers.length > 0 ? rewardTiers : DEFAULT_REWARDS;
   const tier           = getTier(totalPoints);
+  const activationConfirmed = searchParams.get('activated') === '1';
 
   const [activeReward, setActiveReward] = useState(null);
   const [isValidatingReward, setIsValidatingReward] = useState(false);
@@ -488,6 +490,28 @@ export default function Rewards() {
           {tier.name}
         </div>
       </div>
+
+      {activationConfirmed && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-4 mt-3 rounded-2xl border border-primary/25 bg-primary/5 p-4"
+          role="status"
+        >
+          <div className="flex items-start gap-3">
+            <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-bold text-foreground">Your rewards are active</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Your eligible purchase points and order history are connected to this account.
+              </p>
+              <Link to="/account/orders" className="mt-2 inline-flex items-center text-xs font-semibold text-primary">
+                View your order <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* ── Tier Hero Card ── */}
       <TierHeroCard totalPoints={totalPoints} lifetimePoints={lifetimePoints} redeemedPoints={redeemedPoints} tier={tier} />

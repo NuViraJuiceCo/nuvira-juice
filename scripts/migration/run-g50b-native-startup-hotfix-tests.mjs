@@ -56,7 +56,7 @@ for (const { source, marker, label } of forbiddenStartupMarkers) {
   assert(!source.includes(marker), `Forbidden startup marker still present: ${label}`);
 }
 
-assert(app.includes('return <Navigate to="/account-setup" replace />'), 'Incomplete profile does not route through React Router Navigate');
+assert(app.includes('return <Navigate to={`/account-setup?return_to=${encodeURIComponent(returnTo)}`} replace />'), 'Incomplete profile does not route through React Router Navigate with a preserved return path');
 assert(app.includes('profileRequestFailed'), 'Profile failure state is not explicitly distinguished');
 assert(app.includes('profileRequestPending'), 'Profile pending state is not explicitly distinguished');
 assert(app.includes('profileMissing'), 'Profile missing state is not explicitly distinguished');
