@@ -215,6 +215,8 @@ function sanitizeGuestConfirmationOrder(order) {
   return {
     order_number: order.order_number,
     customer_email: order.customer_email,
+    customer_name: order.customer_name,
+    contact_phone: order.contact_phone,
     items: Array.isArray(order.items) ? order.items.map((item) => ({
       title: item?.title || 'NuVira item',
       price: Number(item?.price || 0),
@@ -226,6 +228,7 @@ function sanitizeGuestConfirmationOrder(order) {
     payment_captured: order.payment_captured === true,
     assigned_delivery_date: order.assigned_delivery_date || null,
     estimated_delivery_date: order.estimated_delivery_date || null,
+    earned_points: Math.max(0, Math.floor(Number(order.total || 0) * 10)),
     is_test_order: order.is_test_order === true,
   };
 }

@@ -8,6 +8,58 @@ function normalizeText(value: unknown, maxLength: number) {
   return String(value || '').trim().replace(/\s+/g, ' ').slice(0, maxLength);
 }
 
+function isValidGuestSecret(value: unknown) {
+  const normalized = String(value || '').trim();
+  return normalized.length >= 24 && normalized.length <= 180 && /^[A-Za-z0-9._:-]+$/.test(normalized);
+}
+
+async function sha256Hex(value: unknown) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value || '')));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function constantTimeEqual(left: unknown, right: unknown) {
+  const a = String(left || '');
+  const b = String(right || '');
+  if (!a || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < a.length; index += 1) mismatch |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return mismatch === 0;
+}
+
+async function verifyGuestPurchaseClaim(base44: any, body: any, contactEmail: string) {
+  const orderNumber = normalizeText(body.guest_order_number, 120).toUpperCase();
+  const guestToken = normalizeText(body.guest_order_token, 180);
+  if (!orderNumber && !guestToken) return { attempted: false, order: null };
+  if (!/^NV-[A-Z0-9-]{3,64}$/.test(orderNumber) || !isValidGuestSecret(guestToken)) {
+    return { attempted: true, error: 'Guest purchase verification is invalid or expired', status: 403 };
+  }
+
+  const checkoutSessions = await base44.asServiceRole.entities.CheckoutSession.filter(
+    { order_number: orderNumber },
+    '-created_date',
+    5,
+  );
+  const expectedHash = await sha256Hex(guestToken);
+  const now = Date.now();
+  const tokenMatches = checkoutSessions.some((row: any) => (
+    row?.checkout_data?.guest_checkout === true
+      && Number.isFinite(Date.parse(String(row?.expires_at || '')))
+      && Date.parse(String(row.expires_at)) > now
+      && constantTimeEqual(row?.checkout_data?.guest_order_token_hash, expectedHash)
+  ));
+  if (!tokenMatches) return { attempted: true, error: 'Guest purchase verification is invalid or expired', status: 403 };
+
+  const orders = await base44.asServiceRole.entities.Order.filter({ order_number: orderNumber }, '-created_date', 3);
+  const order = orders.find((candidate: any) => (
+    normalizeEmail(candidate?.customer_email) === contactEmail
+      && (candidate?.payment_captured === true || ['paid', 'captured'].includes(String(candidate?.payment_status || '').toLowerCase()))
+      && candidate?.is_test_order !== true
+  ));
+  if (!order) return { attempted: true, error: 'No eligible paid guest purchase was found for this email', status: 403 };
+  return { attempted: true, order };
+}
+
 async function handleAccountSetup(req: Request) {
   try {
     const base44 = createClientFromRequest(req);
@@ -50,6 +102,10 @@ async function handleAccountSetup(req: Request) {
 
     const contactEmail = usesAppleRelay ? requestedContactEmail : authenticatedEmail;
     const loyaltyEmail = contactEmail;
+    const guestPurchaseClaim = await verifyGuestPurchaseClaim(base44, body, contactEmail);
+    if (guestPurchaseClaim.error) {
+      return Response.json({ error: guestPurchaseClaim.error }, { status: guestPurchaseClaim.status });
+    }
     const optionalProfileFields = {
       ...(address ? { address } : {}),
       ...(birthday ? { birthday } : {}),
@@ -121,6 +177,8 @@ async function handleAccountSetup(req: Request) {
     return Response.json({
       success: true,
       loyalty_status: loyaltyStatus,
+      guest_purchase_claimed: Boolean(guestPurchaseClaim.order),
+      claimed_order_number: guestPurchaseClaim.order?.order_number || null,
       message: loyaltyStatus === 'active'
         ? 'Account setup complete'
         : 'Account setup complete; rewards enrollment is pending',

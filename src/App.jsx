@@ -405,7 +405,8 @@ const AuthenticatedApp = () => {
 
   // Route to account setup declaratively so native startup never hard-reloads during render.
   if (shouldRouteToAccountSetup) {
-    return <Navigate to="/account-setup" replace />;
+    const returnTo = `${location.pathname}${location.search || ''}${location.hash || ''}`;
+    return <Navigate to={`/account-setup?return_to=${encodeURIComponent(returnTo)}`} replace />;
   }
 
   // Render the main app
