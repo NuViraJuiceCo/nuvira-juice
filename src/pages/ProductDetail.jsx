@@ -25,7 +25,11 @@ import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { normalizeProductIdentifier, productLookupKeys, productPath } from '@/lib/seo-slugs';
 import { findPublicProductFallback } from '@/lib/public-products';
-import { buildProductSeoMetadata, buildProductStructuredData } from '@/lib/product-seo';
+import {
+  buildProductSeoMetadata,
+  buildProductStructuredData,
+  shouldRenderClientProductStructuredData,
+} from '@/lib/product-seo';
 import { buildProductGallery } from '@/lib/product-gallery-images';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -291,6 +295,7 @@ export default function ProductDetail() {
   const blendDetail = inferBlendDetail(product, isMerchProduct);
   const productSeo = buildProductSeoMetadata(product);
   const productStructuredData = buildProductStructuredData(product);
+  const renderClientProductStructuredData = shouldRenderClientProductStructuredData(productStructuredData);
   const productGallery = buildProductGallery(product).filter(
     image => !failedGalleryImages.has(image.src),
   );
@@ -342,7 +347,7 @@ export default function ProductDetail() {
         type="product"
         keywords={productSeo.keywords}
         canonicalUrl={productSeo.canonicalUrl}
-        structuredData={productStructuredData}
+        structuredData={renderClientProductStructuredData ? productStructuredData : undefined}
       />
 
       <div className="hidden md:flex items-center gap-2 px-6 pt-5 pb-3">
