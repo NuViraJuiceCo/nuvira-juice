@@ -5,7 +5,7 @@ import { sendGooglePurchaseMeasurement } from './googleMeasurement.js';
 import { sendMetaPurchaseConversion } from './metaConversions.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g136-public-diagnostic-v2';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g138-meta-capi-purchase-v2';
 const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
@@ -23,6 +23,22 @@ async function attemptMetaPurchaseConversion(args: Record<string, any>) {
   } catch {
     console.warn('[Meta CAPI] unexpected conversion helper failure');
     return { sent: false, reason: 'unexpected_conversion_failure' };
+  }
+}
+
+async function boundedMetaPurchaseAttempt(args: Record<string, any>, timeoutMs = 10000) {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      attemptMetaPurchaseConversion(args),
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => {
+          resolve({ sent: false, reason: 'meta_capi_attempt_timeout' });
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 
@@ -208,14 +224,14 @@ async function handleCheckoutProviderSandboxEvent(base44, event) {
       order_id: order.id,
       customer_email: CHECKOUT_PROVIDER_SANDBOX_RECIPIENT,
       action: 'provider_sandbox_verified',
-      reason: 'isolated_test_order_no_customer_or_operational_side_effects',
+      reason: `isolated_test_order_no_customer_or_operational_side_effects; runtime=${STRIPE_WEBHOOK_RUNTIME_BUILD_ID}`,
       success: true,
       idempotency_key: `stripe_sandbox:${event.id}`,
       correlation_id: sandboxTestId,
     });
   }
 
-  const metaResult = await attemptMetaPurchaseConversion({
+  const metaResult = await boundedMetaPurchaseAttempt({
     base44,
     event,
     paymentIntent: pi,
@@ -223,6 +239,31 @@ async function handleCheckoutProviderSandboxEvent(base44, event) {
     checkoutData: checkoutSession.checkout_data || {},
     allowTestOrder: true,
   });
+  const metaSandboxLogKey = `meta_capi_sandbox_attempt:${event.id}`;
+  const existingMetaSandboxLogs = await base44.asServiceRole.entities.OrderSyncLog.filter({
+    idempotency_key: metaSandboxLogKey,
+  }, '-created_date', 1).catch(() => []);
+  if (existingMetaSandboxLogs.length === 0) {
+    await base44.asServiceRole.entities.OrderSyncLog.create({
+      order_number: orderNumber,
+      status: metaResult?.sent === true ? 'success' : 'skipped',
+      description: metaResult?.sent === true
+        ? 'Meta Purchase test event accepted for the isolated provider sandbox.'
+        : `Meta Purchase sandbox preflight result: ${metaResult?.reason || 'not_requested'}.`,
+      started_at: new Date(event.created * 1000).toISOString(),
+      completed_at: new Date().toISOString(),
+      triggered_by: 'stripe_webhook',
+      event_type: 'meta.conversions_api.purchase',
+      stripe_event_id: event.id,
+      order_id: order.id,
+      customer_email: CHECKOUT_PROVIDER_SANDBOX_RECIPIENT,
+      action: metaResult?.sent === true ? 'meta_capi_purchase_sent' : 'meta_capi_purchase_skipped',
+      reason: metaResult?.reason || (metaResult?.sent ? 'accepted' : 'not_requested'),
+      success: metaResult?.sent === true,
+      idempotency_key: metaSandboxLogKey,
+      correlation_id: sandboxTestId,
+    });
+  }
 
   return Response.json({
     received: true,
@@ -1226,7 +1267,7 @@ Deno.serve(async (req) => {
         // Idempotency: already finalized
         if (order.payment_captured === true) {
           console.log(`[PI succeeded] Order ${orderNumber} already finalized, skipping`);
-          await attemptMetaPurchaseConversion({
+          await boundedMetaPurchaseAttempt({
             base44,
             event,
             paymentIntent: pi,
@@ -1310,7 +1351,7 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.Order.update(order.id, finalOrderUpdate);
         console.log(`[PI succeeded] Order ${orderNumber} finalized`);
 
-        await attemptMetaPurchaseConversion({
+        await boundedMetaPurchaseAttempt({
           base44,
           event,
           paymentIntent: pi,
@@ -1544,7 +1585,7 @@ Deno.serve(async (req) => {
           .catch(error => console.warn(`[PI succeeded] Safety-net bag return link failed: ${error.message}`));
         console.log(`[PI succeeded] Safety-net Order created: ${newOrder.id}`);
 
-        await attemptMetaPurchaseConversion({
+        await boundedMetaPurchaseAttempt({
           base44,
           event,
           paymentIntent: pi,

@@ -2,6 +2,7 @@ const META_PIXEL_ID = '719023677458304';
 const META_GRAPH_API_VERSION = 'v26.0';
 const META_EVENTS_ENDPOINT = `https://graph.facebook.com/${META_GRAPH_API_VERSION}/${META_PIXEL_ID}/events`;
 const META_PURCHASE_LOG_PREFIX = 'meta_capi_purchase';
+const META_CAPI_TRANSPORT_TIMEOUT_MS = 8000;
 const META_CATALOG_CONTENT_IDS = Object.freeze({
   '69d490ce699b5f1ac4dde495': '43220774813786', aura: '43220774813786',
   '69d490ce699b5f1ac4dde496': '43220774846554', 're-nu': '43220774846554', renu: '43220774846554',
@@ -34,6 +35,89 @@ function normalizeUsPhone(value) {
   if (digits.length === 10) return `1${digits}`;
   if (digits.length === 11 && digits.startsWith('1')) return digits;
   return '';
+}
+
+function normalizeHashText(value, maxLength = 120) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, maxLength);
+}
+
+function normalizeNameForHash(value) {
+  return normalizeHashText(value, 80);
+}
+
+function normalizeCityForHash(value) {
+  return normalizeHashText(value, 80);
+}
+
+function normalizeStateForHash(value) {
+  const normalized = normalizeHashText(value, 20);
+  return normalized.length === 2 ? normalized : '';
+}
+
+function normalizePostalForHash(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  const usZip = raw.match(/\b(\d{5})(?:-\d{4})?\b/);
+  if (usZip) return usZip[1];
+  return raw.replace(/[^a-z0-9]/g, '').slice(0, 20);
+}
+
+function normalizeCountryForHash(value) {
+  const normalized = normalizeHashText(value || 'US', 30);
+  if (!normalized || normalized === 'usa' || normalized === 'unitedstates') return 'us';
+  return normalized.length === 2 ? normalized : '';
+}
+
+const META_BROWSER_ID_PATTERN = /^fb\.\d\.\d{10,13}\.[A-Za-z0-9._-]{1,220}$/;
+
+function safeMetaText(value, maxLength = 500) {
+  return String(value || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizeMetaBrowserId(value) {
+  const normalized = safeMetaText(value, 260);
+  return META_BROWSER_ID_PATTERN.test(normalized) ? normalized : '';
+}
+
+function normalizeClientIpAddress(value) {
+  const normalized = safeMetaText(value, 60).replace(/^\[|\]$/g, '');
+  return /^[0-9a-fA-F:.]{3,45}$/.test(normalized) ? normalized : '';
+}
+
+function normalizeMetaEventSourceUrl(value) {
+  const fallback = 'https://nuvirajuice.com/checkout';
+  const raw = safeMetaText(value, 500);
+  if (!raw) return fallback;
+  try {
+    const url = new URL(raw, fallback);
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || !['nuvirajuice.com', 'www.nuvirajuice.com'].includes(host)) {
+      return fallback;
+    }
+    url.search = '';
+    url.hash = '';
+    return url.toString().slice(0, 500);
+  } catch {
+    return fallback;
+  }
+}
+
+function firstNonEmpty(...values) {
+  return values.find((value) => String(value || '').trim()) || '';
+}
+
+function splitHumanName(value) {
+  const parts = String(value || '').trim().replace(/\s+/g, ' ').split(' ').filter(Boolean);
+  if (parts.length < 2 || String(value || '').includes('@')) return {};
+  return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 }
 
 async function sha256Hex(value) {
@@ -104,6 +188,111 @@ function logIdForPayment(paymentIntentId) {
   return `${META_PURCHASE_LOG_PREFIX}:${String(paymentIntentId || '').trim()}`;
 }
 
+async function addHashedUserData(userData, key, value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return;
+  userData[key] = [await sha256Hex(normalized)];
+}
+
+function resolveMetaAttributionContext(checkoutData = {}) {
+  const nested = checkoutData?.meta_capi_context && typeof checkoutData.meta_capi_context === 'object'
+    ? checkoutData.meta_capi_context
+    : {};
+  return {
+    fbp: normalizeMetaBrowserId(firstNonEmpty(nested.fbp, checkoutData.fbp)),
+    fbc: normalizeMetaBrowserId(firstNonEmpty(nested.fbc, checkoutData.fbc)),
+    client_ip_address: normalizeClientIpAddress(firstNonEmpty(nested.client_ip_address, checkoutData.client_ip_address)),
+    client_user_agent: safeMetaText(firstNonEmpty(nested.client_user_agent, checkoutData.client_user_agent), 500),
+    event_source_url: normalizeMetaEventSourceUrl(firstNonEmpty(nested.event_source_url, checkoutData.event_source_url)),
+  };
+}
+
+async function buildMetaUserData({ order = {}, metadata = {}, checkoutData = {} }) {
+  const nameParts = splitHumanName(firstNonEmpty(
+    order.customer_name,
+    checkoutData.customer_name,
+    metadata.customer_name,
+  ));
+  const email = normalizeEmail(firstNonEmpty(order.customer_email, checkoutData.customer_email, metadata.customer_email));
+  const phone = normalizeUsPhone(firstNonEmpty(order.contact_phone, checkoutData.contact_phone, metadata.customer_phone));
+  const firstName = normalizeNameForHash(firstNonEmpty(
+    checkoutData.customer_first_name,
+    metadata.customer_first_name,
+    nameParts.firstName,
+  ));
+  const lastName = normalizeNameForHash(firstNonEmpty(
+    checkoutData.customer_last_name,
+    metadata.customer_last_name,
+    nameParts.lastName,
+  ));
+  const city = normalizeCityForHash(firstNonEmpty(order.address_city, checkoutData.address_city, metadata.delivery_city));
+  const state = normalizeStateForHash(firstNonEmpty(order.address_state, checkoutData.address_state, metadata.delivery_state));
+  const postalCode = normalizePostalForHash(firstNonEmpty(
+    order.address_postal_code,
+    checkoutData.address_postal_code,
+    metadata.delivery_postal_code,
+  ));
+  const country = normalizeCountryForHash(firstNonEmpty(order.address_country, checkoutData.address_country, 'US'));
+  const externalId = normalizeHashText(firstNonEmpty(
+    order.customer_app_user_id,
+    order.user_id,
+    checkoutData.customer_app_user_id,
+    checkoutData.user_id,
+    checkoutData.customer_id,
+    email,
+  ), 180);
+  const attribution = resolveMetaAttributionContext(checkoutData);
+
+  const userData = {};
+  await addHashedUserData(userData, 'em', email);
+  await addHashedUserData(userData, 'ph', phone);
+  await addHashedUserData(userData, 'fn', firstName);
+  await addHashedUserData(userData, 'ln', lastName);
+  await addHashedUserData(userData, 'ct', city);
+  await addHashedUserData(userData, 'st', state);
+  await addHashedUserData(userData, 'zp', postalCode);
+  await addHashedUserData(userData, 'country', country);
+  await addHashedUserData(userData, 'external_id', externalId);
+
+  if (attribution.fbp) userData.fbp = attribution.fbp;
+  if (attribution.fbc) userData.fbc = attribution.fbc;
+  if (attribution.client_ip_address) userData.client_ip_address = attribution.client_ip_address;
+  if (attribution.client_user_agent) userData.client_user_agent = attribution.client_user_agent;
+
+  return { userData, eventSourceUrl: attribution.event_source_url };
+}
+
+function hasMeaningfulMatchData(userData = {}) {
+  return Boolean(
+    userData.em?.length
+      || userData.ph?.length
+      || userData.external_id?.length
+      || userData.fbp
+      || userData.fbc
+      || (userData.client_ip_address && userData.client_user_agent)
+  );
+}
+
+async function fetchMetaEvents(fetchImpl, payload, accessToken) {
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller
+    ? setTimeout(() => controller.abort(), META_CAPI_TRANSPORT_TIMEOUT_MS)
+    : null;
+  try {
+    return await fetchImpl(META_EVENTS_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 async function writeDeliveryLog(base44, {
   order,
   event,
@@ -153,8 +342,22 @@ export async function sendMetaPurchaseConversion({
   if (!paymentIntentId || !orderNumber || paymentIntent?.status !== 'succeeded') {
     return { sent: false, reason: 'invalid_purchase_contract' };
   }
+  const idempotencyKey = logIdForPayment(paymentIntentId);
 
   const testOrder = isTestOrder(order, metadata);
+  const writeSandboxSkipLog = async (reasonCode) => {
+    if (!testOrder || !allowTestOrder) return;
+    await writeDeliveryLog(base44, {
+      order: { ...order, order_number: orderNumber },
+      event,
+      status: 'skipped',
+      action: 'meta_capi_purchase_skipped',
+      reason: `Meta Purchase sandbox preflight skipped: ${reasonCode}.`,
+      idempotencyKey,
+      success: false,
+      errorCode: reasonCode,
+    });
+  };
   const testEventCode = envValue(env, 'META_CONVERSIONS_API_TEST_EVENT_CODE');
   const sandboxAllowed = testOrder
     && allowTestOrder
@@ -162,7 +365,10 @@ export async function sendMetaPurchaseConversion({
     && envEnabled(env, 'ENABLE_META_CAPI_TEST_EVENTS')
     && Boolean(testEventCode);
 
-  if (testOrder && !sandboxAllowed) return { sent: false, reason: 'test_order_suppressed' };
+  if (testOrder && !sandboxAllowed) {
+    await writeSandboxSkipLog('test_order_suppressed');
+    return { sent: false, reason: 'test_order_suppressed' };
+  }
   if (!testOrder && !envEnabled(env, 'ENABLE_META_CAPI_PURCHASE')) {
     return { sent: false, reason: 'production_gate_disabled' };
   }
@@ -171,9 +377,11 @@ export async function sendMetaPurchaseConversion({
   }
 
   const accessToken = envValue(env, 'META_CONVERSIONS_API_TOKEN');
-  if (!accessToken) return { sent: false, reason: 'meta_capi_not_configured' };
+  if (!accessToken) {
+    await writeSandboxSkipLog('meta_capi_not_configured');
+    return { sent: false, reason: 'meta_capi_not_configured' };
+  }
 
-  const idempotencyKey = logIdForPayment(paymentIntentId);
   const existingLogs = await base44.asServiceRole.entities.OrderSyncLog.filter(
     { idempotency_key: idempotencyKey },
     '-created_date',
@@ -183,12 +391,11 @@ export async function sendMetaPurchaseConversion({
     return { sent: false, reason: 'already_delivered', deduplicated: true };
   }
 
-  const email = normalizeEmail(order?.customer_email || metadata.customer_email);
-  const phone = normalizeUsPhone(order?.contact_phone || metadata.customer_phone);
-  const userData = {};
-  if (email) userData.em = [await sha256Hex(email)];
-  if (phone) userData.ph = [await sha256Hex(phone)];
-  if (!userData.em && !userData.ph) return { sent: false, reason: 'matching_data_unavailable' };
+  const { userData, eventSourceUrl } = await buildMetaUserData({ order, metadata, checkoutData });
+  if (!hasMeaningfulMatchData(userData)) {
+    await writeSandboxSkipLog('matching_data_unavailable');
+    return { sent: false, reason: 'matching_data_unavailable' };
+  }
 
   const contents = buildMetaCatalogContents(order?.items?.length ? order.items : checkoutData?.items);
   const eventId = eventIdForPayment(paymentIntentId);
@@ -198,11 +405,12 @@ export async function sendMetaPurchaseConversion({
       event_time: Number(event?.created) || Math.floor(Date.now() / 1000),
       event_id: eventId,
       action_source: 'website',
-      event_source_url: 'https://nuvirajuice.com/checkout',
+      event_source_url: eventSourceUrl,
       user_data: userData,
       custom_data: {
         currency: String(paymentIntent.currency || 'usd').toUpperCase(),
         value: validMoney(Number(paymentIntent.amount_received || 0) / 100),
+        order_id: orderNumber,
         content_type: 'product',
         ...(contents.length ? {
           content_ids: contents.map((item) => item.id),
@@ -215,14 +423,7 @@ export async function sendMetaPurchaseConversion({
   };
 
   try {
-    const response = await fetchImpl(META_EVENTS_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
+    const response = await fetchMetaEvents(fetchImpl, payload, accessToken);
     const result = await response.json().catch(() => ({}));
     const accepted = response.ok && Number(result?.events_received) >= 1;
     if (!accepted) {

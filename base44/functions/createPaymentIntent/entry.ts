@@ -143,6 +143,84 @@ function normalizeGoogleMeasurementContext(value) {
   };
 }
 
+const META_BROWSER_ID_PATTERN = /^fb\.\d\.\d{10,13}\.[A-Za-z0-9._-]{1,220}$/;
+
+function safeMetaText(value, maxLength = 500) {
+  return String(value || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizeMetaBrowserId(value) {
+  const normalized = safeMetaText(value, 260);
+  return META_BROWSER_ID_PATTERN.test(normalized) ? normalized : '';
+}
+
+function normalizeMetaEventSourceUrl(value) {
+  const fallback = 'https://nuvirajuice.com/checkout';
+  const raw = safeMetaText(value, 500);
+  if (!raw) return fallback;
+  try {
+    const url = new URL(raw, fallback);
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || !['nuvirajuice.com', 'www.nuvirajuice.com'].includes(host)) {
+      return fallback;
+    }
+    url.search = '';
+    url.hash = '';
+    return url.toString().slice(0, 500);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeClientIpCandidate(value) {
+  let candidate = String(value || '').trim();
+  if (!candidate) return '';
+  candidate = candidate.split(',')[0].trim();
+  const forwardedMatch = candidate.match(/for=(?:"?\[?)([^";,\]\s]+)(?:\]?"?)?/i);
+  if (forwardedMatch) candidate = forwardedMatch[1];
+  candidate = candidate.replace(/^"|"$/g, '').replace(/^\[|\]$/g, '').trim();
+  if (/^\d{1,3}(?:\.\d{1,3}){3}:\d{2,5}$/.test(candidate)) {
+    candidate = candidate.replace(/:\d{2,5}$/, '');
+  }
+  return /^[0-9a-fA-F:.]{3,45}$/.test(candidate) ? candidate : '';
+}
+
+function clientIpFromRequest(req) {
+  for (const header of ['cf-connecting-ip', 'true-client-ip', 'x-real-ip', 'x-forwarded-for', 'forwarded']) {
+    const ip = normalizeClientIpCandidate(req.headers.get(header));
+    if (ip) return ip;
+  }
+  return '';
+}
+
+function normalizeMetaCapiContext(value, req, marketingConsent) {
+  if (marketingConsent !== 'granted') return null;
+  const source = value && typeof value === 'object' ? value : {};
+  const context = {
+    event_source_url: normalizeMetaEventSourceUrl(source.event_source_url),
+    captured_at: Number.isFinite(Date.parse(source.captured_at))
+      ? new Date(source.captured_at).toISOString()
+      : new Date().toISOString(),
+  };
+
+  const fbp = normalizeMetaBrowserId(source.fbp);
+  const fbc = normalizeMetaBrowserId(source.fbc);
+  const clientUserAgent = safeMetaText(req.headers.get('user-agent') || source.client_user_agent, 500);
+  const clientIpAddress = clientIpFromRequest(req);
+
+  if (fbp) context.fbp = fbp;
+  if (fbc) context.fbc = fbc;
+  if (clientUserAgent) context.client_user_agent = clientUserAgent;
+  if (clientIpAddress) context.client_ip_address = clientIpAddress;
+
+  return context.fbp || context.fbc || context.client_user_agent || context.client_ip_address
+    ? context
+    : null;
+}
+
 function isValidGuestSecret(value) {
   const normalized = String(value || '').trim();
   return normalized.length >= 24 && normalized.length <= 180 && /^[A-Za-z0-9._:-]+$/.test(normalized);
@@ -816,6 +894,38 @@ Deno.serve(async (req) => {
         provider_calls_performed: false,
       }, { status: 503 });
     }
+    if (
+      internalSandboxCheckout
+      && submittedRequestBody?.internal_sandbox_diagnostic === 'stripe_webhook_endpoints'
+    ) {
+      const sandboxStripe = checkoutProviderSandboxStripe();
+      const endpoints = await sandboxStripe.webhookEndpoints.list({ limit: 20 });
+      const endpointSummaries = (endpoints.data || []).map((endpoint) => {
+        let urlSummary = { host: '', path: '' };
+        try {
+          const endpointUrl = new URL(endpoint.url || '');
+          urlSummary = { host: endpointUrl.hostname, path: endpointUrl.pathname };
+        } catch {}
+        return {
+          id: endpoint.id,
+          livemode: endpoint.livemode === true,
+          status: endpoint.status,
+          url_host: urlSummary.host,
+          url_path: urlSummary.path,
+          enabled_events: endpoint.enabled_events || [],
+        };
+      });
+      return Response.json({
+        ok: true,
+        sandbox: true,
+        no_money_moved: true,
+        writes_performed: false,
+        provider_calls_performed: true,
+        diagnostic: 'stripe_webhook_endpoints',
+        endpoint_count: endpointSummaries.length,
+        endpoints: endpointSummaries,
+      });
+    }
 
     const requestBody = internalSandboxCheckout
       ? normalizeCheckoutProviderSandboxRequest(submittedRequestBody, sandboxTestId)
@@ -847,6 +957,7 @@ Deno.serve(async (req) => {
       analytics_measurement_consent,
       google_measurement_context,
       marketing_measurement_consent,
+      meta_capi_context,
       meta_capi_test_enabled,
     } = requestBody;
     const isGuestCheckout = internalSandboxCheckout || (!authenticatedUser?.email && guest_checkout === true);
@@ -1214,6 +1325,11 @@ Deno.serve(async (req) => {
     const normalizedGoogleMeasurementContext = analytics_measurement_consent === 'granted'
       ? normalizeGoogleMeasurementContext(google_measurement_context)
       : null;
+    const normalizedMetaCapiContext = normalizeMetaCapiContext(
+      meta_capi_context,
+      req,
+      marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
+    );
 
     // Metadata — centralized schedule fields from calculateNuViraFulfillmentSchedule
     // Keep this provider projection deliberately compact. Stripe accepts at most
@@ -1474,6 +1590,7 @@ Deno.serve(async (req) => {
           customer_first_name: customerIdentity.firstName,
           customer_last_name: customerIdentity.lastName,
           customer_name_source: customerIdentity.source,
+          customer_app_user_id: authenticatedUser?.id || null,
           checkout_idempotency_key: checkout_idempotency_key || null,
           bag_return_request_id: bag_return_request_id || null,
           address_line1: normalizedAddress.line1,
@@ -1523,6 +1640,7 @@ Deno.serve(async (req) => {
           analytics_measurement_consent: analytics_measurement_consent === 'granted' ? 'granted' : 'denied',
           google_measurement_context: normalizedGoogleMeasurementContext,
           marketing_measurement_consent: marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
+          meta_capi_context: normalizedMetaCapiContext,
           meta_capi_test_enabled:     internalSandboxCheckout && meta_capi_test_enabled === true,
           health_advisory_acknowledged: true,
           health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,

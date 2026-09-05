@@ -105,7 +105,7 @@ export default function AnalyticsConsent() {
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-foreground">Your privacy, your choice</h2>
           <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-            Optional website measurement never includes raw contact, address, or payment details.
+            Optional website measurement never includes raw name, contact, street address, or payment details.
           </p>
           <div className="mt-2.5 grid grid-cols-2 gap-2 sm:mt-3">
             <label className="cursor-pointer rounded-xl border border-border/60 bg-background/55 p-2.5">

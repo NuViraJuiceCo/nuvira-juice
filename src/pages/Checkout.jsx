@@ -31,7 +31,7 @@ import {
   trackGoogleAddPaymentInfo,
   trackGoogleAddShippingInfo,
 } from '@/lib/googleAnalytics';
-import { getMarketingConsent, trackMetaAddPaymentInfo } from '@/lib/metaPixel';
+import { getMarketingConsent, getMetaCapiAttributionContext, trackMetaAddPaymentInfo } from '@/lib/metaPixel';
 import { trackSnapAddBilling } from '@/lib/snapPixel';
 
 const CHECKOUT_PROCESSING_WATCHDOG_MS = 20000;
@@ -670,6 +670,10 @@ function CheckoutFlow() {
       const googleMeasurementContext = analyticsMeasurementConsent
         ? await getGoogleMeasurementContext()
         : null;
+      const marketingMeasurementConsent = getMarketingConsent() === 'granted';
+      const metaCapiContext = marketingMeasurementConsent
+        ? getMetaCapiAttributionContext()
+        : null;
 
       const res = await base44.functions.invoke('createPaymentIntent', {
         items,
@@ -725,7 +729,8 @@ function CheckoutFlow() {
         health_advisory_version: HEALTH_ADVISORY_CONFIG.version,
         analytics_measurement_consent: analyticsMeasurementConsent ? 'granted' : 'denied',
         google_measurement_context: googleMeasurementContext,
-        marketing_measurement_consent: getMarketingConsent() === 'granted' ? 'granted' : 'denied',
+        marketing_measurement_consent: marketingMeasurementConsent ? 'granted' : 'denied',
+        meta_capi_context: metaCapiContext,
       });
 
       if (isValidCheckoutStartSuccess(res.data)) {

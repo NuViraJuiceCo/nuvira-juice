@@ -55,6 +55,7 @@ const PAGE_VIEW_BLOCKED_PREFIXES = [
   '/order-tracker',
   '/_preview',
 ];
+const META_BROWSER_ID_PATTERN = /^fb\.\d\.\d{10,13}\.[A-Za-z0-9._-]{1,220}$/;
 
 let volatileConsent = null;
 let metaScriptPromise = null;
@@ -118,6 +119,13 @@ function safeLabel(value, fallback = '') {
     .replace(/[\r\n\t]+/g, ' ')
     .trim()
     .slice(0, 80);
+}
+
+function safeText(value, maxLength = 500) {
+  return String(value || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
 }
 
 function catalogLookupKey(value) {
@@ -194,6 +202,52 @@ function eventId(eventName) {
   return `web:${eventName}:${unique}`;
 }
 
+function readCookie(name) {
+  if (!hasBrowserRuntime()) return '';
+  const prefix = `${name}=`;
+  return document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length) || '';
+}
+
+function normalizeMetaBrowserId(value) {
+  let normalized = '';
+  try {
+    normalized = decodeURIComponent(String(value || '').trim());
+  } catch {
+    normalized = String(value || '').trim();
+  }
+  return META_BROWSER_ID_PATTERN.test(normalized) ? normalized : '';
+}
+
+function deriveFbcFromCurrentUrl() {
+  if (!hasBrowserRuntime()) return '';
+  try {
+    const fbclid = new URL(window.location.href).searchParams.get('fbclid');
+    if (!fbclid || !/^[A-Za-z0-9._-]{8,220}$/.test(fbclid)) return '';
+    return `fb.1.${Date.now()}.${fbclid}`;
+  } catch {
+    return '';
+  }
+}
+
+function safeCurrentEventSourceUrl() {
+  if (!hasBrowserRuntime()) return 'https://nuvirajuice.com/checkout';
+  try {
+    const url = new URL(window.location.href);
+    if (!['https:', 'http:'].includes(url.protocol)) return 'https://nuvirajuice.com/checkout';
+    [...url.searchParams.keys()].forEach((key) => {
+      if (SENSITIVE_QUERY_KEYS.test(key) || key.toLowerCase() === 'fbclid') url.searchParams.delete(key);
+    });
+    url.hash = '';
+    return url.toString().slice(0, 500);
+  } catch {
+    return 'https://nuvirajuice.com/checkout';
+  }
+}
+
 export function getMarketingConsent() {
   let value = volatileConsent;
   try {
@@ -232,6 +286,23 @@ export function resetMarketingConsent() {
   clearMetaCookies();
   window.dispatchEvent(new CustomEvent(MARKETING_CONSENT_EVENT, { detail: 'reset' }));
   return true;
+}
+
+export function getMetaCapiAttributionContext() {
+  if (!hasBrowserRuntime() || isNativeAppRuntime() || getMarketingConsent() !== 'granted') return null;
+
+  const context = {
+    event_source_url: safeCurrentEventSourceUrl(),
+    client_user_agent: safeText(window.navigator?.userAgent, 500),
+    captured_at: new Date().toISOString(),
+  };
+
+  const fbp = normalizeMetaBrowserId(readCookie('_fbp'));
+  const fbc = normalizeMetaBrowserId(readCookie('_fbc')) || normalizeMetaBrowserId(deriveFbcFromCurrentUrl());
+  if (fbp) context.fbp = fbp;
+  if (fbc) context.fbc = fbc;
+
+  return context.fbp || context.fbc || context.client_user_agent ? context : null;
 }
 
 export function isSafeMarketingEventContext() {

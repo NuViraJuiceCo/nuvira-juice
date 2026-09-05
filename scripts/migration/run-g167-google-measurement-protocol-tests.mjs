@@ -2,7 +2,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { pathToFileURL } from 'node:url';
 
 const read = (path) => fs.readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 const analytics = read('src/lib/googleAnalytics.js');
@@ -109,7 +108,7 @@ assert.equal(measurementContext.client_id, '1234567890.1788123456');
 assert.equal(measurementContext.session_id, '1788123456');
 assert.match(measurementContext.captured_at, /^\d{4}-\d{2}-\d{2}T/);
 
-const helperUrl = pathToFileURL(new URL('../../base44/functions/stripeWebhook/googleMeasurement.js', import.meta.url).pathname).href;
+const helperUrl = new URL('../../base44/functions/stripeWebhook/googleMeasurement.js', import.meta.url).href;
 const {
   GOOGLE_MEASUREMENT_CONTRACT,
   buildGooglePurchaseItems,
