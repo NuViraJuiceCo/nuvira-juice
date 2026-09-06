@@ -1,0 +1,52 @@
+name: Android Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-quality-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+      - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - run: npm ci
+      - run: node scripts/migration/run-g176-android-release-optimization-tests.mjs
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Compile the actual optimized unsigned release
+        working-directory: android
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --console=plain
+      - name: Verify retained native bridges and exact packaged web assets
+        run: |
+          mkdir -p release-evidence
+          node scripts/android/verify-release-artifact.mjs > release-evidence/android-artifact.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: android-optimization-evidence
+          path: |
+            release-evidence/android-artifact.json
+            android/app/build/outputs/mapping/release/mapping.txt
+            android/app/build/outputs/mapping/release/configuration.txt
+            android/app/build/reports/lint-results-release-fatal.*
