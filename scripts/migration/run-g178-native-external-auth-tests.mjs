@@ -13,6 +13,7 @@ const appleAssociation = JSON.parse(read('public/.well-known/apple-app-site-asso
 const androidManifest = read('android/app/src/main/AndroidManifest.xml');
 const androidCapacitorSettings = read('android/capacitor.settings.gradle');
 const androidCapacitorBuild = read('android/app/capacitor.build.gradle');
+const androidArtifactVerifier = read('scripts/android/verify-release-artifact.mjs');
 const androidAssociation = JSON.parse(read('public/.well-known/assetlinks.json'));
 
 assert.equal(packageJson.dependencies['@capacitor/app-launcher'], '8.0.1');
@@ -48,6 +49,7 @@ assert.match(androidManifest, /android:host="nuvirajuice\.com"/);
 assert.match(androidManifest, /android:pathPrefix="\/native-login"/);
 assert.match(androidCapacitorSettings, /project\(':capacitor-app-launcher'\)/);
 assert.match(androidCapacitorBuild, /implementation project\(':capacitor-app-launcher'\)/);
+assert.match(androidArtifactVerifier, /AppLauncherPlugin': \['canOpenUrl', 'openUrl'\]/);
 assert.ok(androidAssociation.some((entry) =>
   entry.target?.package_name === 'com.nuvirajuice.app'),
 'NuVira Android app must be associated with the production domain');
@@ -55,7 +57,7 @@ assert.ok(androidAssociation.some((entry) =>
 console.log(JSON.stringify({
   ok: true,
   suite: 'g178-native-external-auth',
-  cases: 31,
+  cases: 32,
   native_provider_browser: 'external',
   embedded_safari_provider_launches: 0,
   ios_universal_link_return: true,

@@ -21,6 +21,7 @@ const required = {
   'com.nuvirajuice.app.NativeGooglePayPlugin': ['isAvailable', 'confirmPayment', 'handleGooglePayResult'],
   'com.nuvirajuice.app.DeliveryLiveActivityPlugin': ['isAvailable', 'sync', 'end', 'startRouteTracking', 'stopRouteTracking'],
   'com.capacitorjs.plugins.app.AppPlugin': ['getInfo', 'getLaunchUrl', 'getState'],
+  'com.capacitorjs.plugins.applauncher.AppLauncherPlugin': ['canOpenUrl', 'openUrl'],
   'com.capacitorjs.plugins.browser.BrowserPlugin': ['open', 'close'],
   'com.capacitorjs.liveupdates.LiveUpdatesPlugin': ['sync', 'reload'],
   'io.capawesome.capacitorjs.plugins.firebase.messaging.FirebaseMessagingPlugin': ['checkPermissions', 'getToken'],
