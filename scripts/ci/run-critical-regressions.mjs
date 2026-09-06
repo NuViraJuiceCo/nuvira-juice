@@ -20,6 +20,7 @@ const harnesses = [
   'scripts/migration/run-g183-auth-return-state-tests.mjs',
   'scripts/migration/run-g184-auth-transport-consent-tests.mjs',
   'scripts/migration/run-g185-auth-query-isolation-tests.mjs',
+  'scripts/migration/run-g186-native-auth-interleaving-tests.mjs',
   'scripts/migration/run-g181-session-gateway-auth-tests.mjs',
   'scripts/migration/run-g182-admin-swipe-back-tests.mjs',
   'scripts/migration/run-g179-native-auth-reliability-tests.mjs',

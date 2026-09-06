@@ -4,6 +4,7 @@ import { Browser } from '@capacitor/browser';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { createAuthSessionBoundary } from '@/lib/authQuerySession';
+import { currentAuthOperation, isCurrentAuthOperation } from '@/lib/authOperation';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
 import {
   clearBase44AuthTokens,
@@ -221,7 +222,12 @@ export const AuthProvider = ({ children }) => {
         if (!callbackUrl || handledNativeAuthCallbacksRef.current.has(callbackUrl)) return;
 
         handledNativeAuthCallbacksRef.current.add(callbackUrl);
+        const operation = currentAuthOperation();
         const callbackResult = await consumeNativeAuthCallbackUrl(callbackUrl);
+        if (!isCurrentAuthOperation(operation)) {
+          handledNativeAuthCallbacksRef.current.delete(callbackUrl);
+          return;
+        }
         if (!callbackResult?.accessToken) {
           handledNativeAuthCallbacksRef.current.delete(callbackUrl);
           return;
@@ -231,7 +237,9 @@ export const AuthProvider = ({ children }) => {
           if (Capacitor.isPluginAvailable('Browser')) {
             await Browser.close().catch(() => {});
           }
+          if (!isCurrentAuthOperation(operation)) return;
           const currentUser = await checkAppState({ authTimeoutMs: AUTH_EXPLICIT_TIMEOUT_MS });
+          if (!isCurrentAuthOperation(operation)) return;
           if (currentUser?.email) {
             replaceInAppRoute(callbackResult.returnTo || '/');
           }

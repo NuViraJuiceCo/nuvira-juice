@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
 import { createClient } from '@base44/sdk';
+import * as authOperation from '../../src/lib/authOperation.js';
 
 function loadModule(file, imports, globals) {
   const { code } = transformSync(fs.readFileSync(file, 'utf8'), { format: 'cjs', target: 'node20' });
@@ -56,8 +57,10 @@ try {
     '@/api/base44Client': { base44 },
     '@/lib/app-params': { appParams: { appId: 'synthetic-app', appBaseUrl: 'https://nuvira.invalid' } },
     '@/lib/authReturnTo': returnHelpers,
+    '@/lib/authOperation': authOperation,
     '@/lib/nativeAuthHandoff': {
       prepareNativeAuthHandoff: async (url, returnTo) => { pendingReturn = returnTo; return url; },
+      clearNativeAuthHandoff: () => {},
       consumeNativeAuthHandoff: async () => ({ accessToken: nextToken, returnTo: pendingReturn }),
       encryptNativeAuthHandoff: async () => { throw new Error('Not part of this test'); },
     },

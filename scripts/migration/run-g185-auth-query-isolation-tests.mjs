@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { transformSync } from 'esbuild';
 import { QueryObserver, timeoutManager } from '@tanstack/react-query';
 import * as sessions from '../../src/lib/authQuerySession.js';
+import * as authOperation from '../../src/lib/authOperation.js';
 
 // Retired queries may keep GC timers after cancellation. They must not keep a
 // completed Node-only harness alive; assertions still await every test request.
@@ -160,6 +161,7 @@ const authModule = load('src/lib/AuthContext.jsx', {
   '@/api/base44Client': { base44: { auth: { me: () => pendingMe.promise } } },
   '@/lib/app-params': { appParams: { appId: 'synthetic-app' } },
   '@/lib/authQuerySession': sessions,
+  '@/lib/authOperation': authOperation,
   '@/lib/rewardManager': { clearAllRewardsOnLogout: () => {} },
   '@/lib/nativeAuthRedirect': { consumeBase44AuthFromUrl: () => {}, clearBase44AuthTokens: () => {} },
   '@/lib/googleAnalytics': { captureGoogleProviderAuthEvent: () => null, completeGoogleProviderAuthEvent: () => false, discardGoogleProviderAuthEvent: () => {} },

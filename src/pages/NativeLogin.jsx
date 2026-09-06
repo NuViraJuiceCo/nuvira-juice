@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import {
+  beginNativeSignInAttempt,
   createEncryptedNativeAuthCallbackUrl,
   consumeNativeAuthCallbackUrl,
   getNativeBrowserProviderReturnUrl,
@@ -26,6 +27,7 @@ import {
   NATIVE_BROWSER_CALLBACK_MARKER,
   releaseNativeAuthViewport,
 } from '@/lib/nativeAuthRedirect';
+import { isCurrentAuthOperation } from '@/lib/authOperation';
 import { useAuth } from '@/lib/AuthContext';
 import { sanitizeAuthReturnRoute } from '@/lib/authReturnTo';
 import SEO from '@/components/SEO';
@@ -152,10 +154,12 @@ export default function NativeLogin() {
     if (providerLaunchRef.current) return;
     providerLaunchRef.current = true;
     setProviderOpening(provider);
+    const operation = beginNativeSignInAttempt();
 
     try {
       if (IS_NATIVE_PLATFORM) {
         const callbackUrl = await getNativeBrowserProviderReturnUrl(returnTo);
+        if (!isCurrentAuthOperation(operation)) return;
         const providerUrl = getProviderLoginUrl(provider, callbackUrl);
 
         if (HAS_NATIVE_WEB_AUTH) {
@@ -163,11 +167,14 @@ export default function NativeLogin() {
             url: providerUrl,
             callbackScheme: 'nuvira',
           });
+          if (!isCurrentAuthOperation(operation)) return;
           const callbackResult = await consumeNativeAuthCallbackUrl(result?.callbackUrl || '');
+          if (!isCurrentAuthOperation(operation)) return;
           if (!callbackResult?.accessToken) {
             throw new Error('Secure sign-in returned without a valid NuVira session.');
           }
           const currentUser = await checkAppState({ authTimeoutMs: NATIVE_LOGIN_AUTH_TIMEOUT_MS });
+          if (!isCurrentAuthOperation(operation)) return;
           if (!currentUser?.email) {
             throw new Error('Sign in succeeded, but the account could not be loaded.');
           }
@@ -183,7 +190,9 @@ export default function NativeLogin() {
 
       base44.auth.loginWithProvider(provider, getNativeProviderReturnUrl(returnTo));
     } catch (error) {
+      if (!isCurrentAuthOperation(operation)) return;
       if (error?.code === 'AUTH_CANCELED') {
+        beginNativeSignInAttempt();
         setStatusText('Sign-in canceled.');
         return;
       }
@@ -253,6 +262,7 @@ export default function NativeLogin() {
     }
 
     setIsSubmitting(true);
+    beginNativeSignInAttempt();
     try {
       if (isVerifying) {
         await handleVerify();

@@ -1,7 +1,9 @@
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { sanitizeAuthReturnRoute } from '@/lib/authReturnTo';
+import { beginAuthOperation, currentAuthOperation, isCurrentAuthOperation } from '@/lib/authOperation';
 import {
+  clearNativeAuthHandoff,
   consumeNativeAuthHandoff,
   encryptNativeAuthHandoff,
   prepareNativeAuthHandoff,
@@ -44,9 +46,7 @@ function applyBase44AuthParams(url) {
   if (!accessToken && !shouldClearToken) return null;
 
   if (shouldClearToken) {
-    for (const key of AUTH_TOKEN_STORAGE_KEYS) {
-      window.localStorage.removeItem(key);
-    }
+    clearBase44AuthTokens();
   }
 
   if (accessToken) {
@@ -146,6 +146,16 @@ function fullReplaceRoute(route) {
   }
 }
 
+function canFinishSignOut(operation) {
+  if (!isCurrentAuthOperation(operation)) return false;
+  try {
+    return !window.localStorage?.getItem('base44_access_token')
+      && !window.localStorage?.getItem('token');
+  } catch {
+    return false;
+  }
+}
+
 async function attemptHostedLogoutWithTimeout(fromUrl) {
   const abortController = typeof AbortController !== 'undefined'
     ? new AbortController()
@@ -180,6 +190,7 @@ export async function resetSignInAndReload(returnRoute = '/account') {
 
   const resetRoute = getNativeLoginResetRoute(returnRoute);
   clearBase44AuthTokens();
+  const operation = currentAuthOperation();
   for (const key of SIGN_IN_RESET_STORAGE_KEYS) {
     try {
       window.localStorage?.removeItem(key);
@@ -195,7 +206,7 @@ export async function resetSignInAndReload(returnRoute = '/account') {
       : resetRoute;
     await attemptHostedLogoutWithTimeout(fromUrl);
   } finally {
-    fullReplaceRoute(resetRoute);
+    if (canFinishSignOut(operation)) fullReplaceRoute(resetRoute);
   }
 }
 
@@ -207,6 +218,7 @@ export function getNativeProviderReturnUrl(returnRoute = '/') {
 }
 
 export async function getNativeBrowserProviderReturnUrl(returnRoute = '/') {
+  const operation = currentAuthOperation();
   const callbackUrl = new URL(NATIVE_BROWSER_CALLBACK_ROUTE, appParams.appBaseUrl);
   callbackUrl.searchParams.set('return_to', sanitizeAuthReturnRoute(returnRoute));
   callbackUrl.searchParams.set(NATIVE_CALLBACK_MARKER, '1');
@@ -214,6 +226,7 @@ export async function getNativeBrowserProviderReturnUrl(returnRoute = '/') {
   return prepareNativeAuthHandoff(
     callbackUrl.toString(),
     sanitizeAuthReturnRoute(returnRoute),
+    { isCurrent: () => isCurrentAuthOperation(operation) },
   );
 }
 
@@ -256,6 +269,7 @@ export async function createEncryptedNativeAuthCallbackUrl(callbackPageUrl, acce
 
 export async function consumeNativeAuthCallbackUrl(callbackUrl) {
   if (typeof window === 'undefined') return null;
+  const operation = currentAuthOperation();
 
   const url = parseUrl(callbackUrl);
   if (!url) return null;
@@ -273,7 +287,10 @@ export async function consumeNativeAuthCallbackUrl(callbackUrl) {
   if (isApprovedSchemeCallback) {
     if (url.searchParams.has('access_token')) return null;
     try {
-      const handoff = await consumeNativeAuthHandoff(url.toString());
+      const handoff = await consumeNativeAuthHandoff(url.toString(), {
+        isCurrent: () => isCurrentAuthOperation(operation),
+      });
+      if (!isCurrentAuthOperation(operation)) return null;
       base44.auth.setToken(handoff.accessToken);
       return {
         accessToken: handoff.accessToken,
@@ -324,6 +341,7 @@ function routeWithClearToken(route) {
 }
 
 export function clearBase44AuthTokens() {
+  beginNativeSignInAttempt();
   if (typeof window === 'undefined') return;
   for (const key of AUTH_TOKEN_STORAGE_KEYS) {
     try {
@@ -334,6 +352,12 @@ export function clearBase44AuthTokens() {
       // route below still carries clear_access_token as a second guard.
     }
   }
+}
+
+export function beginNativeSignInAttempt() {
+  const operation = beginAuthOperation();
+  clearNativeAuthHandoff();
+  return operation;
 }
 
 export async function redirectToLogin(returnRoute = getCurrentRoute()) {
@@ -360,6 +384,7 @@ export async function logoutInsideApp(returnRoute = '/account') {
 
   const signedOutRoute = routeWithClearToken(returnRoute);
   clearBase44AuthTokens();
+  const operation = currentAuthOperation();
 
   try {
     const fromUrl = `${window.location.origin}${signedOutRoute}`;
@@ -372,5 +397,5 @@ export async function logoutInsideApp(returnRoute = '/account') {
     // endpoint cannot be reached from the app shell, keep the user in-app.
   }
 
-  replaceInAppRoute(signedOutRoute);
+  if (canFinishSignOut(operation)) replaceInAppRoute(signedOutRoute);
 }

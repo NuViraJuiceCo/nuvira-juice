@@ -4,6 +4,14 @@ const HANDOFF_TTL_MS = 10 * 60 * 1000;
 
 export const NATIVE_AUTH_HANDOFF_STORAGE_KEY = 'nuvira_native_auth_handoff_v1';
 
+export function clearNativeAuthHandoff(options = {}) {
+  try {
+    getStorage(options.storage).removeItem(NATIVE_AUTH_HANDOFF_STORAGE_KEY);
+  } catch {
+    // Unavailable storage cannot retain a usable handoff in this runtime.
+  }
+}
+
 function getCryptoApi(override) {
   const cryptoApi = override || globalThis.crypto;
   if (!cryptoApi?.subtle || typeof cryptoApi.getRandomValues !== 'function') {
@@ -82,6 +90,8 @@ export async function prepareNativeAuthHandoff(callbackUrl, returnTo, options = 
     cryptoApi.subtle.exportKey('jwk', keyPair.publicKey),
     cryptoApi.subtle.exportKey('jwk', keyPair.privateKey),
   ]);
+
+  if (options.isCurrent && !options.isCurrent()) throw new Error('native_auth_handoff_interrupted');
 
   storage.setItem(NATIVE_AUTH_HANDOFF_STORAGE_KEY, JSON.stringify({
     state,
@@ -208,6 +218,10 @@ export async function consumeNativeAuthHandoff(callbackUrl, options = {}) {
       throw new Error('native_auth_handoff_invalid');
     }
 
+    if ((options.isCurrent && !options.isCurrent())
+      || storage.getItem(NATIVE_AUTH_HANDOFF_STORAGE_KEY) !== pendingRaw) {
+      throw new Error('native_auth_handoff_invalid');
+    }
     storage.removeItem(NATIVE_AUTH_HANDOFF_STORAGE_KEY);
     return {
       accessToken: result.accessToken,
