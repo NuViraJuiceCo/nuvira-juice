@@ -24,7 +24,7 @@ export default function DeliveryDatePicker({ options, selected, onSelect }) {
         </p>
       </div>
 
-      <div className="flex flex-col gap-2.5">
+      <div className="nv-checkout-dates flex flex-col gap-2.5">
         {options.map((opt) => {
           const isSelected = selected === opt.delivery_date;
           const displayDate = format(parseISO(opt.delivery_date), 'EEEE, MMMM d');
@@ -33,6 +33,8 @@ export default function DeliveryDatePicker({ options, selected, onSelect }) {
             <button
               key={opt.delivery_date}
               type="button"
+              aria-pressed={isSelected}
+              aria-label={`${displayDate} · ${opt.delivery_window_label || 'Delivery window'}`}
               onClick={() => onSelect(opt)}
               className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-all ${
                 isSelected
@@ -44,7 +46,8 @@ export default function DeliveryDatePicker({ options, selected, onSelect }) {
                 <CalendarCheck className={`w-4 h-4 shrink-0 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
                 <div>
                   <p className={`text-sm font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>
-                    {displayDate}
+                    <span className="nv-checkout-date-day">{format(parseISO(opt.delivery_date), 'EEEE')}</span>{' '}
+                    <span className="nv-checkout-date-value">{format(parseISO(opt.delivery_date), 'MMMM d')}</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground">{opt.delivery_window_label}</p>
                 </div>
