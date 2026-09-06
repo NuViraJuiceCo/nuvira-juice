@@ -8,7 +8,6 @@ function fixture() {
   const handlers = new Map();
   let allowed = true;
   let backCount = 0;
-  let progress = 0;
   let prevented = 0;
   const target = {
     addEventListener: (type, handler) => handlers.set(type, handler),
@@ -18,7 +17,6 @@ function fixture() {
     canStart: source => allowed && source !== 'editing',
     canNavigate: () => allowed,
     onBack: () => backCount++,
-    onProgress: value => { progress = value; },
   });
   const send = (type, x, y = 700, options = {}) => {
     const touch = { identifier: 1, clientX: x, clientY: y };
@@ -31,7 +29,7 @@ function fixture() {
       ...options,
     });
   };
-  return { send, dispose, handlers, block: () => { allowed = false; }, state: () => ({ backCount, progress, prevented }) };
+  return { send, dispose, handlers, block: () => { allowed = false; }, state: () => ({ backCount, prevented }) };
 }
 function check(name, run) { run(); checks.push(name); }
 
@@ -39,10 +37,9 @@ check('left-edge full swipe goes back exactly once while scrolled below the head
   const f = fixture();
   f.send('touchstart', 12);
   f.send('touchmove', 110);
-  assert.equal(f.state().progress, 1);
   f.send('touchend', 110);
   f.send('touchend', 110);
-  assert.deepEqual(f.state(), { backCount: 1, progress: 0, prevented: 1 });
+  assert.deepEqual(f.state(), { backCount: 1, prevented: 1 });
 });
 check('non-edge horizontal content swipes do not navigate', () => {
   const f = fixture();
@@ -61,7 +58,6 @@ check('short or reversed gestures cancel', () => {
     const f = fixture();
     f.send('touchstart', 12); f.send('touchmove', 110); f.send('touchmove', endX); f.send('touchend', endX);
     assert.equal(f.state().backCount, 0);
-    assert.equal(f.state().progress, 0);
   }
 });
 check('touch cancellation and multitouch do not navigate', () => {
@@ -87,7 +83,6 @@ check('route unmount removes every listener', () => {
   const f = fixture();
   f.send('touchstart', 12); f.send('touchmove', 110); f.dispose();
   assert.equal(f.handlers.size, 0);
-  assert.equal(f.state().progress, 0);
 });
 check('shared operations header installs a page-wide gesture with existing back semantics', () => {
   const header = fs.readFileSync('src/components/admin/AdminOpsHeader.jsx', 'utf8');
@@ -97,7 +92,13 @@ check('shared operations header installs a page-wide gesture with existing back 
   assert.match(header, /location\.pathname\.startsWith\('\/admin'\)/);
   assert.match(header, /data-state="open"/);
   assert.match(header, /document\.activeElement\?\.matches/);
-  assert.match(header, /createPortal\([\s\S]*document\.body/);
+  assert.doesNotMatch(header, /createPortal|swipeProgress|onProgress|data-admin-swipe-back/);
   assert.match(header, /aria-label="Back to admin operations"/);
+});
+check('gesture movement does not render an overlay or replace the existing page transition', () => {
+  const gesture = fs.readFileSync('src/lib/adminSwipeBack.js', 'utf8');
+  const layout = fs.readFileSync('src/components/layout/AppLayout.jsx', 'utf8');
+  assert.doesNotMatch(gesture, /onProgress|createPortal|setState/);
+  assert.match(layout, /data-page-transition="true"/);
 });
 console.log(JSON.stringify({ ok: true, suite: 'g182-admin-swipe-back', checks, provider_calls: false, writes_performed: false }, null, 2));

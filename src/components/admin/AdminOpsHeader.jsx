@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { AdminStatusPill } from './AdminStatusPill';
@@ -19,7 +18,6 @@ export default function AdminOpsHeader({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const [swipeProgress, setSwipeProgress] = useState(0);
   useEffect(() => {
     if (!location.pathname.startsWith('/admin')) return undefined;
     const editingSelector = 'input, textarea, select, [contenteditable="true"], [role="slider"], [data-no-swipe-back]';
@@ -30,7 +28,6 @@ export default function AdminOpsHeader({
       canStart: target => canNavigate() && !target?.closest?.(editingSelector),
       canNavigate,
       onBack: () => onBack ? onBack() : navigate(backTo),
-      onProgress: setSwipeProgress,
     });
   }, [backTo, location.pathname, navigate, onBack]);
 
@@ -40,18 +37,6 @@ export default function AdminOpsHeader({
   const mobileDescription = mobileSubtitle || subtitle;
 
   return (
-    <>
-      {swipeProgress > 0 && createPortal(
-        <div
-          aria-hidden="true"
-          data-admin-swipe-back="true"
-          className="pointer-events-none fixed left-2 top-1/2 z-50 flex h-11 w-11 items-center justify-center rounded-full border border-emerald-300/50 bg-emerald-950 text-emerald-100 shadow-lg md:hidden"
-          style={{ opacity: swipeProgress, transform: `translateX(${(swipeProgress - 1) * 52}px)` }}
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </div>,
-        document.body,
-      )}
     <header
       className={`nuvira-admin-header border-b border-emerald-500/35 px-3 pb-3 text-white shadow-sm shadow-slate-950/20 md:px-4 md:pb-3 ${compactMobile ? 'md:pt-3' : ''}`}
       data-admin-header-layout="responsive"
@@ -105,6 +90,5 @@ export default function AdminOpsHeader({
         </div>
       </div>
     </header>
-    </>
   );
 }

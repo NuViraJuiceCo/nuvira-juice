@@ -2,11 +2,10 @@ const EDGE_WIDTH = 28;
 const MIN_DISTANCE = 80;
 const MAX_VERTICAL_DISTANCE = 48;
 
-export function installAdminSwipeBack(target, { canStart, canNavigate, onBack, onProgress }) {
+export function installAdminSwipeBack(target, { canStart, canNavigate, onBack }) {
   let gesture = null;
   const reset = () => {
     gesture = null;
-    onProgress(0);
   };
   const start = event => {
     reset();
@@ -26,7 +25,6 @@ export function installAdminSwipeBack(target, { canStart, canNavigate, onBack, o
     gesture.distance = Math.max(0, dx);
     if (dx > 12 && dx > dy * 1.5) {
       if (event.cancelable) event.preventDefault();
-      onProgress(Math.min(1, dx / MIN_DISTANCE));
     }
   };
   const end = event => {
