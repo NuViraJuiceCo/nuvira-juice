@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
+// The exact approved wordmark is bundled so cold/offline starts never show a broken logo.
+const LOGO_URL = "/images/brand/nuvira-wordmark.png";
 
 export default function SplashScreen({ onDone }) {
   const [visible, setVisible] = useState(true);

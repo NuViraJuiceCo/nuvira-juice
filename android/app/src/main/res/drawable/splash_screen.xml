@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/colorPrimaryDark" />
-    <item>
+    <item android:width="208dp" android:height="82dp" android:gravity="center">
         <bitmap
-            android:gravity="center"
-            android:src="@drawable/splash_logo" />
+            android:gravity="fill"
+            android:src="@drawable/nuvira_wordmark" />
     </item>
 </layer-list>

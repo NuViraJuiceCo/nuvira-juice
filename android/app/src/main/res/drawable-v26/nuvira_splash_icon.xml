@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive foreground padding survives Android's splash-icon normalization.
+     Preserve the original 1024:403 wordmark aspect ratio within the safe mask. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/colorPrimaryDark" />
+    <foreground>
+        <inset android:insetLeft="25%" android:insetRight="25%"
+            android:insetTop="40.16%" android:insetBottom="40.16%">
+            <bitmap android:src="@drawable/nuvira_wordmark" android:gravity="fill" />
+        </inset>
+    </foreground>
+</adaptive-icon>

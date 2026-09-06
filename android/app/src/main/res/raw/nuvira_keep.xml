@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cordova's compatibility parser resolves this by name, not an R.xml field. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@xml/config" />

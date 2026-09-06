@@ -1,0 +1,14 @@
+// Explicit local-only instrumentation against the release build type. Does not
+// alter release signing: sign copies of both APKs with a QA key after building.
+// Never used by the release workflow; never upload a QA-signed APK to a store.
+gradle.beforeProject { project ->
+    project.plugins.withId('com.android.application') {
+        if (System.getenv('NUVIRA_ANDROID_QA') != '1') {
+            throw new GradleException('Set NUVIRA_ANDROID_QA=1 only for disposable-emulator tests.')
+        }
+        project.androidComponents.finalizeDsl { android ->
+            android.testBuildType = 'release'
+            android.defaultConfig.testInstrumentationRunner = 'com.nuvirajuice.app.ReleaseQaRunner'
+        }
+    }
+}
