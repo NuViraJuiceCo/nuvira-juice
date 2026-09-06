@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Browser } from '@capacitor/browser';
+import { AppLauncher } from '@capacitor/app-launcher';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -34,7 +34,8 @@ import {
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
 const IS_NATIVE_PLATFORM = Capacitor.isNativePlatform();
-const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM || Capacitor.isPluginAvailable('Browser');
+const HAS_NATIVE_EXTERNAL_BROWSER = IS_NATIVE_PLATFORM && Capacitor.isPluginAvailable('AppLauncher');
+const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM || HAS_NATIVE_EXTERNAL_BROWSER;
 const NATIVE_LOGIN_AUTH_TIMEOUT_MS = 10000;
 
 function normalizeReturnRoute(value) {
@@ -155,12 +156,10 @@ export default function NativeLogin() {
 
     try {
       if (IS_NATIVE_PLATFORM) {
-        await Browser.close().catch(() => {});
         const callbackUrl = await getNativeBrowserProviderReturnUrl(returnTo);
-        await Browser.open({
-          url: getProviderLoginUrl(provider, callbackUrl),
-          presentationStyle: 'popover',
-        });
+        const providerUrl = getProviderLoginUrl(provider, callbackUrl);
+        const result = await AppLauncher.openUrl({ url: providerUrl });
+        if (!result?.completed) throw new Error('Unable to open secure sign-in in your browser.');
         return;
       }
 

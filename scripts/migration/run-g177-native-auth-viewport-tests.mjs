@@ -30,7 +30,7 @@ assert.ok(
   nativeLogin.indexOf('if (!ENABLE_PROVIDER_BUTTONS)') < nativeLogin.indexOf('providerLaunchRef.current = true'),
   'Unavailable provider handling must not latch the launch guard',
 );
-assert.match(nativeLogin, /await Browser\.close\(\)\.catch\(\(\) => \{\}\);[\s\S]*getNativeBrowserProviderReturnUrl\(returnTo\)[\s\S]*Browser\.open/);
+assert.match(nativeLogin, /getNativeBrowserProviderReturnUrl\(returnTo\)[\s\S]*AppLauncher\.openUrl/);
 assert.match(nativeLogin, /disabled=\{isSubmitting \|\| Boolean\(providerOpening\)\}/);
 
 assert.match(nativeAuthRedirect, /const BASE44_PROVIDER_AUTH_ORIGIN = 'https:\/\/app\.base44\.com'/);
@@ -52,7 +52,7 @@ console.log(JSON.stringify({
   mobile_credential_font_floor_px: 16,
   focus_released_before_navigation: true,
   duplicate_provider_launch_blocked: true,
-  stale_provider_sheet_closed: true,
+  provider_launch_single_flight: true,
   provider_auth_origin: 'https://app.base44.com',
   callback_allowlist_enforced: true,
   pinch_zoom_preserved: true,

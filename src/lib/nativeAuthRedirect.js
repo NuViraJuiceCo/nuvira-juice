@@ -11,8 +11,9 @@ const SIGN_IN_RESET_STORAGE_KEYS = [...AUTH_TOKEN_STORAGE_KEYS, 'base44_from_url
 const NATIVE_CALLBACK_ROUTE = '/native-login';
 const NATIVE_URL_SCHEME = 'nuvira';
 const NATIVE_CALLBACK_MARKER = 'native_provider_callback';
-// Base44 issues and consumes provider state on this origin. Starting there
-// avoids an extra native-browser redirect before the OAuth session is created.
+// Base44 issues and consumes provider state on this origin. Native shells open
+// this URL in the device browser so the OAuth session cookie survives the
+// provider round trip; the verified NuVira universal link returns to the app.
 const BASE44_PROVIDER_AUTH_ORIGIN = 'https://app.base44.com';
 export const NATIVE_BROWSER_CALLBACK_MARKER = 'native_browser_callback';
 export const SIGN_IN_RESET_LOGOUT_TIMEOUT_MS = 4000;
