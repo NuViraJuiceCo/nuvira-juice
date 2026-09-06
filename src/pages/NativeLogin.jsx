@@ -28,6 +28,7 @@ import {
   releaseNativeAuthViewport,
 } from '@/lib/nativeAuthRedirect';
 import { isCurrentAuthOperation } from '@/lib/authOperation';
+import { createSessionCredentials } from '@/lib/sessionCredentials';
 import { useAuth } from '@/lib/AuthContext';
 import { sanitizeAuthReturnRoute } from '@/lib/authReturnTo';
 import SEO from '@/components/SEO';
@@ -97,8 +98,10 @@ export default function NativeLogin() {
     setFormError('');
   };
 
-  const completeLogin = async () => {
+  const completeLogin = async (credentials) => {
+    credentials.assertCurrent();
     const currentUser = await checkAppState({ authTimeoutMs: NATIVE_LOGIN_AUTH_TIMEOUT_MS });
+    credentials.assertCurrent();
     if (!currentUser?.email) {
       throw new Error('Sign in succeeded, but the account could not be loaded.');
     }
@@ -206,15 +209,16 @@ export default function NativeLogin() {
     }
   };
 
-  const handleLogin = async () => {
-    const result = await base44.auth.loginViaEmailPassword(normalizedEmail, password);
+  const handleLogin = async (credentials) => {
+    const result = await credentials.loginViaEmailPassword(normalizedEmail, password);
+    credentials.assertCurrent();
     if (!result?.access_token) {
       throw new Error('Sign in did not return an access token.');
     }
-    await completeLogin();
+    await completeLogin(credentials);
   };
 
-  const handleRegister = async () => {
+  const handleRegister = async (credentials) => {
     if (password.length < 8) {
       throw new Error('Use at least 8 characters for your password.');
     }
@@ -222,36 +226,38 @@ export default function NativeLogin() {
       throw new Error('Passwords do not match.');
     }
 
-    await base44.auth.register({
+    await credentials.register({
       email: normalizedEmail,
       password,
     });
 
     try {
-      await handleLogin();
+      await handleLogin(credentials);
       return;
     } catch {
+      credentials.assertCurrent();
       setMode('verify');
       setStatusText('Check your email for the verification code, then enter it here.');
     }
   };
 
-  const handleVerify = async () => {
+  const handleVerify = async (credentials) => {
     if (!otpCode.trim()) {
       throw new Error('Enter the verification code from your email.');
     }
-    const result = await base44.auth.verifyOtp({
+    const result = await credentials.verifyOtp({
       email: normalizedEmail,
       otpCode: otpCode.trim(),
     });
     if (result?.access_token) {
-      base44.auth.setToken(result.access_token);
+      credentials.setToken(result.access_token);
     }
-    await handleLogin();
+    await handleLogin(credentials);
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (isSubmitting || providerOpening) return;
     setStatusText('');
     setFormError('');
 
@@ -262,16 +268,18 @@ export default function NativeLogin() {
     }
 
     setIsSubmitting(true);
-    beginNativeSignInAttempt();
+    const operation = beginNativeSignInAttempt();
+    const credentials = createSessionCredentials(base44.auth, operation);
     try {
       if (isVerifying) {
-        await handleVerify();
+        await handleVerify(credentials);
       } else if (isRegistering) {
-        await handleRegister();
+        await handleRegister(credentials);
       } else {
-        await handleLogin();
+        await handleLogin(credentials);
       }
     } catch (error) {
+      if (!isCurrentAuthOperation(operation)) return;
       const message = errorMessage(error, 'Unable to sign in.');
       console.warn('[NativeLogin] Sign in failed', message);
       if (!isRegistering && !isVerifying && isEmailVerificationMessage(message)) {
@@ -282,45 +290,55 @@ export default function NativeLogin() {
       setFormError(message);
       toast.error(message);
     } finally {
-      setIsSubmitting(false);
+      if (isCurrentAuthOperation(operation)) setIsSubmitting(false);
     }
   };
 
   const handleResendOtp = async () => {
+    if (isSubmitting || providerOpening) return;
     if (!normalizedEmail) {
       toast.error('Enter your email first.');
       return;
     }
     setIsSubmitting(true);
     setFormError('');
+    const operation = beginNativeSignInAttempt();
+    const credentials = createSessionCredentials(base44.auth, operation);
     try {
-      await base44.auth.resendOtp(normalizedEmail);
+      await credentials.resendOtp(normalizedEmail);
+      credentials.assertCurrent();
       setStatusText('A new verification code was sent to your email.');
     } catch (error) {
+      if (!isCurrentAuthOperation(operation)) return;
       const message = errorMessage(error, 'Unable to resend verification code.');
       setFormError(message);
       toast.error(message);
     } finally {
-      setIsSubmitting(false);
+      if (isCurrentAuthOperation(operation)) setIsSubmitting(false);
     }
   };
 
   const handlePasswordReset = async () => {
+    if (isSubmitting || providerOpening) return;
     if (!normalizedEmail) {
       toast.error('Enter your email first.');
       return;
     }
     setIsSubmitting(true);
     setFormError('');
+    const operation = beginNativeSignInAttempt();
+    const credentials = createSessionCredentials(base44.auth, operation);
     try {
-      await base44.auth.resetPasswordRequest(normalizedEmail);
+      await credentials.resetPasswordRequest(normalizedEmail);
+      credentials.assertCurrent();
       setStatusText('Password reset instructions were sent to your email.');
     } catch (error) {
+      if (!isCurrentAuthOperation(operation)) return;
       const message = errorMessage(error, 'Unable to send password reset email.');
       setFormError(message);
       toast.error(message);
     } finally {
-      setIsSubmitting(false);
+      if (isCurrentAuthOperation(operation)) setIsSubmitting(false);
     }
   };
 
@@ -380,6 +398,7 @@ export default function NativeLogin() {
             <button
               key={item.key}
               type="button"
+              disabled={isSubmitting || Boolean(providerOpening)}
               onClick={() => {
                 setMode(item.key);
                 setFormError('');
@@ -525,7 +544,7 @@ export default function NativeLogin() {
 
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || Boolean(providerOpening)}
             className="nuvira-gradient-button h-12 w-full rounded-2xl text-sm font-semibold disabled:opacity-60"
           >
             {isSubmitting
@@ -544,6 +563,7 @@ export default function NativeLogin() {
             <>
               <button
                 type="button"
+                disabled={isSubmitting || Boolean(providerOpening)}
                 onClick={() => {
                   setMode(isRegistering ? 'login' : 'register');
                   setFormError('');
@@ -555,6 +575,7 @@ export default function NativeLogin() {
               </button>
               <button
                 type="button"
+                disabled={isSubmitting || Boolean(providerOpening)}
                 onClick={() => switchToVerifyMode()}
                 className="text-muted-foreground underline underline-offset-4"
               >
@@ -563,11 +584,11 @@ export default function NativeLogin() {
             </>
           )}
           {isVerifying ? (
-            <button type="button" onClick={handleResendOtp} className="font-semibold text-primary">
+            <button type="button" disabled={isSubmitting || Boolean(providerOpening)} onClick={handleResendOtp} className="font-semibold text-primary">
               Resend verification code
             </button>
           ) : (
-            <button type="button" onClick={handlePasswordReset} className="text-muted-foreground underline underline-offset-4">
+            <button type="button" disabled={isSubmitting || Boolean(providerOpening)} onClick={handlePasswordReset} className="text-muted-foreground underline underline-offset-4">
               Forgot password?
             </button>
           )}

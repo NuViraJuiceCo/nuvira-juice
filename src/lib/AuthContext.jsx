@@ -108,16 +108,30 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(Boolean(currentUser));
   }, [sessionBoundary]);
 
+  const isCurrentAuthRead = useCallback((request, operation) => {
+    if (!sessionBoundary.isCurrentRequest(request)) return false;
+    if (isCurrentAuthOperation(operation)) return true;
+    // A newer sign-in may be waiting on its provider and not have started me()
+    // yet. Retire only this read's loading state, keeping the confirmed user.
+    setIsLoadingAuth(false);
+    setAuthChecked(true);
+    setBootstrapState(sessionBoundary.getSession().identity
+      ? AUTH_BOOTSTRAP_STATES.authenticated : AUTH_BOOTSTRAP_STATES.unauthenticated);
+    return false;
+  }, [sessionBoundary]);
+
   const checkUserAuth = useCallback(async ({ timeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS } = {}) => {
     const request = sessionBoundary.beginRequest();
+    let operation = currentAuthOperation();
     const pendingProviderAuthEvent = captureGoogleProviderAuthEvent();
     try {
       consumeBase44AuthFromUrl();
+      operation = currentAuthOperation();
       setIsLoadingAuth(true);
       setAuthError(null);
       setBootstrapState(AUTH_BOOTSTRAP_STATES.loading);
       const currentUser = await readCurrentUserWithTimeout(timeoutMs);
-      if (!sessionBoundary.isCurrentRequest(request)) return null;
+      if (!isCurrentAuthRead(request, operation)) return null;
       publishAuthUser(currentUser);
       setAuthChecked(true);
       setIsLoadingAuth(false);
@@ -133,7 +147,7 @@ export const AuthProvider = ({ children }) => {
       }
       return currentUser;
     } catch (error) {
-      if (!sessionBoundary.isCurrentRequest(request)) return null;
+      if (!isCurrentAuthRead(request, operation)) return null;
       discardGoogleProviderAuthEvent(pendingProviderAuthEvent);
       if (error?.code === 'auth_bootstrap_timeout') {
         console.warn('[AuthContext] Auth bootstrap timed out; continuing as public session.');
@@ -159,7 +173,7 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingAuth(false);
       return null;
     }
-  }, [publishAuthUser, sessionBoundary]);
+  }, [isCurrentAuthRead, publishAuthUser, sessionBoundary]);
 
   const checkAppState = useCallback(async ({ authTimeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS } = {}) => {
     const request = ++appStateRequestRef.current;
@@ -317,17 +331,18 @@ export const AuthProvider = ({ children }) => {
 
   const refreshUser = async () => {
     const request = sessionBoundary.beginRequest();
+    const operation = currentAuthOperation();
     try {
       setAuthError(null);
       const currentUser = await readCurrentUserWithTimeout(AUTH_EXPLICIT_TIMEOUT_MS);
-      if (!sessionBoundary.isCurrentRequest(request)) return null;
+      if (!isCurrentAuthRead(request, operation)) return null;
       publishAuthUser(currentUser);
       setAuthChecked(true);
       setIsLoadingAuth(false);
       setBootstrapState(currentUser ? AUTH_BOOTSTRAP_STATES.authenticated : AUTH_BOOTSTRAP_STATES.unauthenticated);
       return currentUser;
     } catch (error) {
-      if (!sessionBoundary.isCurrentRequest(request)) return null;
+      if (!isCurrentAuthRead(request, operation)) return null;
       if (isExpectedUnauthenticatedError(error)) publishAuthUser(null);
       setAuthChecked(true);
       setIsLoadingAuth(false);

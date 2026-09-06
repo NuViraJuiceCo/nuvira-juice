@@ -9,6 +9,8 @@ import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { safeReturnTo } from "@/lib/authReturnTo";
 import { prepareGoogleProviderAuthRedirect, trackGoogleLogin } from "@/lib/googleAnalytics";
+import { beginAuthOperation, isCurrentAuthOperation } from "@/lib/authOperation";
+import { createSessionCredentials } from "@/lib/sessionCredentials";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -23,18 +25,24 @@ export default function Login() {
     e.preventDefault();
     setError("");
     setLoading(true);
+    const operation = beginAuthOperation();
+    const credentials = createSessionCredentials(base44.auth, operation);
     try {
-      await base44.auth.loginViaEmailPassword(email, password);
+      await credentials.loginViaEmailPassword(email, password);
+      credentials.assertCurrent();
       trackGoogleLogin('email');
       window.location.href = returnTo;
     } catch (err) {
+      if (!isCurrentAuthOperation(operation)) return;
       setError(err.message || "Invalid email or password");
     } finally {
-      setLoading(false);
+      if (isCurrentAuthOperation(operation)) setLoading(false);
     }
   };
 
   const handleGoogle = () => {
+    beginAuthOperation();
+    setLoading(false);
     base44.auth.loginWithProvider(
       "google",
       prepareGoogleProviderAuthRedirect(returnTo, 'login', 'google')

@@ -24,7 +24,7 @@ const checks = [
     const googleStart = register.indexOf('const handleGoogle = () => {');
     assert.ok(resendStart >= 0 && googleStart > resendStart);
     const resend = register.slice(resendStart, googleStart);
-    assert.match(resend, /await base44\.auth\.resendOtp\(email\);/);
+    assert.match(resend, /await credentials\.resendOtp\(email\);\s*credentials\.assertCurrent\(\);/);
     assert.match(resend, /toast\.success/);
     assert.match(resend, /catch \(err\)/);
     assert.match(resend, /setError\(err\.message \|\| "Failed to resend code"\)/);
