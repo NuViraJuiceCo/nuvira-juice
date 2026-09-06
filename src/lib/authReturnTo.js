@@ -2,6 +2,25 @@
 // after sign-in, e.g. the MCP OAuth consent page). Keep the redirect
 // validation in one place — it is security-sensitive and easy to drift.
 
+// A destination is not an auth command. Replaying logout/bootstrap parameters
+// after OAuth can clear or overwrite the session that was just established.
+export function sanitizeAuthReturnRoute(route) {
+  if (typeof route !== 'string' || !route.startsWith('/') || route.startsWith('//') || route.includes('\\')) return '/';
+  try {
+    const origin = 'https://nuvira-auth-return.invalid';
+    const url = new URL(route, origin);
+    if (url.origin !== origin || url.pathname.startsWith('//')) return '/';
+    for (const key of [
+      'access_token', 'clear_access_token', 'signed_out', 'reset_sign_in',
+      'app_id', 'app_base_url', 'functions_version', 'from_url',
+      'native_provider_callback', 'native_browser_callback', 'is_new_user',
+    ]) url.searchParams.delete(key);
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return '/';
+  }
+}
+
 // Resolve ?returnTo= to a safe same-origin path, else "/".
 //
 // The same-origin check alone is not enough: a value like /.//evil.com or

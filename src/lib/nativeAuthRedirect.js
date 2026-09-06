@@ -1,5 +1,6 @@
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
+import { sanitizeAuthReturnRoute } from '@/lib/authReturnTo';
 import {
   consumeNativeAuthHandoff,
   encryptNativeAuthHandoff,
@@ -127,7 +128,7 @@ export function replaceInAppRoute(route = '/') {
 
 export function getNativeLoginResetRoute(returnRoute = '/account') {
   const params = new URLSearchParams();
-  params.set('return_to', normalizeReturnRoute(returnRoute));
+  params.set('return_to', sanitizeAuthReturnRoute(returnRoute));
   params.set('reset_sign_in', '1');
   params.set('clear_access_token', 'true');
   return `${NATIVE_CALLBACK_ROUTE}?${params.toString()}`;
@@ -200,25 +201,25 @@ export async function resetSignInAndReload(returnRoute = '/account') {
 
 export function getNativeProviderReturnUrl(returnRoute = '/') {
   const callbackUrl = new URL(NATIVE_CALLBACK_ROUTE, appParams.appBaseUrl);
-  callbackUrl.searchParams.set('return_to', normalizeReturnRoute(returnRoute));
+  callbackUrl.searchParams.set('return_to', sanitizeAuthReturnRoute(returnRoute));
   callbackUrl.searchParams.set(NATIVE_CALLBACK_MARKER, '1');
   return callbackUrl.toString();
 }
 
 export async function getNativeBrowserProviderReturnUrl(returnRoute = '/') {
   const callbackUrl = new URL(NATIVE_BROWSER_CALLBACK_ROUTE, appParams.appBaseUrl);
-  callbackUrl.searchParams.set('return_to', normalizeReturnRoute(returnRoute));
+  callbackUrl.searchParams.set('return_to', sanitizeAuthReturnRoute(returnRoute));
   callbackUrl.searchParams.set(NATIVE_CALLBACK_MARKER, '1');
   callbackUrl.searchParams.set(NATIVE_BROWSER_CALLBACK_MARKER, '1');
   return prepareNativeAuthHandoff(
     callbackUrl.toString(),
-    normalizeReturnRoute(returnRoute),
+    sanitizeAuthReturnRoute(returnRoute),
   );
 }
 
 export function getNativeSchemeProviderReturnUrl(returnRoute = '/') {
   const callbackUrl = new URL(`${NATIVE_URL_SCHEME}://auth/callback`);
-  callbackUrl.searchParams.set('return_to', normalizeReturnRoute(returnRoute));
+  callbackUrl.searchParams.set('return_to', sanitizeAuthReturnRoute(returnRoute));
   callbackUrl.searchParams.set(NATIVE_CALLBACK_MARKER, '1');
   return callbackUrl.toString();
 }
@@ -277,7 +278,7 @@ export async function consumeNativeAuthCallbackUrl(callbackUrl) {
       return {
         accessToken: handoff.accessToken,
         shouldClearToken: false,
-        returnTo: normalizeReturnRoute(handoff.returnTo),
+        returnTo: sanitizeAuthReturnRoute(handoff.returnTo),
       };
     } catch {
       return null;
@@ -286,7 +287,7 @@ export async function consumeNativeAuthCallbackUrl(callbackUrl) {
 
   const rawAccessToken = url.searchParams.get('access_token');
   const shouldClearToken = url.searchParams.get('clear_access_token') === 'true';
-  const returnTo = normalizeReturnRoute(url.searchParams.get('return_to'));
+  const returnTo = sanitizeAuthReturnRoute(url.searchParams.get('return_to'));
 
   if (!rawAccessToken && !shouldClearToken) return null;
   if (rawAccessToken && url.searchParams.get(NATIVE_CALLBACK_MARKER) !== '1') return null;
@@ -336,7 +337,7 @@ export function clearBase44AuthTokens() {
 }
 
 export async function redirectToLogin(returnRoute = getCurrentRoute()) {
-  const safeReturnRoute = normalizeReturnRoute(returnRoute);
+  const safeReturnRoute = sanitizeAuthReturnRoute(returnRoute);
 
   if (typeof window === 'undefined') {
     base44.auth.redirectToLogin(safeReturnRoute);

@@ -27,6 +27,7 @@ import {
   releaseNativeAuthViewport,
 } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
+import { sanitizeAuthReturnRoute } from '@/lib/authReturnTo';
 import SEO from '@/components/SEO';
 import {
   GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE,
@@ -40,11 +41,6 @@ const HAS_NATIVE_WEB_AUTH = IS_NATIVE_PLATFORM && Capacitor.isPluginAvailable('N
 const HAS_NATIVE_EXTERNAL_BROWSER = IS_NATIVE_PLATFORM && Capacitor.isPluginAvailable('AppLauncher');
 const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM || HAS_NATIVE_WEB_AUTH || HAS_NATIVE_EXTERNAL_BROWSER;
 const NATIVE_LOGIN_AUTH_TIMEOUT_MS = 10000;
-
-function normalizeReturnRoute(value) {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
-  return value;
-}
 
 function errorMessage(error, fallback) {
   return error?.data?.message || error?.message || fallback;
@@ -66,7 +62,7 @@ export default function NativeLogin() {
   const { checkAppState, isAuthenticated, user } = useAuth();
   const [searchParams] = useSearchParams();
   const returnTo = useMemo(
-    () => normalizeReturnRoute(searchParams.get('return_to')),
+    () => sanitizeAuthReturnRoute(searchParams.get('return_to')),
     [searchParams]
   );
   const guestActivationContext = useMemo(() => readGuestLoyaltyActivationContext(), []);

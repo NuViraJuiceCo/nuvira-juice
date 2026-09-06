@@ -10,6 +10,7 @@ const GOOGLE_AUTH_EVENT_PARAM = 'nuvira_auth_event';
 const GOOGLE_AUTH_EVENT_STORAGE_KEY = 'nuvira_ga4_auth_event_v1';
 const GOOGLE_AUTH_EVENT_TTL_MS = 10 * 60 * 1000;
 const GOOGLE_MEASUREMENT_CONTEXT_TIMEOUT_MS = 800;
+const NATIVE_AUTH_TRANSPORT_PATH = /^\/native-(?:login|auth-bridge)(?:\/|$)/i;
 const CAMPAIGN_QUERY_KEYS = [
   'utm_id',
   'utm_source',
@@ -166,12 +167,14 @@ export function buildAnalyticsPageLocation(pathname = '/', search = '') {
 export function isTrackableAnalyticsPath(pathname = '/') {
   const path = String(pathname || '/').toLowerCase();
   return !path.startsWith('/admin')
+    && !NATIVE_AUTH_TRANSPORT_PATH.test(path)
     && !path.startsWith('/oauth-consent')
     && !path.startsWith('/_preview');
 }
 
 export async function loadGoogleAnalytics() {
-  if (!hasBrowserRuntime() || isNativeAppRuntime() || getAnalyticsConsent() !== 'granted') {
+  if (!hasBrowserRuntime() || isNativeAppRuntime() || getAnalyticsConsent() !== 'granted'
+    || NATIVE_AUTH_TRANSPORT_PATH.test(window.location.pathname)) {
     return false;
   }
 
