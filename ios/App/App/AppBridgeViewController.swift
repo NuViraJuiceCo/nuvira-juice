@@ -5,5 +5,6 @@ class AppBridgeViewController: CAPBridgeViewController {
         super.capacitorDidLoad()
         bridge?.registerPluginInstance(NativeApplePayPlugin())
         bridge?.registerPluginInstance(NativeDeliveryLiveActivityPlugin())
+        bridge?.registerPluginInstance(NativeWebAuthPlugin())
     }
 }

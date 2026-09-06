@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import {
   createEncryptedNativeAuthCallbackUrl,
+  consumeNativeAuthCallbackUrl,
   getNativeBrowserProviderReturnUrl,
   getNativeProviderReturnUrl,
   getProviderLoginUrl,
@@ -33,9 +34,11 @@ import {
 } from '@/lib/guestLoyaltyActivation';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
+const NativeWebAuth = registerPlugin('NativeWebAuth');
 const IS_NATIVE_PLATFORM = Capacitor.isNativePlatform();
+const HAS_NATIVE_WEB_AUTH = IS_NATIVE_PLATFORM && Capacitor.isPluginAvailable('NativeWebAuth');
 const HAS_NATIVE_EXTERNAL_BROWSER = IS_NATIVE_PLATFORM && Capacitor.isPluginAvailable('AppLauncher');
-const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM || HAS_NATIVE_EXTERNAL_BROWSER;
+const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM || HAS_NATIVE_WEB_AUTH || HAS_NATIVE_EXTERNAL_BROWSER;
 const NATIVE_LOGIN_AUTH_TIMEOUT_MS = 10000;
 
 function normalizeReturnRoute(value) {
@@ -158,6 +161,25 @@ export default function NativeLogin() {
       if (IS_NATIVE_PLATFORM) {
         const callbackUrl = await getNativeBrowserProviderReturnUrl(returnTo);
         const providerUrl = getProviderLoginUrl(provider, callbackUrl);
+
+        if (HAS_NATIVE_WEB_AUTH) {
+          const result = await NativeWebAuth.authenticate({
+            url: providerUrl,
+            callbackScheme: 'nuvira',
+          });
+          const callbackResult = await consumeNativeAuthCallbackUrl(result?.callbackUrl || '');
+          if (!callbackResult?.accessToken) {
+            throw new Error('Secure sign-in returned without a valid NuVira session.');
+          }
+          const currentUser = await checkAppState({ authTimeoutMs: NATIVE_LOGIN_AUTH_TIMEOUT_MS });
+          if (!currentUser?.email) {
+            throw new Error('Sign in succeeded, but the account could not be loaded.');
+          }
+          releaseNativeAuthViewport();
+          navigate(callbackResult.returnTo || returnTo, { replace: true });
+          return;
+        }
+
         const result = await AppLauncher.openUrl({ url: providerUrl });
         if (!result?.completed) throw new Error('Unable to open secure sign-in in your browser.');
         return;
@@ -165,6 +187,10 @@ export default function NativeLogin() {
 
       base44.auth.loginWithProvider(provider, getNativeProviderReturnUrl(returnTo));
     } catch (error) {
+      if (error?.code === 'AUTH_CANCELED') {
+        setStatusText('Sign-in canceled.');
+        return;
+      }
       const message = errorMessage(error, `Unable to start ${provider} sign-in.`);
       console.warn('[NativeLogin] Provider sign-in failed', 'provider_window_unavailable');
       setFormError(message);

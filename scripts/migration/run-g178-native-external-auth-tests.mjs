@@ -19,8 +19,11 @@ const androidAssociation = JSON.parse(read('public/.well-known/assetlinks.json')
 
 assert.equal(packageJson.dependencies['@capacitor/browser'], '8.0.4');
 assert.match(nativeLogin, /import \{ AppLauncher \} from '@capacitor\/app-launcher'/);
+assert.match(nativeLogin, /registerPlugin\('NativeWebAuth'\)/);
+assert.match(nativeLogin, /Capacitor\.isPluginAvailable\('NativeWebAuth'\)/);
 assert.match(nativeLogin, /Capacitor\.isPluginAvailable\('AppLauncher'\)/);
-assert.match(nativeLogin, /const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM \|\| HAS_NATIVE_EXTERNAL_BROWSER/);
+assert.match(nativeLogin, /const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM \|\| HAS_NATIVE_WEB_AUTH \|\| HAS_NATIVE_EXTERNAL_BROWSER/);
+assert.match(nativeLogin, /NativeWebAuth\.authenticate\(/);
 assert.match(nativeLogin, /AppLauncher\.openUrl\(\{ url: providerUrl \}\)/);
 assert.doesNotMatch(nativeLogin, /Browser\.open/);
 
@@ -61,7 +64,7 @@ console.log(JSON.stringify({
   ok: true,
   suite: 'g178-native-external-auth',
   cases: 34,
-  native_provider_browser: 'system_browser',
+  native_provider_browser: 'authentication_session_with_system_browser_fallback',
   callback_browser_closed_after_validation: true,
   ios_universal_link_return: true,
   android_app_link_return: true,
