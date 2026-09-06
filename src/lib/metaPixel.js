@@ -7,6 +7,8 @@ export const MARKETING_CONSENT_EVENT = 'nuvira:marketing-consent';
 const META_PIXEL_SCRIPT_ID = 'nuvira-meta-pixel';
 const META_REGISTRATION_STORAGE_KEY = 'nuvira_meta_registration_event_v1';
 const META_REGISTRATION_TTL_MS = 10 * 60 * 1000;
+const META_FUNNEL_EVENTS = new Set(['ViewContent', 'AddToCart', 'InitiateCheckout', 'AddPaymentInfo']);
+const META_LIVE_ORIGINS = new Set(['https://nuvirajuice.com', 'https://www.nuvirajuice.com']);
 const META_STANDARD_EVENTS = new Set([
   'PageView',
   'ViewContent',
@@ -60,6 +62,7 @@ const META_BROWSER_ID_PATTERN = /^fb\.\d\.\d{10,13}\.[A-Za-z0-9._-]{1,220}$/;
 let volatileConsent = null;
 let metaScriptPromise = null;
 let metaInitialized = false;
+let consentRevision = 0;
 
 function hasBrowserRuntime() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -233,6 +236,26 @@ function deriveFbcFromCurrentUrl() {
   }
 }
 
+function persistMetaAttribution() {
+  if (!META_LIVE_ORIGINS.has(window.location.origin)) return;
+  const setCookie = (name, value) => {
+    document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=7776000; path=/; domain=.nuvirajuice.com; SameSite=Lax; Secure`;
+  };
+  try {
+    const currentFbc = normalizeMetaBrowserId(readCookie('_fbc'));
+    const incomingFbc = deriveFbcFromCurrentUrl();
+    if (incomingFbc && incomingFbc.split('.').slice(3).join('.') !== currentFbc.split('.').slice(3).join('.')) {
+      setCookie('_fbc', incomingFbc);
+    }
+    if (!normalizeMetaBrowserId(readCookie('_fbp')) && globalThis.crypto?.getRandomValues) {
+      const random = crypto.getRandomValues(new Uint32Array(1))[0];
+      setCookie('_fbp', `fb.1.${Date.now()}.${random}`);
+    }
+  } catch {
+    // Cookie restrictions must not interrupt shopping.
+  }
+}
+
 function safeCurrentEventSourceUrl() {
   if (!hasBrowserRuntime()) return 'https://nuvirajuice.com/checkout';
   try {
@@ -263,6 +286,7 @@ export function setMarketingConsent(value) {
   if (!hasBrowserRuntime() || isNativeAppRuntime()) return false;
 
   volatileConsent = value;
+  consentRevision += 1;
   try {
     safeStorage()?.setItem(MARKETING_CONSENT_STORAGE_KEY, value);
   } catch {
@@ -277,6 +301,7 @@ export function setMarketingConsent(value) {
 export function resetMarketingConsent() {
   if (!hasBrowserRuntime() || isNativeAppRuntime()) return false;
   volatileConsent = null;
+  consentRevision += 1;
   try {
     safeStorage()?.removeItem(MARKETING_CONSENT_STORAGE_KEY);
   } catch {
@@ -290,6 +315,8 @@ export function resetMarketingConsent() {
 
 export function getMetaCapiAttributionContext() {
   if (!hasBrowserRuntime() || isNativeAppRuntime() || getMarketingConsent() !== 'granted') return null;
+
+  persistMetaAttribution();
 
   const context = {
     event_source_url: safeCurrentEventSourceUrl(),
@@ -337,14 +364,21 @@ export async function loadMetaPixel() {
 
   metaScriptPromise = new Promise((resolve) => {
     const script = existingScript || document.createElement('script');
+    const timeout = globalThis.setTimeout?.(() => {
+      script.remove();
+      metaScriptPromise = null;
+      resolve(false);
+    }, 5000);
     script.id = META_PIXEL_SCRIPT_ID;
     script.async = true;
     script.src = 'https://connect.facebook.net/en_US/fbevents.js';
     script.onload = () => {
+      globalThis.clearTimeout?.(timeout);
       script.dataset.loaded = 'true';
       resolve(true);
     };
     script.onerror = () => {
+      globalThis.clearTimeout?.(timeout);
       script.remove();
       metaScriptPromise = null;
       resolve(false);
@@ -358,11 +392,36 @@ export async function loadMetaPixel() {
 export async function trackMetaStandardEvent(eventName, params = {}) {
   if (!META_STANDARD_EVENTS.has(eventName)
     || getMarketingConsent() !== 'granted'
-    || !(await loadMetaPixel())) {
+    || !hasBrowserRuntime()
+    || isNativeAppRuntime()
+    || !isSafeMarketingEventContext()) {
     return false;
   }
 
-  window.fbq('track', eventName, params, { eventID: eventId(eventName) });
+  const sharedEventId = eventId(eventName);
+  const revision = consentRevision;
+  const attribution = getMetaCapiAttributionContext();
+  let serverDelivery = Promise.resolve(false);
+  // Start server delivery independently of the pixel script's availability.
+  if (META_FUNNEL_EVENTS.has(eventName) && META_LIVE_ORIGINS.has(window.location.origin)) {
+    const payload = {
+      event_name: eventName,
+      event_id: sharedEventId,
+      event_time: Math.floor(Date.now() / 1000),
+      marketing_measurement_consent: 'granted',
+      attribution,
+      custom_data: params,
+    };
+    serverDelivery = import('./metaFunnelTransport.js').then(({ sendMetaFunnelEvent }) => {
+      if (revision !== consentRevision || getMarketingConsent() !== 'granted' || !isSafeMarketingEventContext() || isNativeAppRuntime()) return false;
+      return sendMetaFunnelEvent(payload);
+    }).catch(() => false);
+  }
+
+  const pixelLoaded = await loadMetaPixel();
+  if (revision !== consentRevision || getMarketingConsent() !== 'granted' || !isSafeMarketingEventContext()) return false;
+  if (!pixelLoaded) return serverDelivery;
+  window.fbq('track', eventName, params, { eventID: sharedEventId });
   return true;
 }
 

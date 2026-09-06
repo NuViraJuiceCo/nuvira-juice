@@ -9,7 +9,7 @@ const consent = read('src/components/AnalyticsConsent.jsx');
 const legal = read('src/pages/Legal.jsx');
 const createPaymentIntent = read('base44/functions/createPaymentIntent/entry.ts');
 const stripeWebhook = read('base44/functions/stripeWebhook/entry.ts');
-const helperSource = read('base44/functions/stripeWebhook/metaConversions.js');
+const helperSource = read('base44/functions/stripeWebhook/metaConversions.js') + read('base44/shared/metaIdentity.js');
 const critical = read('scripts/ci/run-critical-regressions.mjs');
 
 assert.match(checkout, /getMetaCapiAttributionContext/);

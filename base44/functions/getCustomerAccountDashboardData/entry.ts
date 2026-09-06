@@ -27,6 +27,7 @@ import handler20 from './handlers/createSubscriptionPaymentElementIntent/entry.t
 import handler21 from './handlers/manageProgramJourney/entry.ts';
 import handler22 from './handlers/submitCustomerInquiry/entry.ts';
 import handler23 from './handlers/manageDeliveryLiveActivity/entry.ts';
+import trackMetaFunnelEvent from './handlers/trackMetaFunnelEvent/entry.ts';
 
 const HANDLERS = {
   "addressSuggest": handler0,
@@ -52,6 +53,7 @@ const HANDLERS = {
   "manageProgramJourney": handler21,
   "submitCustomerInquiry": handler22,
   "manageDeliveryLiveActivity": handler23,
+  "trackMetaFunnelEvent": trackMetaFunnelEvent,
 };
 
 const DEFAULT_ACTION = 'getCustomerAccountDashboardData';

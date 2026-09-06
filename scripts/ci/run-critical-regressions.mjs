@@ -91,6 +91,7 @@ const harnesses = [
   'scripts/migration/run-g136-stripe-guest-provider-sandbox-tests.mjs',
   'scripts/migration/run-g137-marketing-measurement-tests.mjs',
   'scripts/migration/run-g138-meta-capi-purchase-tests.mjs',
+  'scripts/migration/run-meta-funnel-capi-tests.mjs',
   'scripts/migration/run-g140-meta-catalog-match-tests.mjs',
   'scripts/migration/run-g141-growth-measurement-tests.mjs',
   'scripts/migration/run-g142-meta-registration-measurement-tests.mjs',
