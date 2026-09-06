@@ -48,6 +48,7 @@ Deduplication uses the same event name and event ID in browser and server payloa
 - `scripts/migration/run-g138-meta-capi-purchase-tests.mjs`: include the extracted shared source in existing source assertions.
 - `scripts/migration/run-meta-funnel-capi-tests.mjs`: runtime tests using synthetic requests and a fake provider.
 - `scripts/ci/run-critical-regressions.mjs`: run the new harness in CI.
+- `scripts/release/package-customer-gateway.mjs`: prepare a flat deployment package, rewriting relative import specifiers with the TypeScript parser while preserving handler logic.
 - This release document.
 
 ## Verification Completed
@@ -84,3 +85,10 @@ Subscription Purchase coverage remains a separate gap. `invoice.payment_succeede
 9. Reconcile the next legitimate consented paid order against Stripe, the Meta Purchase delivery log, Meta Events Manager, and GA4 transaction ID/value/currency. Google Ads attribution additionally requires an eligible Google ad interaction and processing time. Do not generate a fake production sale to manufacture verification.
 
 Rollback: disable `META_CAPI_FUNNEL_MODE`. Existing browser events and the separate server Purchase integration continue. Any frontend rollback must use an approved canonical build that preserves the current growth and Purchase code, not a stale temporary-app bundle.
+
+## Deployment Notes
+
+- Initial direct CLI deployment was rejected by the provider bundler because nested handler paths were not resolved. The previous production gateway continued to serve.
+- The release packager creates a flat, 28-module gateway package, matching the existing deployed module layout. Deploying only `getCustomerAccountDashboardData` from `/tmp/nuvira-meta-funnel-release-package-20260906` succeeded in 23.3 seconds.
+- The new handler passes Deno checking. Checking the entire packaged gateway also resolves all imports, but exposes six pre-existing Stripe union-type errors in `createSubscriptionPaymentElementIntent`; that unchanged subscription module is outside this release's behavioral changes.
+- `META_CAPI_FUNNEL_MODE=test` was set. Production still returned the old gateway operation table before site publication; backend deployment alone is not proof the published runtime has changed.
