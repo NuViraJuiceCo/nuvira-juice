@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { Input } from '@/components/ui/input';
 import { invokeCustomerGateway } from '@/api/base44Client';
 
@@ -18,7 +18,21 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
   const [isLoading, setIsLoading] = useState(false);
   const [lookupError, setLookupError] = useState('');
   const debounceRef = useRef(null);
+  const requestRef = useRef(0);
+  const pressedSuggestionRef = useRef(null);
   const containerRef = useRef(null);
+  const listRef = useRef(null);
+  const suggestionsId = useId();
+
+  const dismissSuggestions = () => {
+    pressedSuggestionRef.current = null;
+    clearTimeout(debounceRef.current);
+    requestRef.current += 1;
+    setSuggestions([]);
+    setOpen(false);
+    setIsLoading(false);
+    setLookupError('');
+  };
 
   const emit = (updated) => {
     if (isObject) {
@@ -31,6 +45,8 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
   };
 
   const fetchSuggestions = (query) => {
+    clearTimeout(debounceRef.current);
+    const request = ++requestRef.current;
     const normalizedQuery = String(query || '').trim();
     if (normalizedQuery.length < 3) {
       setSuggestions([]);
@@ -39,23 +55,24 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
       setIsLoading(false);
       return;
     }
-    clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setIsLoading(true);
       setLookupError('');
       try {
         const res = await invokeCustomerGateway('addressSuggest', { query: normalizedQuery });
+        if (request !== requestRef.current) return;
         const data = res?.data || res;
         const list = Array.isArray(data?.suggestions) ? data.suggestions : [];
         setSuggestions(list);
         setOpen(list.length > 0);
         if (!list.length) setLookupError('No verified addresses found. Keep typing or check the address.');
       } catch {
+        if (request !== requestRef.current) return;
         setSuggestions([]);
         setOpen(false);
         setLookupError('Address lookup is temporarily unavailable. You can still enter the full address below.');
       } finally {
-        setIsLoading(false);
+        if (request === requestRef.current) setIsLoading(false);
       }
     }, 350);
   };
@@ -70,17 +87,17 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
   };
 
   const handleSelect = (s) => {
+    dismissSuggestions();
     emit({ street: s.street, city: s.city, state: s.state, zip: s.zip });
-    setSuggestions([]);
-    setOpen(false);
   };
 
   useEffect(() => {
-    const handler = (e) => { if (!containerRef.current?.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
+    const handler = (e) => { if (!containerRef.current?.contains(e.target)) dismissSuggestions(); };
+    document.addEventListener('pointerdown', handler);
     return () => {
-      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('pointerdown', handler);
       clearTimeout(debounceRef.current);
+      requestRef.current += 1;
     };
   }, []);
 
@@ -91,8 +108,17 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
         <Input
           name="streetAddress"
           aria-label="Street address"
+          aria-expanded={open && suggestions.length > 0}
+          aria-controls={suggestionsId}
           value={addr.street}
           onChange={handleStreetChange}
+          onKeyDown={e => {
+            if (e.key === 'Escape') dismissSuggestions();
+            if (e.key === 'ArrowDown' && open) {
+              e.preventDefault();
+              listRef.current?.querySelector('button')?.focus();
+            }
+          }}
           onFocus={() => {
             if (suggestions.length > 0) setOpen(true);
             else fetchSuggestions(addr.street);
@@ -102,17 +128,39 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
           autoComplete="address-line1"
         />
         {open && suggestions.length > 0 && (
-          <ul aria-label="Google-verified address suggestions" className="absolute z-10 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto text-sm">
+          <ul ref={listRef} id={suggestionsId} aria-label="Google-verified address suggestions" className="absolute z-10 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-52 overflow-y-auto text-sm">
             {suggestions.map((s, i) => (
-              <li
-                key={i}
-                onMouseDown={() => handleSelect(s)}
-                className="px-3 py-2.5 cursor-pointer hover:bg-secondary transition-colors first:rounded-t-xl last:rounded-b-xl"
-              >
-                <span className="font-medium">{s.street}</span>
-                {(s.city || s.state) && (
-                  <span className="text-muted-foreground ml-1 text-xs">— {[s.city, s.state].filter(Boolean).join(', ')}</span>
-                )}
+              <li key={i}>
+                <button
+                  type="button"
+                  // Keep the street input focused during a tap so iOS keyboard
+                  // dismissal cannot move the target before click activates it.
+                  // WebKit can suppress the compatibility click after preventing
+                  // pointerdown, so a completed touch/pen tap activates on pointerup.
+                  // Scrolling/cancelled touches never select an address.
+                  onPointerDown={e => {
+                    pressedSuggestionRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+                    e.preventDefault();
+                  }}
+                  onPointerMove={e => {
+                    const pressed = pressedSuggestionRef.current;
+                    if (pressed && Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > 8) pressedSuggestionRef.current = null;
+                  }}
+                  onPointerCancel={() => { pressedSuggestionRef.current = null; }}
+                  onPointerUp={e => {
+                    const pressed = pressedSuggestionRef.current;
+                    pressedSuggestionRef.current = null;
+                    if (e.pointerType !== 'mouse' && pressed?.id === e.pointerId) handleSelect(s);
+                  }}
+                  // Native click remains the keyboard/VoiceOver/mouse fallback.
+                  onClick={() => handleSelect(s)}
+                  className="block w-full min-h-11 text-left px-3 py-2.5 cursor-pointer hover:bg-secondary focus-visible:bg-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary transition-colors"
+                >
+                  <span className="font-medium">{s.street}</span>
+                  {(s.city || s.state) && (
+                    <span className="text-muted-foreground ml-1 text-xs">— {[s.city, s.state].filter(Boolean).join(', ')}</span>
+                  )}
+                </button>
               </li>
             ))}
           </ul>
