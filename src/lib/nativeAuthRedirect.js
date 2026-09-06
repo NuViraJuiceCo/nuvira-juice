@@ -11,6 +11,9 @@ const SIGN_IN_RESET_STORAGE_KEYS = [...AUTH_TOKEN_STORAGE_KEYS, 'base44_from_url
 const NATIVE_CALLBACK_ROUTE = '/native-login';
 const NATIVE_URL_SCHEME = 'nuvira';
 const NATIVE_CALLBACK_MARKER = 'native_provider_callback';
+// Base44 issues and consumes provider state on this origin. Starting there
+// avoids an extra native-browser redirect before the OAuth session is created.
+const BASE44_PROVIDER_AUTH_ORIGIN = 'https://app.base44.com';
 export const NATIVE_BROWSER_CALLBACK_MARKER = 'native_browser_callback';
 export const SIGN_IN_RESET_LOGOUT_TIMEOUT_MS = 4000;
 
@@ -90,10 +93,27 @@ function dispatchInAppNavigationEvent() {
   }
 }
 
+export function releaseNativeAuthViewport() {
+  if (typeof window === 'undefined') return false;
+
+  const activeElement = document.activeElement;
+  if (activeElement && typeof activeElement.blur === 'function') {
+    activeElement.blur();
+  }
+
+  try {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  } catch {
+    window.scrollTo(0, 0);
+  }
+  return true;
+}
+
 export function replaceInAppRoute(route = '/') {
   if (typeof window === 'undefined') return false;
   const safeRoute = normalizeReturnRoute(route);
   try {
+    releaseNativeAuthViewport();
     window.history.replaceState({}, document.title, safeRoute);
     dispatchInAppNavigationEvent();
     return true;
@@ -205,8 +225,20 @@ export function getProviderLoginUrl(provider, fromUrl) {
     throw new Error('unsupported_auth_provider');
   }
 
+  const callbackUrl = parseUrl(fromUrl);
+  const appBaseUrl = parseUrl(appParams.appBaseUrl);
+  const isApprovedNativeCallback = callbackUrl
+    && appBaseUrl
+    && callbackUrl.origin === appBaseUrl.origin
+    && callbackUrl.pathname === NATIVE_CALLBACK_ROUTE
+    && callbackUrl.searchParams.get(NATIVE_CALLBACK_MARKER) === '1'
+    && callbackUrl.searchParams.get(NATIVE_BROWSER_CALLBACK_MARKER) === '1';
+  if (!isApprovedNativeCallback) {
+    throw new Error('invalid_native_auth_callback');
+  }
+
   const providerPath = provider === 'google' ? '' : `/${provider}`;
-  const loginUrl = new URL(`/api/apps/auth${providerPath}/login`, appParams.appBaseUrl);
+  const loginUrl = new URL(`/api/apps/auth${providerPath}/login`, BASE44_PROVIDER_AUTH_ORIGIN);
   loginUrl.searchParams.set('app_id', String(appParams.appId));
   loginUrl.searchParams.set('from_url', fromUrl);
   return loginUrl.toString();

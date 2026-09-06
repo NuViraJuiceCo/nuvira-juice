@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -23,6 +23,7 @@ import {
   getProviderLoginUrl,
   getStoredBase44Token,
   NATIVE_BROWSER_CALLBACK_MARKER,
+  releaseNativeAuthViewport,
 } from '@/lib/nativeAuthRedirect';
 import { useAuth } from '@/lib/AuthContext';
 import SEO from '@/components/SEO';
@@ -76,6 +77,8 @@ export default function NativeLogin() {
   const [otpCode, setOtpCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [providerOpening, setProviderOpening] = useState('');
+  const providerLaunchRef = useRef(false);
   const [statusText, setStatusText] = useState(() => (
     isSignInReset ? 'Sign-in was reset. Please sign in again.' : ''
   ));
@@ -97,12 +100,14 @@ export default function NativeLogin() {
     if (!currentUser?.email) {
       throw new Error('Sign in succeeded, but the account could not be loaded.');
     }
+    releaseNativeAuthViewport();
     navigate(returnTo, { replace: true });
   };
 
   useEffect(() => {
     if (isSignInReset) return;
     if (isAuthenticated && user?.email && !isNativeBrowserCallback) {
+      releaseNativeAuthViewport();
       navigate(returnTo, { replace: true });
     }
   }, [isAuthenticated, isNativeBrowserCallback, isSignInReset, navigate, returnTo, user?.email]);
@@ -144,8 +149,13 @@ export default function NativeLogin() {
       return;
     }
 
+    if (providerLaunchRef.current) return;
+    providerLaunchRef.current = true;
+    setProviderOpening(provider);
+
     try {
       if (IS_NATIVE_PLATFORM) {
+        await Browser.close().catch(() => {});
         const callbackUrl = await getNativeBrowserProviderReturnUrl(returnTo);
         await Browser.open({
           url: getProviderLoginUrl(provider, callbackUrl),
@@ -160,6 +170,9 @@ export default function NativeLogin() {
       console.warn('[NativeLogin] Provider sign-in failed', 'provider_window_unavailable');
       setFormError(message);
       toast.error(message);
+    } finally {
+      providerLaunchRef.current = false;
+      setProviderOpening('');
     }
   };
 
@@ -357,7 +370,7 @@ export default function NativeLogin() {
             <button
               type="button"
               onClick={() => handleProviderLogin('apple')}
-              disabled={isSubmitting}
+              disabled={isSubmitting || Boolean(providerOpening)}
               className={`flex h-12 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition-colors ${
                 ENABLE_PROVIDER_BUTTONS
                   ? 'border-border bg-background text-foreground active:scale-[0.99]'
@@ -365,12 +378,12 @@ export default function NativeLogin() {
               }`}
             >
               <Apple className="h-4 w-4" />
-              Apple
+              {providerOpening === 'apple' ? 'Opening...' : 'Apple'}
             </button>
             <button
               type="button"
               onClick={() => handleProviderLogin('google')}
-              disabled={isSubmitting}
+              disabled={isSubmitting || Boolean(providerOpening)}
               className={`flex h-12 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition-colors ${
                 ENABLE_PROVIDER_BUTTONS
                   ? 'border-border bg-background text-foreground active:scale-[0.99]'
@@ -378,7 +391,7 @@ export default function NativeLogin() {
               }`}
             >
               <span className="flex h-4 w-4 items-center justify-center rounded-full border border-current text-[10px] font-bold">G</span>
-              Google
+              {providerOpening === 'google' ? 'Opening...' : 'Google'}
             </button>
           </div>
 
@@ -405,7 +418,7 @@ export default function NativeLogin() {
                 onChange={(event) => setEmail(event.target.value)}
                 autoCapitalize="none"
                 autoComplete="email"
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                className="min-w-0 flex-1 bg-transparent text-base outline-none md:text-sm"
                 placeholder="you@example.com"
               />
             </span>
@@ -420,7 +433,7 @@ export default function NativeLogin() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete={isRegistering ? 'new-password' : 'current-password'}
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                className="min-w-0 flex-1 bg-transparent text-base outline-none md:text-sm"
                 placeholder="Password"
               />
               <button
@@ -444,7 +457,7 @@ export default function NativeLogin() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   autoComplete="new-password"
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                  className="min-w-0 flex-1 bg-transparent text-base outline-none md:text-sm"
                   placeholder="Confirm password"
                 />
               </span>
