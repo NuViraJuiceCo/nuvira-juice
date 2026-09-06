@@ -117,6 +117,9 @@ assert.equal((await handler(request('x'.repeat(16385)))).status, 413);
 assert.equal(calls.length, 1);
 assert.equal(userReads, 1, 'rejected requests must not look up customers');
 
+assert.equal((await result({ ...baseEvent, event_id: 'web:AddToCart:canonical-product-0001', attribution: { ...baseEvent.attribution, event_source_url: 'https://nuvirajuice.com/product/oasis.html' } })).sent, true);
+assert.equal(calls.at(-1).payload.data[0].event_source_url, 'https://nuvirajuice.com/product/oasis.html');
+
 values.delete('META_CAPI_FUNNEL_MODE');
 assert.equal((await result()).reason, 'funnel_disabled');
 values.set('META_CAPI_FUNNEL_MODE', 'test');

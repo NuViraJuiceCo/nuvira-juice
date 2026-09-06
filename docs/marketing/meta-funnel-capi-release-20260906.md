@@ -1,6 +1,6 @@
 # Meta Shopping Funnel Tracking Update
 
-Prepared September 6, 2026. Status: release approved by the user; deployment and live acceptance testing in progress.
+Prepared September 6, 2026. Status: website released; new backend handler staged but not yet active in the published runtime. Do not describe the funnel CAPI release as complete.
 
 ## Source and Release Identity
 
@@ -92,3 +92,10 @@ Rollback: disable `META_CAPI_FUNNEL_MODE`. Existing browser events and the separ
 - The release packager creates a flat, 28-module gateway package, matching the existing deployed module layout. Deploying only `getCustomerAccountDashboardData` from `/tmp/nuvira-meta-funnel-release-package-20260906` succeeded in 23.3 seconds.
 - The new handler passes Deno checking. Checking the entire packaged gateway also resolves all imports, but exposes six pre-existing Stripe union-type errors in `createSubscriptionPaymentElementIntent`; that unchanged subscription module is outside this release's behavioral changes.
 - `META_CAPI_FUNNEL_MODE=test` was set. Production still returned the old gateway operation table before site publication; backend deployment alone is not proof the published runtime has changed.
+- Website source commits `c12964df` and `bc961593` were pushed to canonical main. Site-only deployment succeeded at 2026-09-06 06:01 UTC. Both `nuvirajuice.com` and `nuvira-fresh-flow.base44.app` serve `/assets/index-D99ttFNM.js`, including the new relay, canonical app ID, Meta pixel, and GA4 stream.
+- Published runtime still returned `unsupported_customer_operation` for the new handler after the site-only deployment. No accepted live funnel CAPI delivery has been observed.
+- Base44's scoped editor `coding/redeploy-function` action was tried using a mechanically bundled copy of the same gateway. It wrote generated source to GitHub as `848015b1` without activating the published operation. That generated-only source change is reverted by `a48fe7f1`; the maintainable modular source is retained.
+- Base44 publish-state reports pending `seo_settings`. Full app publication is held for the user's confirmation that those pending settings may be included; no SEO settings were manually edited by this release.
+- Isolated Chrome mobile test loaded Oasis without JavaScript errors, sent no funnel requests before consent, and emitted a consented ViewContent request with an event ID after Ad insights was enabled. Its published backend response was still `unsupported_customer_operation`.
+- That browser test exposed the canonical redirect to `/product/oasis.html`. The server route allowlist and regression test now cover that canonical product URL as well as existing `/products` links.
+- A complete Deno gateway typecheck still has the six documented pre-existing subscription typing errors. The new funnel entrypoint and 105 critical regression suites remain the scoped release checks.

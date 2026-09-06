@@ -11,7 +11,7 @@ function validSourceUrl(value) {
     const url = new URL(value);
     if (!ORIGINS.has(url.origin) || url.username || url.password) return '';
     // Only commerce routes may enter this public telemetry endpoint.
-    if (!/^\/(?:shop(?:\/[^/]+)?|products\/[^/]+|program\/[^/]+|cart|checkout)?\/?$/i.test(url.pathname)) return '';
+    if (!/^\/(?:shop(?:\/[^/]+)?|products\/[^/]+|product\/[^/]+\.html|program\/[^/]+|cart|checkout)?\/?$/i.test(url.pathname)) return '';
     url.search = '';
     url.hash = '';
     return url.toString();
