@@ -9,6 +9,7 @@ const authContext = read('src/lib/AuthContext.jsx');
 const packageJson = JSON.parse(read('package.json'));
 const iosEntitlements = read('ios/App/App/App.entitlements');
 const iosPackage = read('ios/App/CapApp-SPM/Package.swift');
+const iosProject = read('ios/App/App.xcodeproj/project.pbxproj');
 const appleAssociation = JSON.parse(read('public/.well-known/apple-app-site-association'));
 const androidManifest = read('android/app/src/main/AndroidManifest.xml');
 const androidCapacitorSettings = read('android/capacitor.settings.gradle');
@@ -39,6 +40,8 @@ assert.match(iosEntitlements, /applinks:nuvirajuice\.com/);
 assert.match(iosEntitlements, /applinks:www\.nuvirajuice\.com/);
 assert.match(iosPackage, /package\(name: "CapacitorAppLauncher", path: "[^\"]+@capacitor\/app-launcher"\)/);
 assert.match(iosPackage, /product\(name: "CapacitorAppLauncher", package: "CapacitorAppLauncher"\)/);
+assert.equal([...iosProject.matchAll(/CURRENT_PROJECT_VERSION = 43;/g)].length, 4);
+assert.equal([...iosProject.matchAll(/MARKETING_VERSION = 2\.117919\.0;/g)].length, 4);
 const iosAppLink = appleAssociation.applinks.details.find((entry) =>
   entry.appID === 'JPFWU38MTS.com.base69d48d0c39891f7945481152.app');
 assert.ok(iosAppLink, 'NuVira iOS app must be associated with the production domain');
@@ -57,7 +60,7 @@ assert.ok(androidAssociation.some((entry) =>
 console.log(JSON.stringify({
   ok: true,
   suite: 'g178-native-external-auth',
-  cases: 32,
+  cases: 34,
   native_provider_browser: 'external',
   embedded_safari_provider_launches: 0,
   ios_universal_link_return: true,
