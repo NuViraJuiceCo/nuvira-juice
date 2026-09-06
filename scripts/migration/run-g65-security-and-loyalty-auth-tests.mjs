@@ -79,9 +79,11 @@ assert.ok(
 );
 
 const addressSuggest = read('base44/functions/getCustomerAccountDashboardData/handlers/addressSuggest/entry.ts');
-assert.match(addressSuggest, /createClientFromRequest\(req\)/);
-assert.match(addressSuggest, /auth\.me\(\)\.catch\(\(\) => null\)/);
-assert.match(addressSuggest, /status:\s*401/);
+// Guest checkout requires public address lookup, not private account access.
+// G174 executes this handler with no auth and verifies bounded provider access.
+assert.doesNotMatch(addressSuggest, /createClientFromRequest|auth\.me|asServiceRole|entities\./);
+assert.match(addressSuggest, /MAX_QUERY_LENGTH/);
+assert.match(addressSuggest, /allowLookup\(req\)/);
 
 const claimReward = read('base44/functions/getCustomerAccountDashboardData/handlers/claimReward/entry.ts');
 assert.match(claimReward, /requestedEmail !== authenticatedEmail/);
@@ -126,7 +128,8 @@ console.log(JSON.stringify({
   suite: 'g65-security-and-loyalty-auth',
   admin_only_entities: adminOnlyEntities.length,
   admin_only_functions: adminOnlyFunctions.length,
-  authenticated_customer_functions: 3,
+  authenticated_customer_functions: 2,
+  public_bounded_address_lookup: 1,
   signed_public_webhooks: 1,
   writes_performed: false,
   provider_calls_performed: false,
