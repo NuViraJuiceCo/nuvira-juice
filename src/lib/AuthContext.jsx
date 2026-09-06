@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
+import { createAuthSessionBoundary } from '@/lib/authQuerySession';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
 import {
   clearBase44AuthTokens,
@@ -96,8 +97,18 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
   const handledNativeAuthCallbacksRef = useRef(new Set());
+  const [sessionBoundary] = useState(createAuthSessionBoundary);
+  const [querySession, setQuerySession] = useState(sessionBoundary.getSession);
+  const appStateRequestRef = useRef(0);
+
+  const publishAuthUser = useCallback((currentUser, options = {}) => {
+    setQuerySession(sessionBoundary.transition(currentUser, options));
+    setUser(currentUser);
+    setIsAuthenticated(Boolean(currentUser));
+  }, [sessionBoundary]);
 
   const checkUserAuth = useCallback(async ({ timeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS } = {}) => {
+    const request = sessionBoundary.beginRequest();
     const pendingProviderAuthEvent = captureGoogleProviderAuthEvent();
     try {
       consumeBase44AuthFromUrl();
@@ -105,8 +116,8 @@ export const AuthProvider = ({ children }) => {
       setAuthError(null);
       setBootstrapState(AUTH_BOOTSTRAP_STATES.loading);
       const currentUser = await readCurrentUserWithTimeout(timeoutMs);
-      setUser(currentUser);
-      setIsAuthenticated(Boolean(currentUser));
+      if (!sessionBoundary.isCurrentRequest(request)) return null;
+      publishAuthUser(currentUser);
       setAuthChecked(true);
       setIsLoadingAuth(false);
       setBootstrapState(currentUser ? AUTH_BOOTSTRAP_STATES.authenticated : AUTH_BOOTSTRAP_STATES.unauthenticated);
@@ -121,6 +132,7 @@ export const AuthProvider = ({ children }) => {
       }
       return currentUser;
     } catch (error) {
+      if (!sessionBoundary.isCurrentRequest(request)) return null;
       discardGoogleProviderAuthEvent(pendingProviderAuthEvent);
       if (error?.code === 'auth_bootstrap_timeout') {
         console.warn('[AuthContext] Auth bootstrap timed out; continuing as public session.');
@@ -141,15 +153,15 @@ export const AuthProvider = ({ children }) => {
         setBootstrapState(AUTH_BOOTSTRAP_STATES.error);
       }
       // For public apps, 401 is expected when user isn't logged in — don't treat as error.
-      setUser(null);
-      setIsAuthenticated(false);
+      publishAuthUser(null);
       setAuthChecked(true);
       setIsLoadingAuth(false);
       return null;
     }
-  }, []);
+  }, [publishAuthUser, sessionBoundary]);
 
   const checkAppState = useCallback(async ({ authTimeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS } = {}) => {
+    const request = ++appStateRequestRef.current;
     try {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
@@ -161,9 +173,11 @@ export const AuthProvider = ({ children }) => {
       // Always ask Base44 for the current user. Some app/browser auth returns
       // establish an HTTP-only session without a token visible in localStorage.
       const currentUser = await checkUserAuth({ timeoutMs: authTimeoutMs });
+      if (request !== appStateRequestRef.current) return null;
       setIsLoadingPublicSettings(false);
       return currentUser;
     } catch (error) {
+      if (request !== appStateRequestRef.current) return null;
       console.error('Unexpected error:', error);
       setIsLoadingPublicSettings(false);
       setIsLoadingAuth(false);
@@ -268,8 +282,14 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async (shouldRedirect = true) => {
     const userEmail = user?.email;
-    setUser(null);
-    setIsAuthenticated(false);
+    sessionBoundary.invalidateRequests();
+    appStateRequestRef.current++;
+    publishAuthUser(null, { force: true });
+    setIsLoadingAuth(false);
+    setIsLoadingPublicSettings(false);
+    setAuthChecked(true);
+    setAuthError(null);
+    setBootstrapState(AUTH_BOOTSTRAP_STATES.unauthenticated);
     
     // Clear any stored rewards for this user
     if (userEmail) {
@@ -288,16 +308,21 @@ export const AuthProvider = ({ children }) => {
   };
 
   const refreshUser = async () => {
+    const request = sessionBoundary.beginRequest();
     try {
       setAuthError(null);
       const currentUser = await readCurrentUserWithTimeout(AUTH_EXPLICIT_TIMEOUT_MS);
-      setUser(currentUser);
-      setIsAuthenticated(Boolean(currentUser));
+      if (!sessionBoundary.isCurrentRequest(request)) return null;
+      publishAuthUser(currentUser);
       setAuthChecked(true);
+      setIsLoadingAuth(false);
       setBootstrapState(currentUser ? AUTH_BOOTSTRAP_STATES.authenticated : AUTH_BOOTSTRAP_STATES.unauthenticated);
       return currentUser;
     } catch (error) {
+      if (!sessionBoundary.isCurrentRequest(request)) return null;
+      if (isExpectedUnauthenticatedError(error)) publishAuthUser(null);
       setAuthChecked(true);
+      setIsLoadingAuth(false);
       setBootstrapState(error?.code === 'auth_bootstrap_timeout' ? AUTH_BOOTSTRAP_STATES.timeout : AUTH_BOOTSTRAP_STATES.error);
       setAuthError({
         type: error?.code === 'auth_bootstrap_timeout' ? 'bootstrap_timeout' : 'bootstrap_error',
@@ -310,6 +335,8 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={{ 
       user, 
+      sessionQueryClient: querySession.client,
+      authSessionEpoch: querySession.epoch,
       isAuthenticated, 
       isLoadingAuth,
       authChecked,
