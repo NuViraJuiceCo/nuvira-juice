@@ -17,7 +17,15 @@ function writeEvidence(result) {
   fs.writeFileSync(path.resolve(repoRoot, outPath), `${JSON.stringify(result, null, 2)}\n`);
 }
 const harnesses = [
+  'scripts/migration/run-g183-auth-return-state-tests.mjs',
+  'scripts/migration/run-g184-auth-transport-consent-tests.mjs',
+  'scripts/migration/run-g185-auth-query-isolation-tests.mjs',
+  'scripts/migration/run-g186-native-auth-interleaving-tests.mjs',
+  'scripts/migration/run-g187-credential-operation-tests.mjs',
+  'scripts/migration/run-g181-session-gateway-auth-tests.mjs',
+  'scripts/migration/run-g182-admin-swipe-back-tests.mjs',
   'scripts/migration/run-g179-native-auth-reliability-tests.mjs',
+  'scripts/migration/run-g180-native-provider-browser-tests.mjs',
   'scripts/migration/run-g177-native-auth-viewport-tests.mjs',
   'scripts/migration/run-g178-native-external-auth-tests.mjs',
   'scripts/migration/run-g176-android-release-optimization-tests.mjs',

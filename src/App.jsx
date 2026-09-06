@@ -2,7 +2,6 @@ import React, { Suspense } from 'react';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
@@ -570,19 +569,28 @@ const AuthenticatedApp = () => {
 };
 
 
+function AuthSessionQueries({ children }) {
+  const { sessionQueryClient, authSessionEpoch } = useAuth();
+  return (
+    <QueryClientProvider key={authSessionEpoch} client={sessionQueryClient}>
+      {children}
+    </QueryClientProvider>
+  );
+}
+
 function App() {
 
   return (
     <HelmetProvider>
     <AppErrorBoundary>
       <AuthProvider>
-        <QueryClientProvider client={queryClientInstance}>
-          <Router>
+        <Router>
+          <AuthSessionQueries>
             <AuthenticatedApp />
             <AnalyticsConsent />
-          </Router>
-          <SonnerToaster position="top-center" richColors />
-        </QueryClientProvider>
+            <SonnerToaster position="top-center" richColors />
+          </AuthSessionQueries>
+        </Router>
       </AuthProvider>
     </AppErrorBoundary>
     </HelmetProvider>

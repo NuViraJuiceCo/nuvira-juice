@@ -37,7 +37,7 @@ assert.match(nativeAuthRedirect, /callbackUrl\.origin === appBaseUrl\.origin/);
 assert.match(nativeAuthRedirect, /callbackUrl\.pathname === NATIVE_BROWSER_CALLBACK_ROUTE/);
 assert.match(nativeAuthRedirect, /callbackUrl\.searchParams\.get\(NATIVE_CALLBACK_MARKER\) === '1'/);
 assert.match(nativeAuthRedirect, /callbackUrl\.searchParams\.get\(NATIVE_BROWSER_CALLBACK_MARKER\) === '1'/);
-assert.match(nativeAuthRedirect, /new URL\(`\/api\/apps\/auth\$\{providerPath\}\/login`, appParams\.appBaseUrl\)/);
+assert.match(nativeAuthRedirect, /new URL\(`\/api\/apps\/auth\$\{providerPath\}\/login`, BASE44_PROVIDER_AUTH_ORIGIN\)/);
 assert.doesNotMatch(nativeAuthRedirect, /searchParams\.set\(['"]access_token['"]/);
 
 assert.match(indexHtml, /width=device-width, initial-scale=1\.0, viewport-fit=cover/);
@@ -52,7 +52,7 @@ console.log(JSON.stringify({
   focus_released_before_navigation: true,
   duplicate_provider_launch_blocked: true,
   provider_launch_single_flight: true,
-  provider_auth_origin: 'configured_app_base_url',
+  provider_auth_origin: 'base44_first_party',
   callback_allowlist_enforced: true,
   pinch_zoom_preserved: true,
   external_requests: 0,

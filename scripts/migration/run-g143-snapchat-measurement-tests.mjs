@@ -49,7 +49,7 @@ const checks = [
     assert.match(orderConfirmation, /trackSnapPurchase/);
   }],
   ['sign-up is measured only after verified email or provider authentication', () => {
-    assert.match(register, /await base44\.auth\.verifyOtp[\s\S]{0,300}prepareSnapRegistrationEvent\('email'\)/);
+    assert.match(register, /await credentials\.verifyOtp\(\{ email, otpCode \}\);\s*credentials\.assertCurrent\(\);[\s\S]{0,300}prepareSnapRegistrationEvent\('email'\)/);
     assert.match(authContext, /if \(currentUser\)[\s\S]{0,500}trackSnapSignUp\(pendingProviderAuthEvent\.method, pendingProviderAuthEvent\.token\)/);
     assert.match(authContext, /void consumeSnapRegistrationEvent\(\);/);
     assert.match(snapPixel, /SNAP_REGISTRATION_TTL_MS = 10 \* 60 \* 1000/);
