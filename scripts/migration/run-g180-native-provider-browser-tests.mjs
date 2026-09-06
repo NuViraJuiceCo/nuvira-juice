@@ -38,7 +38,11 @@ assert.match(iosWebAuthPlugin, /scheme == "https"/);
 assert.match(iosWebAuthPlugin, /url\.host\?\.lowercased\(\) == "app\.base44\.com"/);
 assert.match(iosWebAuthPlugin, /callbackScheme"\)\?\.lowercased\(\) == "nuvira"/);
 assert.match(iosWebAuthPlugin, /ASWebAuthenticationSession\([\s\S]*callbackURLScheme: "nuvira"/);
-assert.match(iosWebAuthPlugin, /prefersEphemeralWebBrowserSession = false/);
+assert.match(iosWebAuthPlugin, /prefersEphemeralWebBrowserSession = url\.path == "\/api\/apps\/auth\/login"/);
+assert.ok(
+  iosWebAuthPlugin.indexOf('prefersEphemeralWebBrowserSession =') < iosWebAuthPlugin.indexOf('guard session.start()'),
+  'Google browser-session isolation must be configured before authentication starts',
+);
 assert.match(iosWebAuthPlugin, /callbackURL\.scheme\?\.lowercased\(\) == "nuvira"/);
 assert.match(iosWebAuthPlugin, /authError\.code == \.canceledLogin/);
 assert.match(nativeLogin, /error\?\.code === 'AUTH_CANCELED'[\s\S]*setStatusText\('Sign-in canceled\.'\)/);
@@ -72,7 +76,9 @@ assert.match(validCallbackBranch, /await Browser\.close\(\)\.catch/);
 console.log(JSON.stringify({
   ok: true,
   suite: 'g180-native-provider-browser',
-  cases: 44,
+  cases: 45,
+  google_browser_session: 'isolated_per_attempt',
+  physical_repeat_login_verification: 'required_separately',
   providers_covered: ['google', 'apple'],
   browser_launch: 'ios_authentication_session_with_system_browser_fallback',
   automatic_ios_return: true,

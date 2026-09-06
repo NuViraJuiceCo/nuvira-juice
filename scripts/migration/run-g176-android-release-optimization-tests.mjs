@@ -10,8 +10,15 @@ const rules = read('android/app/proguard-rules.pro').replace(/^\s*#.*$/gm, '');
 const manifest = read('android/app/src/main/AndroidManifest.xml');
 const main = read('android/app/src/main/java/com/nuvirajuice/app/MainActivity.java');
 const capacitor = JSON.parse(read('capacitor.config.json'));
+const androidWorkflow = read('.github/workflows/android-quality-gate.yml');
 const checks = [];
 function check(name, fn) { fn(); checks.push(name); }
+
+check('CI packaging has bounded workers and enough heap without changing local defaults', () => {
+  assert.match(androidWorkflow, /:app:assembleRelease :app:bundleRelease[^\n]*--max-workers=2/);
+  assert.match(androidWorkflow, /-Dorg\.gradle\.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile\.encoding=UTF-8"/);
+  assert.match(properties, /^org\.gradle\.jvmargs=-Xmx1536m\b/m);
+});
 
 check('release code optimization is enabled', () => assert.match(app, /release\s*\{\s*minifyEnabled true/));
 check('R8 supports Stripe Kotlin 2.3 metadata', () => assert.match(root, /com\.android\.tools\.build:gradle:8\.13\.2/));

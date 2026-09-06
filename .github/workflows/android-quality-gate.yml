@@ -36,7 +36,7 @@ jobs:
       - run: npx cap sync android
       - name: Compile the actual optimized unsigned release
         working-directory: android
-        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --console=plain
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --console=plain --max-workers=2 -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8"
       - name: Verify retained native bridges and exact packaged web assets
         run: |
           mkdir -p release-evidence

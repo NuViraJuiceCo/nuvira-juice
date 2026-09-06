@@ -25,7 +25,7 @@ class MemoryStorage {
   }
 }
 
-const callbackBase = 'https://nuvirajuice.com/native-login?return_to=%2Faccount&native_provider_callback=1&native_browser_callback=1';
+const callbackBase = 'https://nuvirajuice.com/native-auth-bridge?return_to=%2Faccount&native_provider_callback=1&native_browser_callback=1';
 const syntheticToken = 'synthetic.header.payload.signature';
 const startTime = 1_786_129_200_000;
 const originalFetch = globalThis.fetch;
@@ -138,11 +138,54 @@ try {
     /native_auth_handoff_invalid/,
   );
 
+  const repeatStorage = new MemoryStorage();
+  const seenStates = new Set();
+  const seenKeys = new Set();
+  let previousCallback;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const repeated = await createFlow({ storage: repeatStorage });
+    const url = new URL(repeated.preparedCallback);
+    const state = url.searchParams.get('native_handoff_state');
+    const key = url.searchParams.get('native_handoff_public_key');
+    assert.equal(seenStates.has(state), false, 'Every sign-in requires fresh state');
+    assert.equal(seenKeys.has(key), false, 'Every sign-in requires a fresh encryption key');
+    seenStates.add(state);
+    seenKeys.add(key);
+    if (previousCallback) {
+      await assert.rejects(
+        consumeNativeAuthHandoff(previousCallback, { storage: repeatStorage, now: startTime + 2000 }),
+        /native_auth_handoff_invalid/,
+      );
+    }
+    assert.deepEqual(
+      await consumeNativeAuthHandoff(repeated.encryptedCallback, { storage: repeatStorage, now: startTime + 2000 }),
+      { accessToken: syntheticToken, returnTo: '/account' },
+    );
+    assert.equal(repeatStorage.getItem(NATIVE_AUTH_HANDOFF_STORAGE_KEY), null);
+    previousCallback = repeated.encryptedCallback;
+  }
+
+  const interruptedStorage = new MemoryStorage();
+  const abandoned = await createFlow({ storage: interruptedStorage });
+  const retry = await createFlow({ storage: interruptedStorage });
+  const retryPending = interruptedStorage.getItem(NATIVE_AUTH_HANDOFF_STORAGE_KEY);
+  await assert.rejects(
+    consumeNativeAuthHandoff(abandoned.encryptedCallback, { storage: interruptedStorage, now: startTime + 2000 }),
+    /native_auth_handoff_invalid/,
+  );
+  assert.equal(interruptedStorage.getItem(NATIVE_AUTH_HANDOFF_STORAGE_KEY), retryPending);
+  assert.deepEqual(
+    await consumeNativeAuthHandoff(retry.encryptedCallback, { storage: interruptedStorage, now: startTime + 2000 }),
+    { accessToken: syntheticToken, returnTo: '/account' },
+  );
+
   assert.equal(unexpectedNetworkRequests, 0);
   console.log(JSON.stringify({
     ok: true,
     suite: 'native-auth-encrypted-handoff',
-    cases: 12,
+    cases: 14,
+    repeated_handoff_cycles: 5,
+    interrupted_attempt_replaced: true,
     raw_token_in_callback: false,
     replay_rejected: true,
     tamper_rejected: true,

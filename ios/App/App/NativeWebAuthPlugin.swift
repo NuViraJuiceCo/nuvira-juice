@@ -47,7 +47,9 @@ public class NativeWebAuthPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticati
                 }
             }
             session.presentationContextProvider = self
-            session.prefersEphemeralWebBrowserSession = false
+            // App sign-out cannot clear Safari's Base44 cookies. Isolate each
+            // Google attempt so an earlier browser session cannot be reused.
+            session.prefersEphemeralWebBrowserSession = url.path == "/api/apps/auth/login"
             self.authenticationSession = session
 
             guard session.start() else {
