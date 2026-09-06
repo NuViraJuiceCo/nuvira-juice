@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
@@ -213,6 +214,9 @@ export const AuthProvider = ({ children }) => {
         }
 
         try {
+          if (Capacitor.isPluginAvailable('Browser')) {
+            await Browser.close().catch(() => {});
+          }
           const currentUser = await checkAppState({ authTimeoutMs: AUTH_EXPLICIT_TIMEOUT_MS });
           if (currentUser?.email) {
             replaceInAppRoute(callbackResult.returnTo || '/');

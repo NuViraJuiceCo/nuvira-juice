@@ -18,6 +18,7 @@ function writeEvidence(result) {
 }
 const harnesses = [
   'scripts/migration/run-g179-native-auth-reliability-tests.mjs',
+  'scripts/migration/run-g180-native-provider-browser-tests.mjs',
   'scripts/migration/run-g177-native-auth-viewport-tests.mjs',
   'scripts/migration/run-g178-native-external-auth-tests.mjs',
   'scripts/migration/run-g176-android-release-optimization-tests.mjs',

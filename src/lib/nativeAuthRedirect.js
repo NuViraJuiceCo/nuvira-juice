@@ -12,6 +12,9 @@ const NATIVE_CALLBACK_ROUTE = '/native-login';
 const NATIVE_BROWSER_CALLBACK_ROUTE = '/native-auth-bridge';
 const NATIVE_URL_SCHEME = 'nuvira';
 const NATIVE_CALLBACK_MARKER = 'native_provider_callback';
+// Base44 creates and consumes OAuth state on this first-party origin. The
+// authenticated return still goes through NuVira's allowlisted bridge below.
+const BASE44_PROVIDER_AUTH_ORIGIN = 'https://app.base44.com';
 export const NATIVE_BROWSER_CALLBACK_MARKER = 'native_browser_callback';
 export const SIGN_IN_RESET_LOGOUT_TIMEOUT_MS = 4000;
 
@@ -238,7 +241,7 @@ export function getProviderLoginUrl(provider, fromUrl) {
   }
 
   const providerPath = provider === 'google' ? '' : `/${provider}`;
-  const loginUrl = new URL(`/api/apps/auth${providerPath}/login`, appParams.appBaseUrl);
+  const loginUrl = new URL(`/api/apps/auth${providerPath}/login`, BASE44_PROVIDER_AUTH_ORIGIN);
   loginUrl.searchParams.set('app_id', String(appParams.appId));
   loginUrl.searchParams.set('from_url', fromUrl);
   return loginUrl.toString();

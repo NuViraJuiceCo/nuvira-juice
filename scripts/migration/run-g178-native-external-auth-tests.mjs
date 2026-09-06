@@ -17,23 +17,23 @@ const androidCapacitorBuild = read('android/app/capacitor.build.gradle');
 const androidArtifactVerifier = read('scripts/android/verify-release-artifact.mjs');
 const androidAssociation = JSON.parse(read('public/.well-known/assetlinks.json'));
 
-assert.equal(packageJson.dependencies['@capacitor/app-launcher'], '8.0.1');
+assert.equal(packageJson.dependencies['@capacitor/browser'], '8.0.4');
 assert.match(nativeLogin, /import \{ AppLauncher \} from '@capacitor\/app-launcher'/);
 assert.match(nativeLogin, /Capacitor\.isPluginAvailable\('AppLauncher'\)/);
 assert.match(nativeLogin, /const ENABLE_PROVIDER_BUTTONS = !IS_NATIVE_PLATFORM \|\| HAS_NATIVE_EXTERNAL_BROWSER/);
 assert.match(nativeLogin, /AppLauncher\.openUrl\(\{ url: providerUrl \}\)/);
-assert.match(nativeLogin, /if \(!result\?\.completed\) throw new Error/);
-assert.doesNotMatch(nativeLogin, /Browser\.open\(/);
+assert.doesNotMatch(nativeLogin, /Browser\.open/);
 
 assert.match(nativeAuthRedirect, /callbackUrl\.origin === appBaseUrl\.origin/);
 assert.match(nativeAuthRedirect, /callbackUrl\.pathname === NATIVE_BROWSER_CALLBACK_ROUTE/);
 assert.match(nativeAuthRedirect, /callbackUrl\.searchParams\.get\(NATIVE_CALLBACK_MARKER\) === '1'/);
 assert.match(nativeAuthRedirect, /callbackUrl\.searchParams\.get\(NATIVE_BROWSER_CALLBACK_MARKER\) === '1'/);
-assert.match(nativeAuthRedirect, /new URL\(`\/api\/apps\/auth\$\{providerPath\}\/login`, appParams\.appBaseUrl\)/);
+assert.match(nativeAuthRedirect, /new URL\(`\/api\/apps\/auth\$\{providerPath\}\/login`, BASE44_PROVIDER_AUTH_ORIGIN\)/);
 assert.doesNotMatch(nativeAuthRedirect, /searchParams\.set\(['"]access_token['"]/);
 
 assert.match(authContext, /capacitorApp\.addListener\('appUrlOpen'/);
 assert.match(authContext, /consumeNativeAuthCallbackUrl\(callbackUrl\)/);
+assert.match(authContext, /if \(Capacitor\.isPluginAvailable\('Browser'\)\) \{[\s\S]*await Browser\.close\(\)\.catch/);
 assert.match(authContext, /replaceInAppRoute\(callbackResult\.returnTo \|\| '\/'\)/);
 
 assert.match(iosEntitlements, /applinks:nuvirajuice\.com/);
@@ -61,8 +61,8 @@ console.log(JSON.stringify({
   ok: true,
   suite: 'g178-native-external-auth',
   cases: 34,
-  native_provider_browser: 'external',
-  embedded_safari_provider_launches: 0,
+  native_provider_browser: 'system_browser',
+  callback_browser_closed_after_validation: true,
   ios_universal_link_return: true,
   android_app_link_return: true,
   encrypted_callback_fallback_preserved: true,
