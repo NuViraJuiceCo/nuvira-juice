@@ -25,15 +25,15 @@ assert.match(nativeLogin, /AppLauncher\.openUrl\(\{ url: providerUrl \}\)/);
 assert.match(nativeLogin, /if \(!result\?\.completed\) throw new Error/);
 assert.doesNotMatch(nativeLogin, /Browser\.open\(/);
 
-assert.match(nativeAuthRedirect, /const BASE44_PROVIDER_AUTH_ORIGIN = 'https:\/\/app\.base44\.com'/);
 assert.match(nativeAuthRedirect, /callbackUrl\.origin === appBaseUrl\.origin/);
-assert.match(nativeAuthRedirect, /callbackUrl\.pathname === NATIVE_CALLBACK_ROUTE/);
+assert.match(nativeAuthRedirect, /callbackUrl\.pathname === NATIVE_BROWSER_CALLBACK_ROUTE/);
 assert.match(nativeAuthRedirect, /callbackUrl\.searchParams\.get\(NATIVE_CALLBACK_MARKER\) === '1'/);
 assert.match(nativeAuthRedirect, /callbackUrl\.searchParams\.get\(NATIVE_BROWSER_CALLBACK_MARKER\) === '1'/);
+assert.match(nativeAuthRedirect, /new URL\(`\/api\/apps\/auth\$\{providerPath\}\/login`, appParams\.appBaseUrl\)/);
 assert.doesNotMatch(nativeAuthRedirect, /searchParams\.set\(['"]access_token['"]/);
 
 assert.match(authContext, /capacitorApp\.addListener\('appUrlOpen'/);
-assert.match(authContext, /consumeNativeAuthCallbackUrl\(event\?\.url\)/);
+assert.match(authContext, /consumeNativeAuthCallbackUrl\(callbackUrl\)/);
 assert.match(authContext, /replaceInAppRoute\(callbackResult\.returnTo \|\| '\/'\)/);
 
 assert.match(iosEntitlements, /applinks:nuvirajuice\.com/);

@@ -548,6 +548,7 @@ const AuthenticatedApp = () => {
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
         <Route path="/order-options" element={<OrderOptions />} />
         <Route path="/native-login" element={<NativeLogin />} />
+        <Route path="/native-auth-bridge" element={<NativeLogin />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />

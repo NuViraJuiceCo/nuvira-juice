@@ -40,7 +40,9 @@ const checks = [
     assert.ok(deepLinkRuntime.includes(
       'const ALLOWED_DEEP_LINK = /^\\/(order-tracker\\/[^/?#]+|account\\/orders)(?:[/?#].*)?$/;',
     ));
-    assert.match(deepLinkRuntime, /return safeDeepLink\(`\$\{url\.pathname\}\$\{url\.search\}\$\{url\.hash\}`\)/);
+    assert.match(deepLinkRuntime, /return matchDeliveryDeepLink\(`\$\{url\.pathname\}\$\{url\.search\}\$\{url\.hash\}`\)/);
+    assert.match(deepLinkRuntime, /return ALLOWED_DEEP_LINK\.test\(path\) \? path : null/);
+    assert.match(deepLinkRuntime, /AUTH_CALLBACK_PATHS\.has\(url\.pathname\)/);
   }],
   ['G149 is permanently included in the critical regression suite', () => {
     assert.match(critical, /run-g149-android-app-links-tests\.mjs/);

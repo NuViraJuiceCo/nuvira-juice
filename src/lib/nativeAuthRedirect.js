@@ -9,12 +9,9 @@ import {
 const AUTH_TOKEN_STORAGE_KEYS = ['base44_access_token', 'token', 'base44_clear_access_token'];
 const SIGN_IN_RESET_STORAGE_KEYS = [...AUTH_TOKEN_STORAGE_KEYS, 'base44_from_url'];
 const NATIVE_CALLBACK_ROUTE = '/native-login';
+const NATIVE_BROWSER_CALLBACK_ROUTE = '/native-auth-bridge';
 const NATIVE_URL_SCHEME = 'nuvira';
 const NATIVE_CALLBACK_MARKER = 'native_provider_callback';
-// Base44 issues and consumes provider state on this origin. Native shells open
-// this URL in the device browser so the OAuth session cookie survives the
-// provider round trip; the verified NuVira universal link returns to the app.
-const BASE44_PROVIDER_AUTH_ORIGIN = 'https://app.base44.com';
 export const NATIVE_BROWSER_CALLBACK_MARKER = 'native_browser_callback';
 export const SIGN_IN_RESET_LOGOUT_TIMEOUT_MS = 4000;
 
@@ -206,7 +203,9 @@ export function getNativeProviderReturnUrl(returnRoute = '/') {
 }
 
 export async function getNativeBrowserProviderReturnUrl(returnRoute = '/') {
-  const callbackUrl = new URL(getNativeProviderReturnUrl(returnRoute));
+  const callbackUrl = new URL(NATIVE_BROWSER_CALLBACK_ROUTE, appParams.appBaseUrl);
+  callbackUrl.searchParams.set('return_to', normalizeReturnRoute(returnRoute));
+  callbackUrl.searchParams.set(NATIVE_CALLBACK_MARKER, '1');
   callbackUrl.searchParams.set(NATIVE_BROWSER_CALLBACK_MARKER, '1');
   return prepareNativeAuthHandoff(
     callbackUrl.toString(),
@@ -231,7 +230,7 @@ export function getProviderLoginUrl(provider, fromUrl) {
   const isApprovedNativeCallback = callbackUrl
     && appBaseUrl
     && callbackUrl.origin === appBaseUrl.origin
-    && callbackUrl.pathname === NATIVE_CALLBACK_ROUTE
+    && callbackUrl.pathname === NATIVE_BROWSER_CALLBACK_ROUTE
     && callbackUrl.searchParams.get(NATIVE_CALLBACK_MARKER) === '1'
     && callbackUrl.searchParams.get(NATIVE_BROWSER_CALLBACK_MARKER) === '1';
   if (!isApprovedNativeCallback) {
@@ -239,7 +238,7 @@ export function getProviderLoginUrl(provider, fromUrl) {
   }
 
   const providerPath = provider === 'google' ? '' : `/${provider}`;
-  const loginUrl = new URL(`/api/apps/auth${providerPath}/login`, BASE44_PROVIDER_AUTH_ORIGIN);
+  const loginUrl = new URL(`/api/apps/auth${providerPath}/login`, appParams.appBaseUrl);
   loginUrl.searchParams.set('app_id', String(appParams.appId));
   loginUrl.searchParams.set('from_url', fromUrl);
   return loginUrl.toString();
@@ -282,13 +281,14 @@ export async function consumeNativeAuthCallbackUrl(callbackUrl) {
     }
   }
 
-  const accessToken = applyBase44AuthParams(url);
+  const rawAccessToken = url.searchParams.get('access_token');
   const shouldClearToken = url.searchParams.get('clear_access_token') === 'true';
   const returnTo = normalizeReturnRoute(url.searchParams.get('return_to'));
 
-  if (!accessToken && !shouldClearToken && url.searchParams.get(NATIVE_CALLBACK_MARKER) !== '1') {
-    return null;
-  }
+  if (!rawAccessToken && !shouldClearToken) return null;
+  if (rawAccessToken && url.searchParams.get(NATIVE_CALLBACK_MARKER) !== '1') return null;
+
+  const accessToken = applyBase44AuthParams(url);
 
   return {
     accessToken,

@@ -1,6 +1,5 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Browser } from '@capacitor/browser';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { clearAllRewardsOnLogout } from '@/lib/rewardManager';
@@ -95,6 +94,7 @@ export const AuthProvider = ({ children }) => {
   const [isLoadingPublicSettings, setIsLoadingPublicSettings] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [appPublicSettings, setAppPublicSettings] = useState(null); // Contains only { id, public_settings }
+  const handledNativeAuthCallbacksRef = useRef(new Set());
 
   const checkUserAuth = useCallback(async ({ timeoutMs = AUTH_BOOTSTRAP_TIMEOUT_MS } = {}) => {
     const pendingProviderAuthEvent = captureGoogleProviderAuthEvent();
@@ -202,11 +202,17 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const registration = capacitorApp.addListener('appUrlOpen', async (event) => {
-        const callbackResult = await consumeNativeAuthCallbackUrl(event?.url);
-        if (!callbackResult) return;
+        const callbackUrl = String(event?.url || '');
+        if (!callbackUrl || handledNativeAuthCallbacksRef.current.has(callbackUrl)) return;
+
+        handledNativeAuthCallbacksRef.current.add(callbackUrl);
+        const callbackResult = await consumeNativeAuthCallbackUrl(callbackUrl);
+        if (!callbackResult?.accessToken) {
+          handledNativeAuthCallbacksRef.current.delete(callbackUrl);
+          return;
+        }
 
         try {
-          await Browser.close().catch(() => {});
           const currentUser = await checkAppState({ authTimeoutMs: AUTH_EXPLICIT_TIMEOUT_MS });
           if (currentUser?.email) {
             replaceInAppRoute(callbackResult.returnTo || '/');
