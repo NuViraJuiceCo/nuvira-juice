@@ -1,8 +1,10 @@
 import React, { useState, useRef } from 'react';
 import SEO from '@/components/SEO';
+import CheckoutExperience, { CheckoutAction, CheckoutAddress } from '@/components/checkout/CheckoutExperience';
+import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Truck, Gift, LockKeyhole } from 'lucide-react';
+import { ChevronDown, Truck, Gift, LockKeyhole } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -823,80 +825,85 @@ function CheckoutFlow() {
     );
   }
 
+  const contactReady = isValidCheckoutEmail(normalizedCustomerEmail) && Boolean(normalizeNamePart(firstName) && normalizeNamePart(lastName) && phone.trim());
+  const routeReview = zoneEligibility?.zone_type === 'route_review' && zoneEligibility?.checkout_allowed;
+  const deliveryReady = Boolean(routeReview || (addressValidated && zoneEligibility?.checkout_allowed && selectedDeliveryOption?.option_id));
+
   return (
-    <div className="pb-8">
-      <SEO title="Checkout" description="Complete your NuVira Juice order." noindex={true} />
-      <AnimatePresence>
-        {showOutOfArea && (
-          <OutOfAreaModal
-            address={[address.street, address.city, address.state, address.zip].filter(Boolean).join(', ')}
-            zip={address.zip}
-            onClose={() => setShowOutOfArea(false)}
-            cartItems={items}
-          />
-        )}
-      </AnimatePresence>
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-12 pb-3">
-        <button onClick={() => navigate('/cart')} className="w-11 h-11 bg-secondary rounded-full flex items-center justify-center shrink-0">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="font-heading text-xl font-bold">Checkout</h1>
-      </div>
-
-
-
-      {/* Delivery Estimate */}
-      <div className="mx-4 mb-5 bg-nuvira-gradient-soft border border-nuvira rounded-xl p-3.5 flex items-center gap-2.5">
-        <Truck className="w-5 h-5 text-primary shrink-0" />
-        <div>
-          <p className="text-sm font-semibold text-primary">
-            {selectedDeliveryOption
-              ? `Delivered ${selectedDeliveryLabel}`
-              : scheduleOptionsLoading ? 'Confirming delivery windows...' : 'Delivery window will be confirmed before payment'}
-          </p>
-          <p className="text-[10px] text-muted-foreground">
-            {selectedDeliveryOption?.delivery_window_label
-              ? `${selectedDeliveryOption.delivery_window_label} · Fresh made the day before`
-              : 'Included in our next fresh batch'}
-          </p>
-        </div>
-      </div>
-
-      {isGuestCheckout && (
-        <div className="mx-4 mb-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-          <div className="flex items-start gap-3">
-            <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-foreground">Secure guest checkout</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                No account is required. Google Pay, Apple Pay, and card are available at the secure payment step when supported on your device.
-              </p>
-              <p className="mt-2 text-[11px] font-medium leading-relaxed text-primary">
-                You still earn 10 points per $1. After payment, use this same email to activate and access your rewards.
-              </p>
-              <button
-                type="button"
-                onClick={() => redirectToLogin('/checkout')}
-                className="mt-2 text-[11px] font-semibold text-primary underline underline-offset-2"
-              >
-                Sign in to use rewards and view order history
-              </button>
+    <CheckoutExperience
+      items={items}
+      total={clientSecret ? paymentTotal : total}
+      paymentReady={Boolean(clientSecret)}
+      locked={isSubmitting || checkoutStartLocked}
+      memberReady={Boolean(user?.email && prefilled && contactReady)}
+      contactReady={contactReady}
+      contactSummary={contactReady ? [buildCustomerName(firstName, lastName), normalizedCustomerEmail].join(' · ') : ''}
+      deliverySummary={selectedDeliveryOption ? selectedDeliveryLabel : ''}
+      deliveryReady={deliveryReady}
+      deliveryMessage={validatingAddress ? 'Checking your delivery address…' : addressValidationError || zoneEligibility?.customer_message || 'Enter your address and choose an available delivery window to continue.'}
+      onBack={() => navigate('/cart')}
+      benefitsLabel={user?.email && availablePoints >= 100 ? `Save up to $${maxDiscount.toFixed(2)} with points · Offers` : 'Rewards & discount code'}
+      summary={<>
+{/* Order Summary */}
+      <div className="mx-4 bg-secondary/40 rounded-xl p-4 mb-5">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Order Summary</h3>
+        {items.map(item => (
+          <div key={item.cart_line_key || item.product_id} className="nv-checkout-item">
+            <OrderItemThumbnail item={item} /><span className="text-foreground/80">{item.quantity}x {item.title}</span>
+            <span className="font-medium">${(item.price * item.quantity).toFixed(2)}</span>
+          </div>
+        ))}
+        <div className="border-t border-border/50 mt-2 pt-2">
+          <div className="flex justify-between text-xs text-muted-foreground mb-1">
+            <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
+          </div>
+          {pointsDiscount > 0 && (
+            <div className="flex justify-between text-xs text-cyan-600 mb-1 font-medium">
+              <span>Points Discount</span><span>-${pointsDiscount.toFixed(2)}</span>
             </div>
+          )}
+          {activeReward && rewardDiscountAmt > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>{activeReward.title}</span><span>-${rewardDiscountAmt.toFixed(2)}</span>
+            </div>
+          )}
+          {activeReward && rewardFreeDelivery && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>{activeReward.title}</span><span>Free!</span>
+            </div>
+          )}
+          {subDiscountAmt > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>Subscriber {subDiscountPct}% Discount</span><span>-${subDiscountAmt.toFixed(2)}</span>
+            </div>
+          )}
+          {creditsDiscount > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>NuVira Credits</span><span>-${creditsDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          {referralDiscount > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>{checkoutCode?.label || 'Referral code'}</span><span>-${referralDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          {promotionDiscount > 0 && (
+            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
+              <span>{checkoutCode?.label || 'Discount code'}</span><span>-${promotionDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-xs text-muted-foreground mb-1">
+            <span>Delivery</span>
+            <span>{zoneEligibility ? (deliveryFee > 0 ? `$${deliveryFee.toFixed(2)}` : 'Free') : 'Calculated after address'}</span>
+          </div>
+          <div className="flex justify-between text-sm font-bold mt-1.5">
+            <span>Total</span><span>${(clientSecret ? paymentTotal : total).toFixed(2)}</span>
           </div>
         </div>
-      )}
-
-      {/* Delivery Date Selection */}
-      {deliveryOptions.length > 1 && (
-        <DeliveryDatePicker
-          options={deliveryOptions}
-          selected={selectedDeliveryOption?.delivery_date}
-          onSelect={setSelectedDeliveryOption}
-        />
-      )}
-
-      {/* Subscriber Perks Banner */}
+      </div>
+      </>}
+      benefits={<>
+{/* Subscriber Perks Banner */}
       {activeSubscription?.plan && (
         <div className="mx-4 mb-5 bg-nuvira-gradient-soft border border-nuvira rounded-xl p-4">
           <div className="flex items-center gap-2.5">
@@ -1024,8 +1031,32 @@ function CheckoutFlow() {
           </p>
         )}
       </div>
-
-      {/* Contact */}
+      </>}
+      guest={isGuestCheckout ? <>
+        <div className="mx-4 mb-5 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-start gap-3">
+            <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Secure guest checkout</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                No account is required. Google Pay, Apple Pay, and card are available at the secure payment step when supported on your device.
+              </p>
+              <p className="mt-2 text-[11px] font-medium leading-relaxed text-primary">
+                You still earn 10 points per $1. After payment, use this same email to activate and access your rewards.
+              </p>
+              <button
+                type="button"
+                onClick={() => redirectToLogin('/checkout')}
+                className="mt-2 text-[11px] font-semibold text-primary underline underline-offset-2"
+              >
+                Sign in to use rewards and view order history
+              </button>
+            </div>
+          </div>
+        </div>
+      </> : null}
+      contact={<>
+{/* Contact */}
       <div className="px-4 space-y-4 mb-5">
         <div>
           <Label htmlFor="checkout-email" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
@@ -1100,8 +1131,12 @@ function CheckoutFlow() {
             </span>
           </label>
         </div>
-        {fulfillmentType === 'delivery' && (
+        </div>
+      </>}
+      delivery={<>
+{fulfillmentType === 'delivery' && (
           <div>
+            <CheckoutAddress address={address} saved={Boolean(user?.email && prefilled)}>
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
               Delivery Address
             </Label>
@@ -1111,6 +1146,7 @@ function CheckoutFlow() {
               placeholder="123 Main St"
               className="rounded-xl h-11"
             />
+            </CheckoutAddress>
             {validatingAddress && (
               <p className="text-xs text-muted-foreground mt-1.5">Checking delivery area...</p>
             )}
@@ -1142,76 +1178,44 @@ function CheckoutFlow() {
             })()}
           </div>
         )}
-      </div>
-
-      {/* Bag Return — delivery only, only if customer has a previous order */}
-      {fulfillmentType === 'delivery' && lastOrderData.length > 0 && (
-        <BagReturnSelector
-          totalBottles={totalBottles}
-          lastOrderBottles={lastOrderBottles || null}
-          onChange={setBagReturn}
+{/* Delivery Estimate */}
+      {deliveryOptions.length <= 1 && <div className="mx-4 mb-5 bg-nuvira-gradient-soft border border-nuvira rounded-xl p-3.5 flex items-center gap-2.5">
+        <Truck className="w-5 h-5 text-primary shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-primary">
+            {selectedDeliveryOption
+              ? `Delivered ${selectedDeliveryLabel}`
+              : scheduleOptionsLoading ? 'Confirming delivery windows...' : 'Delivery window will be confirmed before payment'}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {selectedDeliveryOption?.delivery_window_label
+              ? `${selectedDeliveryOption.delivery_window_label} · Fresh made the day before`
+              : 'Included in our next fresh batch'}
+          </p>
+        </div>
+      </div>}
+{/* Delivery Date Selection */}
+      {deliveryOptions.length > 1 && (
+        <DeliveryDatePicker
+          options={deliveryOptions}
+          selected={selectedDeliveryOption?.delivery_date}
+          onSelect={setSelectedDeliveryOption}
         />
       )}
-
-      {/* Order Summary */}
-      <div className="mx-4 bg-secondary/40 rounded-xl p-4 mb-5">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Order Summary</h3>
-        {items.map(item => (
-          <div key={item.cart_line_key || item.product_id} className="flex justify-between text-sm mb-1.5">
-            <span className="text-foreground/80">{item.quantity}x {item.title}</span>
-            <span className="font-medium">${(item.price * item.quantity).toFixed(2)}</span>
-          </div>
-        ))}
-        <div className="border-t border-border/50 mt-2 pt-2">
-          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>Subtotal</span><span>${subtotal.toFixed(2)}</span>
-          </div>
-          {pointsDiscount > 0 && (
-            <div className="flex justify-between text-xs text-cyan-600 mb-1 font-medium">
-              <span>Points Discount</span><span>-${pointsDiscount.toFixed(2)}</span>
-            </div>
-          )}
-          {activeReward && rewardDiscountAmt > 0 && (
-            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
-              <span>{activeReward.title}</span><span>-${rewardDiscountAmt.toFixed(2)}</span>
-            </div>
-          )}
-          {activeReward && rewardFreeDelivery && (
-            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
-              <span>{activeReward.title}</span><span>Free!</span>
-            </div>
-          )}
-          {subDiscountAmt > 0 && (
-            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
-              <span>Subscriber {subDiscountPct}% Discount</span><span>-${subDiscountAmt.toFixed(2)}</span>
-            </div>
-          )}
-          {creditsDiscount > 0 && (
-            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
-              <span>NuVira Credits</span><span>-${creditsDiscount.toFixed(2)}</span>
-            </div>
-          )}
-          {referralDiscount > 0 && (
-            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
-              <span>{checkoutCode?.label || 'Referral code'}</span><span>-${referralDiscount.toFixed(2)}</span>
-            </div>
-          )}
-          {promotionDiscount > 0 && (
-            <div className="flex justify-between text-xs text-primary mb-1 font-medium">
-              <span>{checkoutCode?.label || 'Discount code'}</span><span>-${promotionDiscount.toFixed(2)}</span>
-            </div>
-          )}
-          <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>Delivery</span>
-            <span>{zoneEligibility ? (deliveryFee > 0 ? `$${deliveryFee.toFixed(2)}` : 'Free') : 'Calculated after address'}</span>
-          </div>
-          <div className="flex justify-between text-sm font-bold mt-1.5">
-            <span>Total</span><span>${total.toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Zone 3 Route Review — shown instead of normal checkout when address is in zone_3 */}
+        {/* Bag Return — delivery only, only if customer has a previous order */}
+        {fulfillmentType === 'delivery' && lastOrderData.length > 0 && (
+          <details className="nv-checkout-bags">
+            <summary>Returning bags? <ChevronDown size={15} /></summary>
+            <BagReturnSelector
+              totalBottles={totalBottles}
+              lastOrderBottles={lastOrderBottles || null}
+              onChange={setBagReturn}
+            />
+          </details>
+        )}
+      </>}
+      payment={<>
+{/* Zone 3 Route Review — shown instead of normal checkout when address is in zone_3 */}
       {zoneEligibility?.zone_type === 'route_review' && zoneEligibility?.checkout_allowed && !clientSecret && (
         user?.email ? <Zone3RouteReviewPanel
           zoneEligibility={zoneEligibility}
@@ -1239,8 +1243,7 @@ function CheckoutFlow() {
           </div>
         )
       )}
-
-      {/* Payment Step — embedded Stripe PaymentElement after form is submitted */}
+{/* Payment Step — embedded Stripe PaymentElement after form is submitted */}
       {clientSecret ? (
         <div className="px-4 md:px-6">
           <div className="mb-4">
@@ -1373,18 +1376,31 @@ function CheckoutFlow() {
             else if (isZone3) label = 'Route review required — contact us';
             else if (isWaitlist) label = 'Delivery not available in your area';
             return (
-              <Button
+              <CheckoutAction><Button
                 onClick={handlePlaceOrder}
                 disabled={isSubmitting || checkoutStartLocked || isBlocked || !healthAdvisoryAcknowledged}
                 className="w-full h-12 rounded-xl font-semibold text-sm"
               >
                 {label}
-              </Button>
+              </Button></CheckoutAction>
             );
             })()}
           </div>
         </div>
       )}
-    </div>
+      </>}
+    >
+<SEO title="Checkout" description="Complete your NuVira Juice order." noindex={true} />
+      <AnimatePresence>
+        {showOutOfArea && (
+          <OutOfAreaModal
+            address={[address.street, address.city, address.state, address.zip].filter(Boolean).join(', ')}
+            zip={address.zip}
+            onClose={() => setShowOutOfArea(false)}
+            cartItems={items}
+          />
+        )}
+      </AnimatePresence>
+    </CheckoutExperience>
   );
 }

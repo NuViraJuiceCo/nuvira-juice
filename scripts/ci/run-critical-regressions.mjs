@@ -17,6 +17,7 @@ function writeEvidence(result) {
   fs.writeFileSync(path.resolve(repoRoot, outPath), `${JSON.stringify(result, null, 2)}\n`);
 }
 const harnesses = [
+  'scripts/migration/run-mobile-checkout-experience-tests.mjs',
   'scripts/migration/run-g50b-native-startup-hotfix-tests.mjs',
   'scripts/migration/run-g49a-checkout-processing-error-boundary-tests.mjs',
   'scripts/migration/run-g51c-delivery-status-sync-freshness-guard-tests.mjs',

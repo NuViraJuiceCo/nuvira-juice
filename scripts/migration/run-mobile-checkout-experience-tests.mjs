@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const read = path => fs.readFileSync(path, 'utf8');
+const checkout = read('src/pages/Checkout.jsx');
+const experience = read('src/components/checkout/CheckoutExperience.jsx');
+const payment = read('src/components/checkout/EmbeddedPayment.jsx');
+const styles = read('src/components/checkout/checkout-experience.css');
+const picker = read('src/components/checkout/DeliveryDatePicker.jsx');
+let checks = 0;
+const check = (condition, message) => { assert.ok(condition, message); checks++; };
+for (const marker of ['<AddressAutocomplete','onChange={setAddress}','selected_schedule_option_id: selectedDeliveryOption?.option_id','health_advisory_version: HEALTH_ADVISORY_CONFIG.version','checkout_idempotency_key: checkoutIdempotencyKey.current','saveGuestLoyaltyActivationContext({','onSuccess={(paymentIntentId)','marketing_measurement_consent:','google_measurement_context:','<BagReturnSelector','<Zone3RouteReviewPanel']) {
+  check(checkout.includes(marker), 'Preserves existing checkout contract: '+marker);
+}
+check(checkout.includes('total={clientSecret ? paymentTotal : total}'), 'Dock uses backend-confirmed payment total');
+check(checkout.includes('routeReview || (addressValidated && zoneEligibility?.checkout_allowed && selectedDeliveryOption?.option_id)'), 'Route review remains reachable without falsely marking address core-validated');
+check(experience.includes('if (!dock) return children;'), 'Other payment consumers keep inline buttons');
+check(payment.includes('<CheckoutAction><button\n          type="submit"'), 'Original Stripe submit remains a form submit');
+check(payment.includes('disabled={!stripe || isSubmitting}'), 'Stripe readiness and submitting lock preserved');
+check(experience.includes('disabled={locked || paymentReady}'), 'Financial edits locked after payment opens');
+check(experience.includes('hidden={activeStep !== index}'), 'Inactive sections stay mounted for input and bag-return persistence');
+check(experience.includes('if (locked || paymentReady) return;'), 'Step navigation respects payment locks');
+check(experience.includes('window.visualViewport') && experience.includes("removeEventListener('resize', update)"), 'Keyboard adjustment cleans up listeners');
+check(experience.includes('focus({ preventScroll: true })'), 'Step transitions move accessible focus');
+check(picker.includes('aria-pressed={isSelected}'), 'Delivery selection exposes its state');
+check(styles.includes('env(safe-area-inset-bottom') && styles.includes('font-size:16px'), 'Mobile safe area and readable form typography preserved');
+check(styles.includes('.dark .nv-checkout-page') && styles.includes('--nv-gold:'), 'Approved dark/light color treatment present');
+check(!/(?:^|\n)\s*(?:body|html|\*|button|input)\s*\{/.test(styles), 'No unscoped global element styles');
+check(!/synthetic|SYNTHETIC|localhost|127\.0\.0\.1|2026-09-09/.test(experience + checkout), 'No test fixtures in shipped checkout');
+check(!experience.includes('base44') && !experience.includes('fetch('), 'Presentation layer adds no backend transport');
+console.log(JSON.stringify({suite:'mobile-checkout-experience',checks,passed:true,providerCalls:0,productionWrites:0}));

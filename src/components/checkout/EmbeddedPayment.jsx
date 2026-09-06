@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { CheckoutAction } from '@/components/checkout/CheckoutExperience';
 import { Capacitor } from '@capacitor/core';
 import { loadStripe } from '@stripe/stripe-js';
 import { confirmNativeApplePayPayment, getNativeApplePayAvailability, isNativeApplePayPlatform, paymentIntentIdFromClientSecret } from '@/lib/nativeApplePay';
@@ -363,13 +364,13 @@ function PaymentForm({
           </div>
         )}
 
-        <button
+        <CheckoutAction><button
           type="submit"
           disabled={!stripe || isSubmitting}
           className="w-full h-12 rounded-xl font-semibold text-sm inline-flex items-center justify-center bg-primary text-primary-foreground shadow hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
         >
           {isSubmitting ? 'Processing…' : (confirmLabel || `Pay $${total.toFixed(2)}`)}
-        </button>
+        </button></CheckoutAction>
 
         <p className="text-center text-[10px] text-muted-foreground">
           {nativeApplePayStatus.available || nativeGooglePayStatus.available || expressAvailable
