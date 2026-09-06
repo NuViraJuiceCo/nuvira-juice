@@ -7,6 +7,7 @@ const INSTALLATION_ID_KEY = 'nuvira_delivery_live_activity_installation_v1';
 const IOS_BUNDLE_ID = 'com.base69d48d0c39891f7945481152.app';
 const ANDROID_APP_ID = 'com.nuvirajuice.app';
 const ALLOWED_DEEP_LINK = /^\/(order-tracker\/[^/?#]+|account\/orders)(?:[/?#].*)?$/;
+const AUTH_CALLBACK_PATHS = new Set(['/native-login', '/native-auth-bridge']);
 const PENDING_NATIVE_ROUTE_KEY = 'nuvira_pending_native_route_v1';
 const PENDING_NATIVE_ROUTE_TTL_MS = 60 * 1000;
 const CAPABILITY_REFRESH_MS = 15 * 60 * 1000;
@@ -29,6 +30,11 @@ function safeInteger(value, fallback = 0) {
 function safeDeepLink(value) {
   const path = normalizeSingleLine(value, 400);
   return ALLOWED_DEEP_LINK.test(path) ? path : '/account/orders';
+}
+
+function matchDeliveryDeepLink(value) {
+  const path = normalizeSingleLine(value, 400);
+  return ALLOWED_DEEP_LINK.test(path) ? path : null;
 }
 
 function preserveNativeRoute(route) {
@@ -202,10 +208,11 @@ function nativeRouteFromUrl(value) {
   try {
     const url = new URL(value);
     if (url.protocol === 'nuvira:' && url.hostname === 'open') {
-      return safeDeepLink(url.searchParams.get('path'));
+      return matchDeliveryDeepLink(url.searchParams.get('path'));
     }
     if (url.protocol === 'https:' && ['nuvirajuice.com', 'www.nuvirajuice.com'].includes(url.hostname)) {
-      return safeDeepLink(`${url.pathname}${url.search}${url.hash}`);
+      if (AUTH_CALLBACK_PATHS.has(url.pathname)) return null;
+      return matchDeliveryDeepLink(`${url.pathname}${url.search}${url.hash}`);
     }
   } catch {
     return null;
