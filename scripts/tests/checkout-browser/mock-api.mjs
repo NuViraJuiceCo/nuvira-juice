@@ -12,7 +12,10 @@ const rows = {
 };
 export async function invokeCustomerGateway(name, data) {
   window.__checkoutCalls.push({name,data});
-  if (name === 'addressSuggest') return {data:{suggestions:[{street:'123 Example St',city:'Wentzville',state:'MO',zip:'63385',formatted_address:'123 Example St, Wentzville, MO 63385'}]}};
+  if (name === 'addressSuggest') {
+    if (window.__addressLookup) return window.__addressLookup(data);
+    return {data:{suggestions:[{street:'123 Example St',city:'Wentzville',state:'MO',zip:'63385',formatted_address:'123 Example St, Wentzville, MO 63385'}]}};
+  }
   if (name === 'validateDeliveryEligibility') return {data:{zone_type:scenario==='route'?'route_review':'core', zone_key:'synthetic-core', checkout_allowed:scenario!=='blocked', delivery_fee:5, customer_message:scenario==='blocked'?'Delivery unavailable for this address.':'Local delivery available.'}};
   throw new Error('Unexpected synthetic gateway: '+name);
 }

@@ -15,7 +15,7 @@ const open = async (query = '', width = 390) => {
     externalRequests.push({host:url.hostname,type:route.request().resourceType()});
     return route.abort();
   });
-  await page.goto('http://127.0.0.1:5187/?'+query);
+  await page.goto((process.env.NUVIRA_CHECKOUT_TEST_URL || 'http://127.0.0.1:5187/')+'?'+query);
   await page.getByRole('heading',{name:'Checkout',exact:true}).waitFor();
   return page;
 };
@@ -114,7 +114,10 @@ try {
   await guest.getByRole('button',{name:'Continue to delivery →'}).click();
   check(await guest.getByRole('button',{name:'Continue to payment →'}).isDisabled(),'address required');
   await guest.getByRole('textbox',{name:'Street address',exact:true}).fill('123 Example');
-  await guest.getByRole('list',{name:'Google-verified address suggestions'}).locator('li').click();
+  await guest.getByRole('list',{name:'Google-verified address suggestions'}).getByRole('button').click();
+  for (const [name,value] of Object.entries({'Street address':'123 Example St',City:'Wentzville',State:'MO','ZIP code':'63385'})) {
+    check(await guest.getByRole('textbox',{name,exact:true}).inputValue()===value,'selected address fills '+name);
+  }
   await continueDelivery(guest);
   await health(guest).check();
   await guest.getByRole('button',{name:/Review Payment/}).click();
