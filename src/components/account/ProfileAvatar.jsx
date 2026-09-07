@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSessionMutation as useMutation } from '@/lib/useSessionMutation';
+import { isCurrentAuthQueryClient } from '@/lib/authQuerySession';
 import { Camera, X, Loader2, Crown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -68,6 +70,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
     mutationFn: async (file) => {
       // Compress image first
       const compressedFile = await compressImage(file);
+      if (!isCurrentAuthQueryClient(queryClient)) throw new Error('auth_session_changed');
       
       // Upload to Base44
       const uploadRes = await base44.integrations.Core.UploadFile({ file: compressedFile });
@@ -87,6 +90,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
         });
       }
       
+      if (!isCurrentAuthQueryClient(queryClient)) return;
       queryClient.invalidateQueries({ queryKey: ['user-profile'] });
       toast.success('Profile photo updated!');
       setIsUploading(false);

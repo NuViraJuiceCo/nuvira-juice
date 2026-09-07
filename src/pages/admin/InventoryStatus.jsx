@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSessionMutation as useMutation } from '@/lib/useSessionMutation';
 import { format } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
 import { AlertTriangle, ClipboardList, Copy, Download, Link2, MapPin, Package, Pencil, Plus, RefreshCw, Search, ShoppingCart } from 'lucide-react';

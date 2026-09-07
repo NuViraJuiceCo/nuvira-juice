@@ -121,7 +121,7 @@ assert(!nativeAuthRedirect.includes('window.location.assign(loginUrl)'), 'Login 
 assert(!nativeAuthRedirect.includes('window.location.replace(signedOutRoute)'), 'Logout still hard-replaces signed-out route');
 assert(!nativeAuthRedirect.includes('window.location.href = safeRoute'), 'In-app auth route helper still falls back to hard reload');
 assert(nativeAuthRedirect.includes("if (!route.startsWith('/') || route.startsWith('//')) return '/'"), 'External/open return routes are not rejected');
-assert(nativeAuthRedirect.includes("params.set('return_to', normalizeReturnRoute(returnRoute))"), 'Reset route does not normalize return route');
+assert(nativeAuthRedirect.includes("params.set('return_to', sanitizeAuthReturnRoute(returnRoute))"), 'Reset destination must reject auth-state replay as well as unsafe routes');
 assert(nativeAuthRedirect.includes("params.set('reset_sign_in', '1')"), 'Reset route does not mark reset_sign_in');
 assert(nativeAuthRedirect.includes("params.set('clear_access_token', 'true')"), 'Reset route does not carry clear_access_token');
 assert(nativeAuthRedirect.includes('SIGN_IN_RESET_STORAGE_KEYS'), 'Reset helper does not use documented narrow reset storage keys');

@@ -1,7 +1,8 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { AdminStatusPill } from './AdminStatusPill';
+import { installAdminSwipeBack } from '@/lib/adminSwipeBack';
 
 export default function AdminOpsHeader({
   title,
@@ -15,6 +16,21 @@ export default function AdminOpsHeader({
   onBack,
   actions,
 }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  useEffect(() => {
+    if (!location.pathname.startsWith('/admin')) return undefined;
+    const editingSelector = 'input, textarea, select, [contenteditable="true"], [role="slider"], [data-no-swipe-back]';
+    const canNavigate = () => window.matchMedia('(max-width: 767px) and (pointer: coarse)').matches
+      && !document.activeElement?.matches(editingSelector)
+      && !document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], dialog[open], [role="menu"][data-state="open"], [role="listbox"][data-state="open"], [data-admin-navigation-blocked="true"]');
+    return installAdminSwipeBack(document, {
+      canStart: target => canNavigate() && !target?.closest?.(editingSelector),
+      canNavigate,
+      onBack: () => onBack ? onBack() : navigate(backTo),
+    });
+  }, [backTo, location.pathname, navigate, onBack]);
+
   const BackControl = onBack ? 'button' : Link;
   const backProps = onBack ? { type: 'button', onClick: onBack } : { to: backTo };
   const mobileHeading = mobileTitle || title;

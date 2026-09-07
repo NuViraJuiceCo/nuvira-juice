@@ -19,8 +19,8 @@ assert.match(nativeLogin, /window\.location\.replace\(callbackUrl\)/);
 
 assert.match(nativeAuthRedirect, /new URL\(NATIVE_BROWSER_CALLBACK_ROUTE, appParams\.appBaseUrl\)/);
 assert.match(nativeAuthRedirect, /callbackUrl\.pathname === NATIVE_BROWSER_CALLBACK_ROUTE/);
-assert.match(nativeAuthRedirect, /new URL\(`\/api\/apps\/auth\$\{providerPath\}\/login`, appParams\.appBaseUrl\)/);
-assert.doesNotMatch(nativeAuthRedirect, /BASE44_PROVIDER_AUTH_ORIGIN/);
+assert.match(nativeAuthRedirect, /const BASE44_PROVIDER_AUTH_ORIGIN = 'https:\/\/app\.base44\.com'/);
+assert.match(nativeAuthRedirect, /new URL\(`\/api\/apps\/auth\$\{providerPath\}\/login`, BASE44_PROVIDER_AUTH_ORIGIN\)/);
 
 const iosPaths = iosAssociation.applinks.details.flatMap((entry) => entry.paths || []);
 assert.ok(!iosPaths.includes('/native-auth-bridge'));
@@ -49,8 +49,12 @@ assert.match(authContext, /const handledNativeAuthCallbacksRef = useRef\(new Set
 assert.match(authContext, /handledNativeAuthCallbacksRef\.current\.has\(callbackUrl\)/);
 assert.match(authContext, /handledNativeAuthCallbacksRef\.current\.add\(callbackUrl\)/);
 assert.match(authContext, /if \(!callbackResult\?\.accessToken\)/);
-assert.doesNotMatch(authContext, /from '@capacitor\/browser'/);
-assert.doesNotMatch(authContext, /Browser\.close/);
+assert.match(authContext, /from '@capacitor\/browser'/);
+const validCallbackBranch = authContext.slice(
+  authContext.indexOf('if (!callbackResult?.accessToken)'),
+  authContext.indexOf('const currentUser = await checkAppState'),
+);
+assert.match(validCallbackBranch, /await Browser\.close\(\)\.catch/);
 
 console.log(JSON.stringify({
   ok: true,
@@ -58,7 +62,7 @@ console.log(JSON.stringify({
   cases: 26,
   browser_callback_route: '/native-auth-bridge',
   browser_callback_excluded_from_app_links: true,
-  configured_auth_origin: true,
+  base44_first_party_auth_origin: true,
   tokenless_callback_rejected: true,
   duplicate_callback_suppressed: true,
   auth_urls_excluded_from_delivery_navigation: true,

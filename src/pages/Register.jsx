@@ -13,6 +13,8 @@ import { safeReturnTo } from "@/lib/authReturnTo";
 import { prepareGoogleProviderAuthRedirect, trackGoogleSignUp } from "@/lib/googleAnalytics";
 import { prepareMetaRegistrationEvent } from "@/lib/metaPixel";
 import { prepareSnapRegistrationEvent } from "@/lib/snapPixel";
+import { beginAuthOperation, isCurrentAuthOperation } from "@/lib/authOperation";
+import { createSessionCredentials } from "@/lib/sessionCredentials";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -31,48 +33,65 @@ export default function Register() {
       return;
     }
     setLoading(true);
+    const operation = beginAuthOperation();
+    const credentials = createSessionCredentials(base44.auth, operation);
     try {
-      await base44.auth.register({ email, password });
+      await credentials.register({ email, password });
+      credentials.assertCurrent();
       setShowOtp(true);
     } catch (err) {
+      if (!isCurrentAuthOperation(operation)) return;
       setError(err.message || "Registration failed");
     } finally {
-      setLoading(false);
+      if (isCurrentAuthOperation(operation)) setLoading(false);
     }
   };
 
   const handleVerify = async () => {
     setError("");
     setLoading(true);
+    const operation = beginAuthOperation();
+    const credentials = createSessionCredentials(base44.auth, operation);
     try {
-      const result = await base44.auth.verifyOtp({ email, otpCode });
+      const result = await credentials.verifyOtp({ email, otpCode });
+      credentials.assertCurrent();
       if (result?.access_token) {
-        base44.auth.setToken(result.access_token);
+        credentials.setToken(result.access_token);
       }
       trackGoogleSignUp('email');
       prepareMetaRegistrationEvent('email');
       prepareSnapRegistrationEvent('email');
       window.location.href = safeReturnTo();
     } catch (err) {
+      if (!isCurrentAuthOperation(operation)) return;
       setError(err.message || "Invalid verification code");
     } finally {
-      setLoading(false);
+      if (isCurrentAuthOperation(operation)) setLoading(false);
     }
   };
 
   const handleResend = async () => {
     setError("");
+    setLoading(true);
+    const operation = beginAuthOperation();
+    const credentials = createSessionCredentials(base44.auth, operation);
     try {
-      await base44.auth.resendOtp(email);
+      await credentials.resendOtp(email);
+      credentials.assertCurrent();
       toast.success("Code sent", {
         description: "Check your email for the new code.",
       });
     } catch (err) {
+      if (!isCurrentAuthOperation(operation)) return;
       setError(err.message || "Failed to resend code");
+    } finally {
+      if (isCurrentAuthOperation(operation)) setLoading(false);
     }
   };
 
   const handleGoogle = () => {
+    beginAuthOperation();
+    setLoading(false);
     base44.auth.loginWithProvider(
       "google",
       prepareGoogleProviderAuthRedirect(safeReturnTo(), 'sign_up', 'google')
@@ -125,7 +144,7 @@ export default function Register() {
         </Button>
         <p className="text-center text-sm text-muted-foreground mt-4">
           Didn't receive the code?{" "}
-          <button onClick={handleResend} className="text-primary font-medium hover:underline">
+          <button onClick={handleResend} disabled={loading} className="text-primary font-medium hover:underline">
             Resend
           </button>
         </p>

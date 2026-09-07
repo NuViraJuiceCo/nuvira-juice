@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Link, useNavigate } from 'react-router-dom';
 import PullToRefresh from '@/components/PullToRefresh';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSessionMutation as useMutation } from '@/lib/useSessionMutation';
 import { useAuth } from '@/lib/AuthContext';
 import {
   AlertCircle,

@@ -13,7 +13,7 @@ const checks = [
     assert.match(metaSource, /META_STANDARD_EVENTS[\s\S]{0,260}'CompleteRegistration'/);
   }],
   ['email registration is staged only after OTP verification succeeds', () => {
-    assert.match(register, /await base44\.auth\.verifyOtp\(\{ email, otpCode \}\);[\s\S]{0,320}prepareMetaRegistrationEvent\('email'\);/);
+    assert.match(register, /await credentials\.verifyOtp\(\{ email, otpCode \}\);\s*credentials\.assertCurrent\(\);[\s\S]{0,280}prepareMetaRegistrationEvent\('email'\);/);
     assert.ok(register.indexOf("prepareMetaRegistrationEvent('email')") < register.indexOf('window.location.href = safeReturnTo()'));
   }],
   ['email registration is consumed only after authenticated readback', () => {

@@ -45,6 +45,7 @@ const META_CATALOG_CONTENT_IDS = Object.freeze({
   'large-nuvira-tote-bag': '43629081722970',
 });
 const SENSITIVE_QUERY_KEYS = /^(?:session_id|payment_intent|payment_intent_client_secret|token|secret|code|email|order_number)$/i;
+const NATIVE_AUTH_TRANSPORT_PATH = /^\/native-(?:login|auth-bridge)(?:\/|$)/i;
 const PAGE_VIEW_BLOCKED_PREFIXES = [
   '/admin',
   '/account',
@@ -334,7 +335,8 @@ export function getMetaCapiAttributionContext() {
 
 export function isSafeMarketingEventContext() {
   if (!hasBrowserRuntime()) return false;
-  return !hasSensitiveQuery(window.location.search);
+  return !NATIVE_AUTH_TRANSPORT_PATH.test(window.location.pathname)
+    && !hasSensitiveQuery(window.location.search);
 }
 
 export function isTrackableMarketingPageView(pathname = '/') {

@@ -21,11 +21,11 @@ const checks = [
     assert.doesNotMatch(analytics, /CAMPAIGN_QUERY_KEYS[\s\S]{0,500}session_id/);
   }],
   ['email login is measured only after authentication succeeds', () => {
-    assert.match(login, /await base44\.auth\.loginViaEmailPassword\(email, password\);\s*trackGoogleLogin\('email'\);/);
+    assert.match(login, /await credentials\.loginViaEmailPassword\(email, password\);\s*credentials\.assertCurrent\(\);\s*trackGoogleLogin\('email'\);/);
     assert.ok(login.indexOf("trackGoogleLogin('email')") < login.indexOf('window.location.href = returnTo'));
   }],
   ['email sign-up is measured only after OTP verification succeeds', () => {
-    assert.match(register, /await base44\.auth\.verifyOtp\(\{ email, otpCode \}\);[\s\S]{0,220}trackGoogleSignUp\('email'\);/);
+    assert.match(register, /await credentials\.verifyOtp\(\{ email, otpCode \}\);\s*credentials\.assertCurrent\(\);[\s\S]{0,180}trackGoogleSignUp\('email'\);/);
     assert.ok(register.indexOf("trackGoogleSignUp('email')") < register.indexOf('window.location.href = safeReturnTo()'));
   }],
   ['Google provider measurement is bound to a short-lived callback token and authenticated readback', () => {
