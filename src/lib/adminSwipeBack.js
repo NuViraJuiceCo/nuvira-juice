@@ -3,11 +3,19 @@ const MIN_DISTANCE = 80;
 const MAX_VERTICAL_DISTANCE = 48;
 
 export function installAdminSwipeBack(target, { canStart, canNavigate, onBack }) {
+  const view = target.defaultView || globalThis;
   let gesture = null;
+  let pendingBack = null;
+  const cancelBack = () => {
+    const pending = pendingBack;
+    pendingBack = null;
+    if (pending) view.cancelAnimationFrame(pending.frame);
+  };
   const reset = () => {
     gesture = null;
   };
   const start = event => {
+    cancelBack();
     reset();
     if (event.touches.length !== 1 || !canStart(event.target)) return;
     const touch = event.touches[0];
@@ -36,18 +44,34 @@ export function installAdminSwipeBack(target, { canStart, canNavigate, onBack })
       && Math.abs(touch.clientY - current.y) <= MAX_VERTICAL_DISTANCE
       && canNavigate();
     reset();
-    if (completed) onBack();
+    if (!completed) return;
+    cancelBack();
+    const pending = { frame: null };
+    pendingBack = pending;
+    // Allow a gesture-ending paint before removing the touch origin from WebKit.
+    pending.frame = view.requestAnimationFrame(() => {
+      if (pendingBack !== pending) return;
+      pending.frame = view.requestAnimationFrame(() => {
+        if (pendingBack !== pending) return;
+        pendingBack = null;
+        if (canNavigate()) onBack();
+      });
+    });
+  };
+  const cancel = () => {
+    cancelBack();
+    reset();
   };
 
   target.addEventListener('touchstart', start, { passive: true });
   target.addEventListener('touchmove', move, { passive: false });
   target.addEventListener('touchend', end, { passive: true });
-  target.addEventListener('touchcancel', reset, { passive: true });
+  target.addEventListener('touchcancel', cancel, { passive: true });
   return () => {
     target.removeEventListener('touchstart', start);
     target.removeEventListener('touchmove', move);
     target.removeEventListener('touchend', end);
-    target.removeEventListener('touchcancel', reset);
-    reset();
+    target.removeEventListener('touchcancel', cancel);
+    cancel();
   };
 }
