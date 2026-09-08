@@ -10,21 +10,39 @@ const VALID_TYPES = new Set(['earned', 'bonus', 'redeemed', 'reversal', 'adjustm
 async function rewardPaymentAction(base44: any, body: AnyRecord, action: string, actor: AnyRecord) {
   const customerEmail = email(body.customer_email);
   const paymentIntentId = text(body.stripe_payment_intent_id, 180);
-  if (!customerEmail.includes('@') || !/^pi_[a-zA-Z0-9_]+$/.test(paymentIntentId)) {
+  const checkoutSessionId = text(body.stripe_checkout_session_id, 180);
+  const noPayment = Boolean(checkoutSessionId);
+  const providerId = noPayment ? checkoutSessionId : paymentIntentId;
+  const providerField = noPayment ? 'checkout_session_id' : 'payment_intent_id';
+  if (!customerEmail.includes('@') || (noPayment && paymentIntentId)
+    || !(noPayment ? /^cs_[a-zA-Z0-9_]+$/ : /^pi_[a-zA-Z0-9_]+$/).test(providerId)) {
     return Response.json({ error: 'reward_payment_identity_required' }, { status: 400 });
   }
   const key = Deno.env.get('STRIPE_SECRET_KEY');
   if (!key) return Response.json({ error: 'reward_payment_verification_unavailable' }, { status: 503 });
   // Do not trust a caller-provided payment status or release-on-timeout request.
   // Retrieval is read-only; no confirm, capture, refund or cancel occurs here.
-  const payment = await new Stripe(key).paymentIntents.retrieve(paymentIntentId);
+  const provider = new Stripe(key);
+  const payment: AnyRecord = noPayment ? await provider.checkout.sessions.retrieve(providerId)
+    : await provider.paymentIntents.retrieve(providerId);
   const metadata = payment.metadata || {};
-  if (payment.id !== paymentIntentId || payment.livemode !== true || payment.currency !== 'usd'
-    || metadata.checkout_mode !== 'account' || metadata.checkout_version !== '3.0_embedded'
+  if (payment.id !== providerId || payment.livemode !== true || payment.currency !== 'usd'
+    || metadata.checkout_mode !== 'account'
+    || metadata.checkout_version !== (noPayment ? '4.0_reward_no_payment' : '3.0_embedded')
     || email(metadata.customer_email) !== customerEmail || metadata.internal_sandbox_checkout === 'true'
     || metadata.is_test_order === 'true' || !metadata.reward_reservation_id || !metadata.checkout_context_hash) {
     return Response.json({ error: 'reward_payment_identity_mismatch' }, { status: 409 });
   }
+  // A completed zero-price Session has no PaymentIntent. Never reinterpret a
+  // paid/unpaid nonzero session as a free order, or trust a supplied status.
+  if (noPayment && (payment.mode !== 'payment' || payment.amount_total !== 0
+    || payment.payment_intent !== null || !['open', 'complete', 'expired'].includes(payment.status)
+    || !['unpaid', 'no_payment_required'].includes(payment.payment_status)
+    || (payment.status === 'complete' && payment.payment_status !== 'no_payment_required'))) {
+    return Response.json({ error: 'no_payment_session_not_verified' }, { status: 409 });
+  }
+  const complete = payment.status === (noPayment ? 'complete' : 'succeeded');
+  const expired = payment.status === (noPayment ? 'expired' : 'canceled');
   const entities = base44.asServiceRole.entities;
   if (action === 'reserve_reward_checkout') {
     const rewards = await entities.RewardTier.filter({ id: body.reward_id, is_active: true }, undefined, 2);
@@ -34,13 +52,13 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
       || !Number.isSafeInteger(directPoints) || directPoints < 0
       || !Number.isSafeInteger(body.points)
       || rewards[0].points_required + directPoints !== body.points) return Response.json({ error: 'reward_cost_changed' }, { status: 409 });
-    if (!['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(payment.status)) {
+    if (!(noPayment ? ['open'] : ['requires_payment_method', 'requires_confirmation', 'requires_action']).includes(payment.status)) {
       // A response retry after success may reuse only the already-bound hold.
       // It must never create a fresh reservation for a captured/canceled PI.
-      if (payment.status === 'succeeded') {
+      if (complete) {
         const existingAccount = await readPointsAccount(entities, customerEmail);
         const existing = existingAccount.reward_reservations?.find((row: AnyRecord) => row.reservation_id === metadata.reward_reservation_id);
-        if (existing && existing.payment_intent_id === payment.id && existing.context_hash === metadata.checkout_context_hash
+        if (existing && existing[providerField] === payment.id && existing.context_hash === metadata.checkout_context_hash
           && existing.points === body.points && ['held', 'consumed'].includes(existing.status)) {
           return Response.json({ success: true, idempotent: true, reservation_status: existing.status,
             revision: POINTS_ACCOUNT_REVISION, writes_performed: false });
@@ -50,7 +68,7 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
     }
     const result = await reserveRewardPoints(entities, customerEmail, {
       reservation_id: metadata.reward_reservation_id, context_hash: metadata.checkout_context_hash,
-      payment_intent_id: payment.id, points: body.points,
+      [providerField]: payment.id, points: body.points,
     });
     await syncPointsMemberProjection(entities, customerEmail);
     return Response.json({ success: true, idempotent: result.idempotent,
@@ -59,17 +77,36 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
   }
   const account = await readPointsAccount(entities, customerEmail);
   const hold = account.reward_reservations?.find((row: AnyRecord) => row.reservation_id === metadata.reward_reservation_id);
-  if (!hold || hold.context_hash !== metadata.checkout_context_hash || hold.payment_intent_id !== payment.id) {
+  if (!hold || hold.context_hash !== metadata.checkout_context_hash || hold[providerField] !== payment.id) {
     return Response.json({ error: 'reward_reservation_payment_mismatch' }, { status: 409 });
   }
-  if (!['succeeded', 'canceled'].includes(payment.status)) {
+  if (!complete && !expired) {
     return Response.json({ success: true, deferred: true, reservation_status: hold.status,
       reason: 'payment_still_retryable', writes_performed: false });
   }
+  if ((complete && hold.status === 'released') || (expired && hold.status === 'consumed')) {
+    return Response.json({ error: 'reservation_outcome_conflict' }, { status: 409 });
+  }
   let transaction = null;
   let matchingTransactions: AnyRecord[] = [];
-  if (payment.status === 'succeeded') {
-    const idempotencyKey = `stripe_payment:${payment.id}:redeemed`;
+  if (complete) {
+    if (noPayment) {
+      // The exact priced checkout must exist before a completed Session can
+      // consume a hold. Metadata alone is not a recoverable order snapshot.
+      const contexts = await entities.CheckoutSession.filter({ stripe_session_id: payment.id }, undefined, 2);
+      const context = contexts?.[0]?.checkout_data;
+      if (!Array.isArray(contexts) || contexts.length !== 1 || !contexts[0]?.id
+        || email(contexts[0].customer_email) !== customerEmail || email(context?.customer_email) !== customerEmail
+        || contexts[0].order_number !== metadata.order_number || context?.order_number !== metadata.order_number
+        || context?.total !== 0 || context?.checkout_context_hash !== metadata.checkout_context_hash
+        || context?.reward_reservation_id !== metadata.reward_reservation_id
+        || context?.reward_reservation_points !== hold.points
+        || context?.reward_checkout?.revision !== '2026-09-08.reward-checkout-v1'
+        || !Array.isArray(context?.items) || !context.items.length) {
+        return Response.json({ error: 'no_payment_checkout_context_missing' }, { status: 409 });
+      }
+    }
+    const idempotencyKey = `${noPayment ? 'stripe_checkout' : 'stripe_payment'}:${payment.id}:redeemed`;
     const existing = await entities.LoyaltyTransaction.filter({ idempotency_key: idempotencyKey }, '-created_date', 20);
     if (!Array.isArray(existing) || existing.length >= 20) return Response.json({ error: 'loyalty_transaction_read_incomplete' }, { status: 409 });
     const active = existing.filter((row: AnyRecord) => row.status !== 'voided');
@@ -95,7 +132,8 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
   }
   const result = await settleRewardPoints(entities, customerEmail, {
     reservation_id: hold.reservation_id, context_hash: hold.context_hash,
-    payment_intent_id: payment.id, provider_status: payment.status,
+    [providerField]: payment.id, provider_status: payment.status,
+    ...(noPayment ? { no_payment_required: true } : {}),
   }, transaction);
   if (transaction) {
     const receipt = result.receipt;

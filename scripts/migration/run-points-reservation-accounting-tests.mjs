@@ -26,7 +26,7 @@ function fixture({ balance = 2000, duplicate = false, empty = false, history = [
   const points = { id: 'points-test', customer_email: customer, total_points: balance,
     lifetime_points: balance, redeemed_points: 0, points_history: history, claimed_rewards: [] };
   const rows = { UserPoints: empty ? [] : [points, ...(duplicate ? [{ ...points, id: 'duplicate-test' }] : [])],
-    LoyaltyMember: [{ id: 'member-test', email: customer, total_points: balance }], LoyaltyTransaction: [],
+    LoyaltyMember: [{ id: 'member-test', email: customer, total_points: balance }], LoyaltyTransaction: [], CheckoutSession: [],
     RewardTier: [{ id: 'reward-test', points_required: 1000, is_active: true }] };
   const writes = []; const entities = {};
   const faults = { memberFail, rejectCas: false, uncertainWrite: false, badResponse: false };
@@ -229,7 +229,9 @@ function serve(f, role = 'admin') {
       if (name.includes('pointsAccount')) return ledger;
       if (name.includes('stripe')) return class { paymentIntents = { retrieve: async id => {
         assert.equal(id, f.payment.id); return structuredClone(f.payment);
-      } }; };
+      } }; checkout = { sessions: { retrieve: async id => {
+        assert.equal(id, f.session.id); return structuredClone(f.session);
+      } } }; };
       throw new Error(`Unexpected import ${name}`);
     },
   });
@@ -364,6 +366,150 @@ test('Actual reward settlement recovers identical pending transactions left by a
   assert.equal(result.body.reservation_status, 'consumed'); assert.equal(f.account().total_points, 1000);
   assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
   assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'voided').length, 1);
+});
+
+function noPaymentFixture(options) {
+  const f = fixture(options);
+  f.session = { id: 'cs_synthetic_no_cost', livemode: true, currency: 'usd', mode: 'payment',
+    amount_total: 0, payment_intent: null, status: 'open', payment_status: 'unpaid',
+    metadata: { ...f.payment.metadata, checkout_version: '4.0_reward_no_payment', order_number: 'NV-SYNTHETIC-REWARD' } };
+  f.rows.CheckoutSession.push({ id: 'context-no-cost', stripe_session_id: f.session.id,
+    customer_email: customer, order_number: f.session.metadata.order_number,
+    checkout_data: { customer_email: customer, order_number: f.session.metadata.order_number, total: 0,
+      checkout_context_hash: hash, reward_reservation_id: hold().reservation_id, reward_reservation_points: 1000,
+      reward_checkout: { revision: '2026-09-08.reward-checkout-v1' }, items: [{ product_id: 'synthetic-oasis', quantity: 6 }] } });
+  f.reserve = { action: 'reserve_reward_checkout', customer_email: customer,
+    stripe_checkout_session_id: f.session.id, reward_id: 'reward-test', points: 1000 };
+  f.settle = { action: 'settle_reward_checkout', customer_email: customer, stripe_checkout_session_id: f.session.id };
+  return f;
+}
+test('Zero-price Checkout reserves against the real Session, not a fabricated PaymentIntent', async () => {
+  const f = noPaymentFixture(); const invoke = serve(f);
+  assert.equal((await invoke(f.reserve)).body.reservation_status, 'held');
+  assert.equal((await invoke(f.reserve)).body.idempotent, true);
+  const reservation = f.account().reward_reservations[0];
+  assert.equal(reservation.checkout_session_id, f.session.id);
+  assert.equal(reservation.payment_intent_id, undefined);
+  assert.equal(f.account().total_points, 2000); assert.equal(f.account().reserved_points, 1000);
+});
+test('No-payment completion consumes once and records no cash earnings or fictitious charge', async () => {
+  const f = noPaymentFixture(); const invoke = serve(f); await invoke(f.reserve);
+  f.session.status = 'complete'; f.session.payment_status = 'no_payment_required';
+  const replies = await Promise.all([invoke(f.settle), invoke(f.settle)]);
+  assert.ok(replies.every(r => r.body.reservation_status === 'consumed'), JSON.stringify(replies));
+  assert.equal((await invoke(f.settle)).body.idempotent, true);
+  assert.equal(f.account().total_points, 1000); assert.equal(f.account().lifetime_points, 2000);
+  assert.equal(f.account().reserved_points, 0); assert.equal(f.account().redeemed_points, 1000);
+  assert.equal(f.account().points_history.length, 1);
+  assert.equal(f.account().points_history[0].idempotency_key, `stripe_checkout:${f.session.id}:redeemed`);
+  assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+  assert.equal(f.rows.LoyaltyMember[0].total_points, 1000);
+  assert.equal((await invoke(f.reserve)).body.reservation_status, 'consumed');
+});
+test('Only provider-confirmed expiration releases a no-cost Session hold', async () => {
+  const f = noPaymentFixture(); const invoke = serve(f); await invoke(f.reserve);
+  assert.equal((await invoke({ ...f.settle, provider_status: 'expired' })).body.deferred, true);
+  assert.equal(f.account().reserved_points, 1000);
+  f.session.status = 'expired';
+  assert.equal((await invoke(f.settle)).body.reservation_status, 'released');
+  assert.equal((await invoke(f.settle)).body.idempotent, true);
+  assert.equal(f.account().reserved_points, 0); assert.equal(f.account().total_points, 2000);
+  assert.equal(f.rows.LoyaltyTransaction.length, 0);
+  f.session.status = 'open';
+  assert.equal((await invoke(f.reserve)).body.error, 'reservation_already_released');
+});
+test('Unpaid, nonzero, recurring, paid or PI-backed Sessions cannot settle a zero-price order', async () => {
+  for (const patch of [{ status: 'complete', payment_status: 'unpaid' }, { amount_total: 1 },
+    { amount_total: null }, { amount_total: '0' }, { mode: 'subscription' }, { payment_status: 'paid' },
+    { payment_intent: 'pi_an_actual_charge' }, { payment_intent: undefined }, { status: 'canceled' }]) {
+    const f = noPaymentFixture(); Object.assign(f.session, patch);
+    const response = await serve(f)(f.reserve);
+    assert.equal(response.body.error, 'no_payment_session_not_verified', JSON.stringify(patch));
+    assert.equal(f.writes.length, 0);
+  }
+});
+test('No-payment endpoint rejects customer, mode, currency, version and test mismatches', async () => {
+  for (const patch of [{ livemode: false }, { currency: 'eur' },
+    ...[{ customer_email: 'someoneelse@example.test' }, { checkout_mode: 'guest' },
+      { checkout_version: '3.0_embedded' }, { is_test_order: 'true' }, { internal_sandbox_checkout: 'true' }]
+      .map(metadata => ({ metadata: { ...noPaymentFixture().session.metadata, ...metadata } }))]) {
+    const f = noPaymentFixture(); Object.assign(f.session, patch);
+    assert.equal((await serve(f)(f.reserve)).body.error, 'reward_payment_identity_mismatch');
+    assert.equal(f.writes.length, 0);
+  }
+});
+test('A no-payment Session and a PaymentIntent cannot both identify the same request', async () => {
+  const f = noPaymentFixture();
+  assert.equal((await serve(f)({ ...f.reserve, stripe_payment_intent_id: f.payment.id })).body.error, 'reward_payment_identity_required');
+  assert.equal(f.writes.length, 0);
+});
+test('No-payment completion needs the unique exact persisted priced context', async () => {
+  const mutations = [rows => rows.splice(0), rows => rows.push({ ...rows[0], id: 'duplicate' }),
+    ...['total', 'customer_email', 'order_number', 'checkout_context_hash', 'reward_reservation_id', 'reward_reservation_points', 'items', 'reward_checkout']
+      .map(key => rows => { delete rows[0].checkout_data[key]; }),
+    rows => { rows[0].customer_email = 'not-owner@example.test'; }];
+  for (const mutate of mutations) {
+    const f = noPaymentFixture(); const invoke = serve(f); await invoke(f.reserve);
+    f.session.status = 'complete'; f.session.payment_status = 'no_payment_required';
+    mutate(f.rows.CheckoutSession);
+    assert.equal((await invoke(f.settle)).body.error, 'no_payment_checkout_context_missing');
+    assert.equal(f.account().total_points, 2000); assert.equal(f.account().reserved_points, 1000);
+    assert.equal(f.rows.LoyaltyTransaction.length, 0);
+  }
+});
+test('Zero-price settlement recovers after the member projection is temporarily unavailable', async () => {
+  const f = noPaymentFixture(); const invoke = serve(f); await invoke(f.reserve);
+  f.session.status = 'complete'; f.session.payment_status = 'no_payment_required'; f.faults.memberFail = true;
+  assert.equal((await invoke(f.settle)).status, 500);
+  assert.equal(f.account().total_points, 1000);
+  f.faults.memberFail = false;
+  assert.equal((await invoke(f.settle)).body.reservation_status, 'consumed');
+  assert.equal(f.account().total_points, 1000); assert.equal(f.rows.LoyaltyMember[0].total_points, 1000);
+  assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+});
+test('A completed or expired Session cannot bootstrap a new hold', async () => {
+  for (const status of ['complete', 'expired']) {
+    const f = noPaymentFixture(); f.session.status = status; f.session.payment_status = 'no_payment_required';
+    assert.equal((await serve(f)(f.reserve)).body.error, 'reward_payment_not_reservable');
+    assert.equal(f.writes.length, 0);
+  }
+});
+test('Session-bound holds cannot be swapped to another Session or PaymentIntent', async () => {
+  const f = noPaymentFixture(); const invoke = serve(f); await invoke(f.reserve);
+  const request = { ...hold(), checkout_session_id: f.session.id, no_payment_required: true, provider_status: 'expired' };
+  await rejects(() => ledger.reserveRewardPoints(f.entities, customer, { ...hold(), payment_intent_id: f.payment.id }), 'reservation_payment_conflict');
+  await rejects(() => ledger.settleRewardPoints(f.entities, customer, { ...request, checkout_session_id: 'cs_other' }), 'reservation_payment_conflict');
+  await rejects(() => ledger.settleRewardPoints(f.entities, customer, settle('canceled')), 'reservation_payment_conflict');
+  await rejects(() => ledger.settleRewardPoints(f.entities, customer, { ...request, no_payment_required: false }), 'confirmed_payment_outcome_required');
+  assert.equal(f.account().reserved_points, 1000);
+});
+test('No-payment completion and expiration cannot overwrite each others terminal accounting', async () => {
+  for (const first of ['complete', 'expired']) {
+    const f = noPaymentFixture(); const invoke = serve(f); await invoke(f.reserve);
+    f.session.status = first; f.session.payment_status = 'no_payment_required';
+    const result = await invoke(f.settle); assert.equal(result.status, 200, JSON.stringify(result.body));
+    f.session.status = first === 'complete' ? 'expired' : 'complete';
+    assert.equal((await invoke(f.settle)).body.error, 'reservation_outcome_conflict');
+    assert.equal(f.account().total_points, first === 'complete' ? 1000 : 2000);
+  }
+});
+test('Nullable new schema field does not break an existing PaymentIntent hold', async () => {
+  const f = fixture();
+  const request = { ...hold(), payment_intent_id: f.payment.id };
+  await ledger.reserveRewardPoints(f.entities, customer, request);
+  f.account().reward_reservations[0].checkout_session_id = null;
+  assert.equal((await ledger.reserveRewardPoints(f.entities, customer, request)).idempotent, true);
+  assert.equal((await ledger.settleRewardPoints(f.entities, customer, settle(), redemption())).reservation.status, 'consumed');
+  assert.equal(f.account().total_points, 1000);
+});
+test('Corrupt double-bound and malformed provider holds are rejected before settlement writes', async () => {
+  for (const patch of [{ payment_intent_id: 'pi_one', checkout_session_id: 'cs_two' },
+    { payment_intent_id: 'cs_not_a_payment' }, { checkout_session_id: 'pi_not_a_session' }]) {
+    const f = fixture(); await ledger.reserveRewardPoints(f.entities, customer, hold());
+    Object.assign(f.account().reward_reservations[0], patch);
+    await rejects(() => ledger.settleRewardPoints(f.entities, customer, settle(), redemption()), 'invalid_points_reservations');
+    assert.equal(f.account().total_points, 2000);
+  }
 });
 
 let passed = 0;

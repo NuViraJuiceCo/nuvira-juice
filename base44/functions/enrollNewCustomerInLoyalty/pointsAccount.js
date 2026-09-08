@@ -2,7 +2,7 @@
 // query/update operators; never falls back to an unconditional balance write.
 // Release requires an isolated Base44 conditional-write contract test in addition
 // to local fixtures. This module does not claim multi-record transactions.
-export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-v1';
+export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-no-payment-v2';
 
 export class PointsAccountError extends Error {
   constructor(code) { super(code); this.code = code; }
@@ -32,6 +32,9 @@ function balances(row) {
     ids.add(hold.reservation_id);
     const points = integer(hold.points);
     if (!points || !hold.context_hash) fail('invalid_points_reservations');
+    if ((hold.payment_intent_id != null && !/^pi_[a-zA-Z0-9_]+$/.test(hold.payment_intent_id))
+      || (hold.checkout_session_id != null && !/^cs_[a-zA-Z0-9_]+$/.test(hold.checkout_session_id))
+      || (hold.payment_intent_id && hold.checkout_session_id)) fail('invalid_points_reservations');
     return sum + (hold.status === 'held' ? points : 0);
   }, 0);
   if (reserved !== held || reserved > total) fail('invalid_points_reservations');
@@ -132,6 +135,8 @@ export async function applyPointsTransaction(entities, customerEmail, transactio
 
 export async function reserveRewardPoints(entities, customerEmail, request) {
   const points = integer(request.points);
+  const sessionId = request.checkout_session_id;
+  if (sessionId && (!/^cs_[a-zA-Z0-9_]+$/.test(sessionId) || request.payment_intent_id)) fail('invalid_points_reservation_request');
   if (!points || !/^[a-zA-Z0-9:_-]{16,180}$/.test(request.reservation_id || '')
     || !/^[a-f0-9]{64}$/.test(request.context_hash || '')) fail('invalid_points_reservation_request');
   return mutate(entities, customerEmail, (row, state) => {
@@ -139,12 +144,14 @@ export async function reserveRewardPoints(entities, customerEmail, request) {
     if (existing) {
       if (existing.points !== points || existing.context_hash !== request.context_hash) fail('reservation_context_conflict');
       if (existing.status === 'released') fail('reservation_already_released');
-      if (existing.payment_intent_id !== request.payment_intent_id) fail('reservation_payment_conflict');
+      if ((existing.payment_intent_id ?? undefined) !== (request.payment_intent_id ?? undefined)
+        || (existing.checkout_session_id ?? undefined) !== (request.checkout_session_id ?? undefined)) fail('reservation_payment_conflict');
       return { reservation: existing };
     }
     if (state.total - state.reserved < points) fail('insufficient_points');
     const reservation = { reservation_id: request.reservation_id, context_hash: request.context_hash,
       points, status: 'held', ...(request.payment_intent_id ? { payment_intent_id: request.payment_intent_id } : {}),
+      ...(sessionId ? { checkout_session_id: sessionId } : {}),
       created_at: request.created_at || new Date().toISOString() };
     return { reservation, patch: { reserved_points: state.reserved + points,
       reward_reservations: [...state.holds, reservation] } };
@@ -154,24 +161,33 @@ export async function reserveRewardPoints(entities, customerEmail, request) {
 // Only callers with a verified Stripe outcome may use this operation. A declined
 // payment stays retryable; payment_failed or a local timeout must NOT release it.
 export async function settleRewardPoints(entities, customerEmail, request, transaction = null) {
-  if (!['succeeded', 'canceled'].includes(request.provider_status)
-    || !/^pi_[a-zA-Z0-9_]+$/.test(request.payment_intent_id || '')) fail('confirmed_payment_outcome_required');
+  const noPayment = Boolean(request.checkout_session_id);
+  const providerId = noPayment ? request.checkout_session_id : request.payment_intent_id;
+  const accepted = noPayment ? ['complete', 'expired'] : ['succeeded', 'canceled'];
+  if (!accepted.includes(request.provider_status)
+    || !(noPayment ? /^cs_[a-zA-Z0-9_]+$/ : /^pi_[a-zA-Z0-9_]+$/).test(providerId || '')
+    || (noPayment && (request.payment_intent_id || request.no_payment_required !== true))) fail('confirmed_payment_outcome_required');
+  const key = `${noPayment ? 'stripe_checkout' : 'stripe_payment'}:${providerId}:redeemed`;
   return mutate(entities, customerEmail, (row, state) => {
     const existing = state.holds.find(hold => hold.reservation_id === request.reservation_id);
     if (!existing || existing.context_hash !== request.context_hash) fail('reservation_context_conflict');
     if (existing.payment_intent_id && existing.payment_intent_id !== request.payment_intent_id) fail('reservation_payment_conflict');
-    const target = request.provider_status === 'succeeded' ? 'consumed' : 'released';
+    // No-cost sessions must be bound before their client secret is exposed. Do
+    // not attach one to an unbound legacy payment reservation during settlement.
+    if ((existing.checkout_session_id ?? undefined) !== (request.checkout_session_id ?? undefined)) fail('reservation_payment_conflict');
+    const target = ['succeeded', 'complete'].includes(request.provider_status) ? 'consumed' : 'released';
     if (existing.status === target) {
-      return { reservation: existing, receipt: state.history.find(item => item.idempotency_key === `stripe_payment:${request.payment_intent_id}:redeemed`) };
+      return { reservation: existing, receipt: state.history.find(item => item.idempotency_key === key) };
     }
     if (existing.status !== 'held') fail('reservation_outcome_conflict');
-    const reservation = { ...existing, status: target, payment_intent_id: request.payment_intent_id,
+    const reservation = { ...existing, status: target,
+      ...(noPayment ? { checkout_session_id: providerId } : { payment_intent_id: providerId }),
       settled_at: request.settled_at || new Date().toISOString() };
     const reduced = { ...state, reserved: state.reserved - existing.points };
     let result = { patch: {} };
     if (target === 'consumed') {
       if (!transaction?.id || transaction.amount !== -existing.points || transaction.transaction_type !== 'redeemed'
-        || transaction.idempotency_key !== `stripe_payment:${request.payment_intent_id}:redeemed`) fail('reservation_transaction_mismatch');
+        || transaction.idempotency_key !== key) fail('reservation_transaction_mismatch');
       if (state.history.some(item => item.idempotency_key === transaction.idempotency_key)) fail('reservation_receipt_conflict');
       result = transactionPatch(reduced, transaction);
     }

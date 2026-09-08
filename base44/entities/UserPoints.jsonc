@@ -46,6 +46,7 @@
           "points": { "type": "integer", "minimum": 1 },
           "status": { "type": "string", "enum": ["held", "consumed", "released"] },
           "payment_intent_id": { "type": "string" },
+          "checkout_session_id": { "type": "string", "description": "Real Stripe no-cost Checkout Session; mutually exclusive with payment_intent_id." },
           "created_at": { "type": "string" },
           "settled_at": { "type": "string" }
         }
