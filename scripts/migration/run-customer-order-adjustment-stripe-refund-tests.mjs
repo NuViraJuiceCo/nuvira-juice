@@ -5,6 +5,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { handleRewardCheckoutEvent } from '../../base44/functions/stripeWebhook/rewardWebhook.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
@@ -184,6 +185,7 @@ function loadHandler(state, env = BASE_ENV) {
     safeConsole[method] = (...args) => capturedLogs.push({ method, args: clone(args.map((arg) => arg instanceof Error ? arg.message : arg)) });
   }
   const context = vm.createContext({
+    handleRewardCheckoutEvent,
     console: safeConsole,
     URL,
     URLSearchParams,

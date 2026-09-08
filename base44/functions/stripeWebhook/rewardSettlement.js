@@ -125,3 +125,67 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
   requireExact(isVerifiedNoPaymentOrder(order) && same(order.reward_settlement, receipt), 'reward_order_settlement_readback_unconfirmed');
   return { order, checkoutData: data, idempotent: result.updated === 0 };
 }
+
+// Stripe expiration is not a refund or a completed redemption. Release the
+// exact hold first, then retire only its still-unpaid local order. Do not expire
+// a provider Session here: a signature plus a fresh read must prove it already
+// expired. A missing CheckoutSession must not strand a hold after creation failed.
+export async function expireNoPaymentRewardOrder({ entities, stripe, event, settleReservation }) {
+  requireExact(event?.type === 'checkout.session.expired' && event.livemode === true
+    && /^evt_[A-Za-z0-9_]+$/.test(event.id || '') && Number.isSafeInteger(event.created) && event.created > 0,
+  'reward_expiration_event_invalid');
+  const eventSession = event.data?.object;
+  requireExact(/^cs_[A-Za-z0-9_]+$/.test(eventSession?.id || '')
+    && eventSession?.metadata?.checkout_version === noPaymentVersion, 'reward_expiration_session_invalid');
+  requireExact(typeof entities.Order?.updateMany === 'function', 'conditional_order_updates_unavailable');
+  const session = await stripe.checkout.sessions.retrieve(eventSession.id);
+  const metadata = session?.metadata || {};
+  const email = normalizedEmail(metadata.customer_email);
+  requireExact(session?.id === eventSession.id && session.livemode === true && session.currency === 'usd'
+    && session.mode === 'payment' && session.status === 'expired' && session.payment_intent === null
+    && session.amount_total === 0 && ['unpaid', 'no_payment_required'].includes(session.payment_status)
+    && metadata.checkout_version === noPaymentVersion && metadata.checkout_mode === 'account'
+    && metadata.internal_sandbox_checkout !== 'true' && metadata.is_test_order !== 'true'
+    && email && normalizedEmail(session.customer_email) === email
+    && metadata.order_number && metadata.reward_reservation_id
+    && /^[a-f0-9]{64}$/.test(metadata.checkout_context_hash || ''), 'reward_provider_expiration_unconfirmed');
+  for (const key of ['checkout_version', 'checkout_context_hash', 'reward_reservation_id', 'order_number', 'customer_email']) {
+    requireExact(eventSession.metadata[key] === metadata[key], 'reward_event_context_mismatch');
+  }
+  const orders = await entities.Order.filter({ stripe_checkout_session_id: session.id }, '-created_date', 2);
+  requireExact(Array.isArray(orders) && orders.length <= 1, 'reward_order_not_unique');
+  let order = orders[0] || null;
+  const alreadyExpired = row => row?.status === 'cancelled' && row.is_abandoned_checkout === true
+    && row.do_not_recover === true && row.payment_status === 'pending' && row.financial_status === 'pending'
+    && row.payment_captured === false && !row.reward_settlement && !row.stripe_payment_intent_id;
+  if (order) {
+    requireExact(order.id && normalizedEmail(order.customer_email) === email && order.order_number === metadata.order_number
+      && order.total === 0 && order.payment_captured === false && !order.stripe_payment_intent_id
+      && !order.reward_settlement && order.is_test_order !== true && !(Number(order.amount_refunded || 0) > 0),
+    'reward_expiration_order_mismatch');
+    requireExact(alreadyExpired(order) || (order.status === 'pending_payment' && !terminal(order)
+      && order.payment_status === 'pending' && order.financial_status === 'pending'), 'reward_expiration_order_not_pending');
+  }
+  const released = await settleReservation({ customer_email: email, stripe_checkout_session_id: session.id });
+  requireExact(released?.success === true && released.reservation_status === 'released', 'reward_reservation_not_released');
+  if (!order || alreadyExpired(order)) return { order, expired: true, idempotent: true };
+  const timestamp = new Date(event.created * 1000).toISOString();
+  const result = await entities.Order.updateMany({
+    id: order.id, customer_email: order.customer_email, stripe_checkout_session_id: session.id,
+    status: 'pending_payment', payment_status: 'pending', financial_status: 'pending', payment_captured: false,
+    is_abandoned_checkout: { $ne: true }, do_not_recover: { $ne: true },
+    ...(order.updated_date ? { updated_date: order.updated_date } : {}),
+  }, { $set: { status: 'cancelled', is_abandoned_checkout: true, do_not_recover: true, canceled_at: timestamp,
+    status_history: [...(Array.isArray(order.status_history) ? order.status_history : []), {
+      status: 'cancelled', timestamp, request_id: `reward_expiration:${session.id}`,
+      message: 'Reward checkout expired without payment. The reserved points were released.',
+    }] } });
+  requireExact(result?.success === true && result.has_more === false && [0, 1].includes(result.updated),
+    'reward_order_expiration_write_unconfirmed');
+  const readback = await entities.Order.filter({ id: order.id }, undefined, 2);
+  order = readback?.length === 1 ? readback[0] : null;
+  requireExact(alreadyExpired(order) && order.stripe_checkout_session_id === session.id
+    && normalizedEmail(order.customer_email) === email && order.order_number === metadata.order_number,
+  'reward_order_expiration_readback_unconfirmed');
+  return { order, expired: true, idempotent: result.updated === 0 };
+}

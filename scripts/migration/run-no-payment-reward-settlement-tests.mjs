@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { transformSync } from 'esbuild';
-import { finalizeNoPaymentRewardOrder, isVerifiedNoPaymentOrder } from '../../base44/functions/stripeWebhook/rewardSettlement.js';
+import { finalizeNoPaymentRewardOrder, expireNoPaymentRewardOrder, isVerifiedNoPaymentOrder } from '../../base44/functions/stripeWebhook/rewardSettlement.js';
+import * as rewardWebhook from '../../base44/functions/stripeWebhook/rewardWebhook.js';
+import * as benefits from '../../base44/functions/stripeWebhook/paymentBenefits.js';
 import * as ledger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 
 // All Stripe, database and downstream surfaces are synthetic and in-memory.
@@ -106,8 +108,7 @@ function fixture({ connected = false } = {}) {
   }
   const event = { id: 'evt_SYNTHETIC', type: 'checkout.session.completed', livemode: true,
     created: 1788854400, data: { object: structuredClone(session) } };
-  return { order, session, checkoutData, rows, faults, effects, entities, event,
-    run: async () => finalizeNoPaymentRewardOrder({ entities, stripe, event,
+  const options = { entities, stripe, event,
       verifySchedule: () => faults.schedule ? null : structuredClone(schedule),
       settleReservation: async payload => {
         effects.push('loyalty.settle'); assert.equal(payload.stripe_checkout_session_id, session.id);
@@ -119,9 +120,12 @@ function fixture({ connected = false } = {}) {
             ...payload, action: 'settle_reward_checkout', internal_secret: 'synthetic-internal' }) }));
           const data = await response.json(); assert.equal(response.status, 200, JSON.stringify(data)); return data;
         }
-        return { success: true, reservation_status: 'consumed' };
+        return { success: true, reservation_status: event.type === 'checkout.session.expired' ? 'released' : 'consumed' };
       },
-    }) };
+    };
+  return { order, session, checkoutData, rows, faults, effects, entities, event, options,
+    run: async () => event.type === 'checkout.session.expired'
+      ? expireNoPaymentRewardOrder(options) : finalizeNoPaymentRewardOrder(options) };
 }
 
 test('Real settlement source promotes exact six-bottle reward without claiming a card capture', async () => {
@@ -295,6 +299,120 @@ test('Customer identity cannot directly create settled Order records; normal ser
   for (const file of walk('src').filter(path => /\.(jsx?|tsx?)$/.test(path))) {
     assert.doesNotMatch(read(file), /entities\.Order\.(?:create|bulkCreate)\(/, file);
   }
+});
+
+function expiredFixture(options) {
+  const f = fixture(options); f.session.status = 'expired'; f.session.payment_status = 'unpaid';
+  f.event.type = 'checkout.session.expired'; f.event.data.object = structuredClone(f.session); return f;
+}
+test('Expiration releases held points and cancels only the unpaid order; retry preserves history', async () => {
+  const f = expiredFixture({ connected: true }); await f.run();
+  assert.equal(f.order.status, 'cancelled'); assert.equal(f.order.payment_captured, false);
+  assert.equal(f.order.payment_status, 'pending'); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+  assert.equal(f.rows.UserPoints[0].total_points, 3000); assert.equal(f.rows.LoyaltyMember[0].total_points, 3000);
+  assert.equal(f.rows.LoyaltyTransaction.length, 0); assert.equal(f.order.reward_settlement, undefined);
+  const history = structuredClone(f.order.status_history); await f.run(); assert.deepEqual(f.order.status_history, history);
+});
+test('Expiration releases a real hold even if checkout creation failed before Order/CheckoutSession persistence', async () => {
+  const f = expiredFixture({ connected: true }); f.rows.Order.splice(0); f.rows.CheckoutSession.splice(0);
+  await f.run(); assert.equal(f.rows.UserPoints[0].reserved_points, 0); assert.equal(f.rows.UserPoints[0].total_points, 3000);
+  assert.ok(!f.effects.includes('Order.cas')); assert.equal(f.rows.LoyaltyTransaction.length, 0);
+});
+for (const [label, patch] of Object.entries({
+  complete: { status: 'complete', payment_status: 'no_payment_required' }, open: { status: 'open' },
+  cash: { amount_total: 1 }, charge: { payment_intent: 'pi_OTHER' }, test: { livemode: false },
+  subscription: { mode: 'subscription' }, currency: { currency: 'eur' }, customer: { customer_email: 'other@example.test' },
+})) test(`Expiration ${label} mismatch cannot release or cancel`, async () => {
+  const f = expiredFixture(); Object.assign(f.session, patch); await assert.rejects(f.run);
+  assert.ok(!f.effects.includes('loyalty.settle')); assert.equal(f.order.status, 'pending_payment');
+});
+for (const [label, mutate] of [
+  ['paid order', f => { f.order.payment_status = 'paid'; }],
+  ['foreign order', f => { f.order.customer_email = 'other@example.test'; }],
+  ['duplicate order', f => { f.rows.Order.push(structuredClone(f.order)); }],
+  ['changed event context', f => { f.event.data.object.metadata.checkout_context_hash = 'b'.repeat(64); }],
+  ['existing settlement', f => { f.order.reward_settlement = {}; }],
+]) test(`Expiration ${label} fails closed`, async () => {
+  const f = expiredFixture(); mutate(f); await assert.rejects(f.run); assert.ok(!f.effects.includes('loyalty.settle'));
+});
+for (const fault of ['Order.write', 'LoyaltyMember.write', 'lostOrderResponse']) {
+  test(`Connected expiration recovers ${fault} without spending or releasing twice`, async () => {
+    const f = expiredFixture({ connected: true }); f.faults[fault] = true;
+    await assert.rejects(f.run); f.faults[fault] = false; await f.run();
+    assert.equal(f.order.status, 'cancelled'); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+    assert.equal(f.rows.UserPoints[0].total_points, 3000); assert.equal(f.rows.LoyaltyTransaction.length, 0);
+  });
+}
+test('Concurrent expiration/lifecycle edit is not overwritten or reported as canceled', async () => {
+  const f = expiredFixture({ connected: true }); f.faults.raceHistory = true;
+  await assert.rejects(f.run); assert.equal(f.order.status, 'pending_payment');
+  assert.ok(f.order.status_history.some(row => row.message === 'Other actor'));
+  f.faults.raceHistory = false; await f.run(); assert.equal(f.order.status, 'cancelled');
+});
+
+const webhookSource = transformSync(read(`${root}stripeWebhook/entry.ts`), { loader: 'ts', format: 'cjs' }).code;
+function actualWebhook(f, { missingSecret = false, staging = false, invalidSignature = false } = {}) {
+  let handler; const module = { exports: {} };
+  const db = { asServiceRole: { entities: f.entities, functions: { invoke: async (name, payload) => {
+    assert.equal(name, 'enrollNewCustomerInLoyalty', 'No legacy downstream/cash/advertising path may run');
+    assert.equal(payload.action, 'settle_reward_checkout');
+    assert.equal(payload.internal_secret, 'synthetic-internal');
+    return { data: await f.options.settleReservation(payload) };
+  } } } };
+  vm.runInNewContext(webhookSource, { module, exports: module.exports, Request, Response, URL, setTimeout, clearTimeout,
+    console: { log() {}, warn() {}, error() {} },
+    Deno: { serve: fn => { handler = fn; }, env: { get: name => name === 'NUVIRA_STAGING_SAFE_MODE'
+      ? (staging ? 'true' : '') : name === 'LOYALTY_LEDGER_SECRET' && !missingSecret ? 'synthetic-internal' : '' } },
+    require: name => {
+      if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
+      if (name.includes('rewardWebhook')) return rewardWebhook;
+      if (name.includes('paymentBenefits')) return benefits;
+      if (name.includes('metaConversions')) return { sendMetaPurchaseConversion: () => { throw new Error('No advertising Purchase'); } };
+      if (name.includes('googleMeasurement')) return { sendGooglePurchaseMeasurement: () => { throw new Error('No advertising Purchase'); } };
+      if (name.includes('stripe')) return class { checkout = f.options.stripe.checkout;
+        webhooks = { constructEventAsync: async raw => { if (invalidSignature) throw new Error('synthetic invalid signature'); return JSON.parse(raw); } }; };
+      throw new Error(`Unexpected import ${name}`);
+    },
+  });
+  return async () => {
+    const response = await handler(new Request('https://test.invalid/webhook', { method: 'POST',
+      headers: { 'stripe-signature': 'synthetic-only' }, body: JSON.stringify(f.event) }));
+    return { status: response.status, body: await response.json() };
+  };
+}
+test('Actual webhook dispatches expiration to ledger release; no legacy cash or provider writes', async () => {
+  const f = expiredFixture({ connected: true }); const result = await actualWebhook(f)();
+  assert.equal(result.status, 200); assert.equal(result.body.expired, true); assert.equal(f.order.status, 'cancelled');
+});
+test('Actual webhook completion settles once but does not acknowledge an unfinished handoff', async () => {
+  const f = fixture({ connected: true }); const invoke = actualWebhook(f);
+  for (let i = 0; i < 2; i++) { const result = await invoke(); assert.equal(result.status, 503);
+    assert.equal(result.body.error, 'reward_checkout_handoff_pending'); }
+  assert.equal(f.order.payment_captured, false); assert.equal(f.rows.UserPoints[0].total_points, 1000);
+  assert.equal(f.rows.LoyaltyTransaction.length, 1);
+});
+for (const [name, opts, expected] of [
+  ['missing ledger credential', { missingSecret: true }, 503], ['staging write guard', { staging: true }, 503],
+  ['invalid signature', { invalidSignature: true }, 400],
+]) test(`Actual webhook ${name} stops before reads or writes`, async () => {
+  const f = fixture(); const result = await actualWebhook(f, opts)(); assert.equal(result.status, expected);
+  assert.deepEqual(f.effects, []);
+});
+test('Unknown reward version is isolated from legacy Checkout processing', async () => {
+  const f = fixture(); f.event.data.object.metadata.checkout_version = 'future_reward_no_payment';
+  const result = await actualWebhook(f)(); assert.equal(result.status, 503); assert.deepEqual(f.effects, []);
+});
+test('Dispatcher waits for handoff and only acknowledges its explicit completion', async () => {
+  const f = fixture(); let release; const wait = new Promise(resolve => { release = resolve; }); let ended = false;
+  const call = rewardWebhook.handleRewardCheckoutEvent({ ...f.options, internalSecretAvailable: true,
+    runHandoff: async () => { await wait; return { complete: true }; } }).then(result => { ended = true; return result; });
+  for (let i = 0; i < 30; i++) await Promise.resolve(); assert.equal(ended, false);
+  release(); const result = await call; assert.equal(result.status, 200); assert.equal(result.body.handoff_complete, true);
+});
+test('Dispatcher error response never returns downstream PII/payload text', async () => {
+  const f = fixture(); const result = await rewardWebhook.handleRewardCheckoutEvent({ ...f.options,
+    internalSecretAvailable: true, runHandoff: async () => { throw new Error('synthetic-secret@example.test'); } });
+  assert.equal(result.status, 503); assert.doesNotMatch(JSON.stringify(result), /synthetic-secret/);
 });
 
 let passed = 0;

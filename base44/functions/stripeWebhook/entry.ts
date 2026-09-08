@@ -4,9 +4,10 @@ import Stripe from 'npm:stripe@14.21.0';
 import { sendGooglePurchaseMeasurement } from './googleMeasurement.js';
 import { sendMetaPurchaseConversion } from './metaConversions.js';
 import { settleEmbeddedPaymentBenefits, applyCheckoutCredit } from './paymentBenefits.js';
+import { handleRewardCheckoutEvent } from './rewardWebhook.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260908-benefit-retry-v1';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260908-reward-dispatch-v1';
 const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
@@ -500,6 +501,24 @@ Deno.serve(async (req) => {
     if (webhookMode === 'sandbox') {
       return await handleCheckoutProviderSandboxEvent(base44, event);
     }
+
+    const rewardLedgerSecret = Deno.env.get('LOYALTY_LEDGER_SECRET')
+      || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '';
+    const rewardResult = await handleRewardCheckoutEvent({
+      entities: base44.asServiceRole.entities, stripe, event, stagingSafeMode,
+      internalSecretAvailable: Boolean(rewardLedgerSecret), verifySchedule: verifiedCheckoutSchedule,
+      settleReservation: async payload => {
+        const response = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+          ...payload, action: 'settle_reward_checkout', internal_secret: rewardLedgerSecret,
+        });
+        return response?.data || response;
+      },
+      // No no-cost Session is exposed by customer checkout yet. Keep handoff
+      // pending until every durable provider/operations adapter is integrated;
+      // never fall through to the legacy cash-payment branch below.
+      runHandoff: null,
+    });
+    if (rewardResult) return Response.json(rewardResult.body, { status: rewardResult.status });
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;

@@ -317,6 +317,20 @@
       "enum": ["pending", "complete", "review_required"],
       "description": "Durable downstream handoff state for a verified no-payment reward checkout. Not a payment-capture flag."
     },
+    "reward_handoff_revision": {
+      "type": "number",
+      "description": "Server-only compare-and-set revision for reward handoff progress."
+    },
+    "reward_handoff": {
+      "type": "object",
+      "description": "Server-only per-stage dispatch claims and bounded evidence receipts. No provider payloads or secrets.",
+      "properties": {
+        "revision": { "type": "string" },
+        "checkout_session_id": { "type": "string" },
+        "context_hash": { "type": "string" },
+        "steps": { "type": "object", "additionalProperties": true }
+      }
+    },
     "production_date": {
       "type": "string",
       "format": "date",

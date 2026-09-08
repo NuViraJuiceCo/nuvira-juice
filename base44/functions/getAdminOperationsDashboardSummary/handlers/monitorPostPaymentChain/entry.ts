@@ -268,6 +268,32 @@ export default async (req: Request) => {
 
       if (order?.payment_captured !== true && !isVerifiedNoPaymentOrder(order)) issues.push('payment_not_captured');
       if (order?.payment_status !== 'paid') issues.push(`payment_status=${String(order?.payment_status || 'missing')}`);
+      if (isVerifiedNoPaymentOrder(order)) {
+        if (order.reward_handoff_status !== 'complete') {
+          issues.push(order.reward_handoff_status === 'review_required'
+            ? 'reward_handoff_review_required' : 'reward_handoff_pending');
+        } else if (order.reward_handoff?.revision !== '2026-09-08.reward-handoff-v1'
+          || order.reward_handoff.checkout_session_id !== order.stripe_checkout_session_id
+          || order.reward_handoff.context_hash !== order.reward_settlement.context_hash
+          || !['native_operations', 'bag_return', 'shopify_mirror', 'confirmation_email',
+            'customer_in_app', 'customer_push', 'operations_email', 'operations_push', 'sms']
+            .every(stage => {
+              const step = order.reward_handoff?.steps?.[stage];
+              const receipt = step?.receipt;
+              const allowedSkips = {
+                bag_return: ['not_requested'],
+                customer_push: ['no_eligible_device', 'preference_opt_out', 'channel_disabled'],
+                operations_push: ['no_eligible_device', 'channel_disabled'],
+                sms: ['no_phone', 'preference_opt_out', 'channel_disabled'],
+              };
+              return step?.state === 'complete'
+                && /^[A-Za-z0-9._:/-]{1,180}$/.test(receipt?.evidence_id || '')
+                && (receipt?.outcome === 'completed' || (receipt?.outcome === 'skipped'
+                  && allowedSkips[stage]?.includes(receipt.reason)));
+            })) {
+          issues.push('reward_handoff_evidence_incomplete');
+        }
+      }
       if (!VALID_ORDER_STATUSES.has(String(order?.status || ''))) issues.push(`order_status=${String(order?.status || 'missing')}`);
       if (!operationalOrder) issues.push('native_operational_order_missing');
       if (!nativeLog) issues.push('native_order_audit_missing');
@@ -287,6 +313,7 @@ export default async (req: Request) => {
         payment_confirmed: (order?.payment_captured === true && order?.payment_status === 'paid') || isVerifiedNoPaymentOrder(order),
         payment_captured: order?.payment_captured === true,
         settlement_type: isVerifiedNoPaymentOrder(order) ? 'reward_no_payment_required' : 'card_or_legacy',
+        reward_handoff_status: isVerifiedNoPaymentOrder(order) ? order.reward_handoff_status || 'pending' : null,
         native_operational_order_present: Boolean(operationalOrder),
         native_fulfillment_task_present: !deliveryRequired || Boolean(task),
         native_audit_status: nativeLog?.status || 'missing',

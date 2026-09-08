@@ -241,3 +241,4 @@ Deno.serve(async (req) => {
     ? response
     : Response.json({ error: 'admin_operation_returned_no_response' }, { status: 500 });
 });
+// Bundle revision: reward-handoff-monitor-20260908 (unreleased; exposes unfinished non-cash handoff).

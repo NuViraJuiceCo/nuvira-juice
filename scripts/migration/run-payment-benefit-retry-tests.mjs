@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
 import * as benefits from '../../base44/functions/stripeWebhook/paymentBenefits.js';
+import * as rewardWebhook from '../../base44/functions/stripeWebhook/rewardWebhook.js';
 import { applyPointsTransaction, syncPointsMemberProjection } from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 
 // Execute the actual webhook with simulated signed events and in-memory stores.
@@ -65,6 +66,7 @@ function serve(f) {
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => f.db };
       if (name.includes('paymentBenefits')) return benefits;
+      if (name.includes('rewardWebhook')) return rewardWebhook;
       if (name.includes('metaConversions')) return { sendMetaPurchaseConversion: async () => ({ sent: false, reason: 'synthetic' }) };
       if (name.includes('googleMeasurement')) return { sendGooglePurchaseMeasurement: async () => ({ sent: false, reason: 'synthetic' }) };
       if (name.includes('stripe')) return class { webhooks = { constructEventAsync: async raw => JSON.parse(raw) }; };
