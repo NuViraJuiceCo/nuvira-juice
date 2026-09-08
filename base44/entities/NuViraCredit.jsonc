@@ -14,7 +14,24 @@
     "balance": {
       "type": "number",
       "default": 0,
-      "description": "Current available credit balance in dollars"
+      "description": "Total unspent credits in dollars; subtract reserved_balance for new checkout availability"
+    },
+    "reserved_balance": { "type": "number", "minimum": 0, "default": 0 },
+    "checkout_reservations": {
+      "type": "array", "default": [],
+      "items": {
+        "type": "object",
+        "properties": {
+          "reservation_id": { "type": "string" },
+          "context_hash": { "type": "string" },
+          "payment_intent_id": { "type": "string" },
+          "amount_cents": { "type": "integer", "minimum": 1 },
+          "status": { "type": "string", "enum": ["held", "consumed", "released"] },
+          "created_at": { "type": "string" },
+          "settled_at": { "type": "string" }
+        },
+        "required": ["reservation_id", "context_hash", "payment_intent_id", "amount_cents", "status"]
+      }
     },
     "lifetime_issued": {
       "type": "number",

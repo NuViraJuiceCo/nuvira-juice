@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { availableCreditBalance } from '@/lib/creditBalance';
 import SEO from '@/components/SEO';
 import CheckoutExperience, { CheckoutAction, CheckoutAddress } from '@/components/checkout/CheckoutExperience';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
@@ -356,7 +357,7 @@ function CheckoutFlow() {
     queryKey: ['nuvira-credits-checkout', user?.email],
     queryFn: async () => {
       const res = await base44.entities.NuViraCredit.filter({ customer_email: user?.email });
-      return res[0] || null;
+      return res.length === 1 ? res[0] : null;
     },
     enabled: !!user?.email,
   });
@@ -428,7 +429,7 @@ function CheckoutFlow() {
   const afterAccountDiscounts = Math.max(0, Math.round((subtotal - rewardDiscountAmt - subDiscountAmt) * 100) / 100);
   const pointsDiscount = usePoints ? Math.min(maxDiscount, afterAccountDiscounts) : 0;
   const pointsUsed = Math.round(pointsDiscount * 100);
-  const availableCredits = userCreditsData?.balance || 0;
+  const availableCredits = availableCreditBalance(userCreditsData);
   const creditsDiscount = useCredits ? Math.min(availableCredits,
     Math.max(0, Math.round((afterAccountDiscounts - pointsDiscount) * 100) / 100)) : 0;
   const merchandiseTotalBeforePromotion = Math.max(

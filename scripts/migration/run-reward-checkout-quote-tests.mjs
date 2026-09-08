@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as creditReservation from '../../base44/shared/checkoutCredit.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -170,6 +171,7 @@ function handler(db) {
     fetch: () => { throw new Error('Network forbidden'); }, require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('rewardCheckout')) return checkout;
+      if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('noPaymentCheckout')) return noPaymentCheckout;
       if (name.includes('firstOrderEligibility')) return offers;
       if (name.includes('stripe')) return class { constructor() { return new Proxy({}, { get() { throw new Error('Stripe use forbidden'); } }); } };
@@ -210,7 +212,7 @@ await test('preview does not claim points reservation or debit, payment, or fulf
 await test('admin runtime marker is read-only and explicitly reports unfinished reward payment integration', async () => {
   const db = fakeDb({ user: { email, role: 'admin' } });
   const response = await handler(db)(request({ mode: 'checkout_runtime_status' })); const body = await response.json();
-  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-08.reward-session-preparation-v2');
+  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-08.payment-credit-reservation-v1');
   assert.equal(body.reward_payment_integration_complete, false); assert.equal(body.writes_performed, false);
   assert.equal(db.reads.length, 0);
 });

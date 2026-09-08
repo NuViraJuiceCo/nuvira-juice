@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as creditReservation from '../../base44/shared/checkoutCredit.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -66,10 +67,14 @@ function serve(f) {
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => f.db };
       if (name.includes('paymentBenefits')) return benefits;
+      if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('rewardWebhook')) return rewardWebhook;
       if (name.includes('metaConversions')) return { sendMetaPurchaseConversion: async () => ({ sent: false, reason: 'synthetic' }) };
       if (name.includes('googleMeasurement')) return { sendGooglePurchaseMeasurement: async () => ({ sent: false, reason: 'synthetic' }) };
-      if (name.includes('stripe')) return class { webhooks = { constructEventAsync: async raw => JSON.parse(raw) }; };
+      if (name.includes('stripe')) return class { webhooks = { constructEventAsync: async raw => JSON.parse(raw) };
+        paymentIntents = { retrieve: async id => {
+          if (!f.providerRead) throw new Error('SYNTHETIC_ONLY unexpected provider read'); return f.providerRead(id);
+        } }; };
       throw new Error(`Unexpected import ${name}`);
     },
   });
@@ -212,6 +217,30 @@ test('Bag verification preserves old payment replay receipts beyond 200 entries'
   credit.history = Array.from({ length: 220 }, (_, i) => ({ amount: 1, type: 'used', order_id: `old_order_${i}` }));
   await bagModule.exports.issueReturnCredit(f.entities, email, 1, 'bag_return:synthetic');
   assert.equal(credit.history.length, 221); assert.equal(credit.history[0].order_id, 'old_order_0');
+});
+test('Actual cancellation webhook rereads provider and releases credit before canceling order', async () => {
+  const f = fixture(); const hash = 'a'.repeat(64); const holdId = `credit:${hash}`;
+  const changes = { status: 'canceled', amount: 4299, amount_received: 0, livemode: true,
+    metadata: { ...payment.metadata, checkout_mode: 'account', credit_reservation_id: holdId,
+      credit_reservation_cents: '200', checkout_context_hash: hash } };
+  f.rows.NuViraCredit[0].reserved_balance = 2;
+  f.rows.NuViraCredit[0].checkout_reservations = [{ reservation_id: holdId, context_hash: hash,
+    payment_intent_id: payment.id, amount_cents: 200, status: 'held' }];
+  f.providerRead = id => { assert.equal(id, payment.id); return { ...structuredClone(payment), ...changes }; };
+  const invoke = serve(f); assert.equal((await invoke('payment_intent.canceled', changes)).status, 200);
+  assert.equal(f.rows.NuViraCredit[0].reserved_balance, 0); assert.equal(f.rows.NuViraCredit[0].balance, 10);
+  assert.equal(f.rows.NuViraCredit[0].history.length, 0);
+  assert.ok(f.calls.indexOf('NuViraCredit.CAS') < f.calls.indexOf('Order.update'));
+  assert.equal((await invoke('payment_intent.canceled', changes)).status, 200);
+  assert.equal(f.rows.NuViraCredit[0].checkout_reservations.length, 1);
+});
+test('Actual webhook cannot release credit from an unconfirmed cancellation payload', async () => {
+  const f = fixture(); const hash = 'a'.repeat(64); const changes = { status: 'canceled', amount: 4299,
+    metadata: { ...payment.metadata, checkout_mode: 'account', credit_reservation_id: `credit:${hash}`,
+      credit_reservation_cents: '200', checkout_context_hash: hash } };
+  f.providerRead = () => ({ ...payment, status: 'processing' });
+  const before = structuredClone(f.rows); const result = await serve(f)('payment_intent.canceled', changes);
+  assert.ok(result.status >= 400); assert.deepEqual(f.rows, before);
 });
 let passed = 0;
 for (const [name, fn] of tests) { try { await fn(); passed++; console.log(`PASS ${name}`); }

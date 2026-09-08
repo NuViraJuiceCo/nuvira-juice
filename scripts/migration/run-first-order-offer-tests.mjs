@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as creditReservation from '../../base44/shared/checkoutCredit.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -59,6 +60,7 @@ function loadHandler(path, db, env = {}, stripeMock = null) {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('firstOrderEligibility')) return policy;
       if (name.includes('rewardCheckout')) return rewardCheckout;
+      if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('noPaymentCheckout')) return noPaymentCheckout;
       if (name.includes('stripe')) return class {
         constructor() {

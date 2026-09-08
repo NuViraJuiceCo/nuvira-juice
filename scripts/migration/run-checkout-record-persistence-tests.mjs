@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as creditReservation from '../../base44/shared/checkoutCredit.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -21,21 +22,33 @@ const body = {
 const option = { option_id: 'synthetic-saturday', production_date: '2026-09-11', delivery_date: '2026-09-12',
   delivery_window_label: 'Saturday 12 PM - 3 PM', delivery_window_start: '12:00', delivery_window_end: '15:00', is_default: true };
 function fixture({ guest = false, failOrder = false, failSession = false, failCancel = false, failReserve = false,
-  failRelease = false, missingId = '', strictStripe = false, seed = {}, noRewardSecret = false, distanceMiles = 2 } = {}) {
+  failRelease = false, missingId = '', strictStripe = false, seed = {}, noRewardSecret = false, distanceMiles = 2,
+  failCredit = false, loseCreditAck = false, ignoreCreditWrite = false } = {}) {
   const rows = { Order: [], CheckoutSession: [], Product: [{ id: 'oasis-test', title: 'OASIS', price: 13,
     category: 'juice', size: '12 oz', is_available: true }], Subscription: [], SubscriptionPlan: [], UserProfile: [],
     RewardTier: [{ id: 'reward-test', title: 'Double Points', reward_type: 'double_points', points_required: 1500, is_active: true }],
     UserPoints: [{ id: 'balance-test', customer_email: email, total_points: 7000, reserved_points: 0, reward_reservations: [] }],
     NuViraCredit: [], ...structuredClone(seed) };
   const effects = []; const entities = {};
+  let lostCreditAck = false;
+  const match = (row, query) => Object.entries(query).every(([key, value]) => key === '$or' ? value.some(q => match(row, q))
+    : value && typeof value === 'object' && '$exists' in value ? (row[key] !== undefined) === value.$exists : row[key] === value);
   for (const [name, values] of Object.entries(rows)) entities[name] = {
-    filter: async query => values.filter(row => Object.entries(query).every(([key, value]) => row[key] === value)),
+    filter: async query => structuredClone(values.filter(row => match(row, query))),
     list: async () => values,
     create: async data => {
       effects.push(`${name}.create`);
       if ((name === 'Order' && failOrder) || (name === 'CheckoutSession' && failSession)) throw new Error('Synthetic persistence failure');
       if (missingId === name) return {};
       const row = { id: `${name}-${values.length}`, ...structuredClone(data) }; values.push(row); return row;
+    },
+    updateMany: async (query, update) => {
+      assert.equal(name, 'NuViraCredit'); effects.push('credit.CAS');
+      if (failCredit) throw new Error('SYNTHETIC_ONLY credit outage');
+      const found = values.filter(row => match(row, query)); assert.ok(found.length <= 1);
+      if (!ignoreCreditWrite) found.forEach(row => Object.assign(row, structuredClone(update.$set)));
+      if (loseCreditAck && !lostCreditAck) { lostCreditAck = true; throw new Error('SYNTHETIC_ONLY lost credit acknowledgement'); }
+      return { success: true, updated: found.length, has_more: false };
     },
   };
   let served; let storedIntent; let storedSession; let originalParameters; let sessionParameters;
@@ -93,6 +106,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('firstOrderEligibility')) return offers;
       if (name.includes('rewardCheckout')) return rewards;
+      if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('noPaymentCheckout')) return noPayment;
       if (name.includes('stripe')) return class {
         constructor() { this.paymentIntents = {
@@ -105,9 +119,10 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
             }
             originalParameters ||= parameters;
             storedIntent ||= { id: 'pi_test_synthetic', client_secret: 'unit-test',
-              status: 'requires_payment_method', ...structuredClone(data) }; return storedIntent;
+              livemode: true, status: 'requires_payment_method', ...structuredClone(data) }; return structuredClone(storedIntent);
           },
-          cancel: async id => { effects.push('PI.cancel'); assert.equal(id, 'pi_test_synthetic'); if (failCancel) throw new Error('Synthetic cancellation unavailable'); storedIntent.status = 'canceled'; return { id, status: 'canceled' }; },
+          retrieve: async id => { effects.push('PI.retrieve'); assert.equal(id, storedIntent.id); return structuredClone(storedIntent); },
+          cancel: async id => { effects.push('PI.cancel'); assert.equal(id, 'pi_test_synthetic'); if (failCancel) throw new Error('Synthetic cancellation unavailable'); storedIntent.status = 'canceled'; return structuredClone(storedIntent); },
         }; this.checkout = { sessions: {
           create: async (data, options) => {
             effects.push('Session.create');
@@ -352,5 +367,78 @@ await test('uncertain provider cancellation preserves the reward hold and withho
   const result = await response.json(); assert.equal(result.error_code, 'CHECKOUT_RECORDS_NOT_READY');
   assert.equal(result.clientSecret, undefined); assert.equal(result.payment_attempt_canceled, false);
   assert.equal(ctx.rows.UserPoints[0].reserved_points, 1500); assert.equal(ctx.effects.includes('reward.release'), false);
+});
+const creditSeed = { NuViraCredit: [{ id: 'credit-test', customer_email: email, balance: 10,
+  lifetime_used: 0, history: [] }] };
+await test('legacy and current referral clients both receive one canonical discount, not a double discount', async () => {
+  const seed = { DiscountCode: [{ id: 'referral-synthetic', code: 'SYNTHETICREF', active: true,
+    discount_type: 'fixed_amount', discount_value: 5, discount_kind: 'referral', once_per_customer: false }] };
+  for (const patch of [{ referral_code: 'SYNTHETICREF', referral_discount: 5, total: 37.99 },
+    { discount_contract_version: 2, discount_code: 'SYNTHETICREF', total: 42.99 }]) {
+    const ctx = fixture({ seed }); const response = await ctx.handle(patch); const result = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(result)); assert.equal(result.effectiveTotal, 37.99);
+    assert.equal(ctx.intent().amount, 3799); assert.equal(ctx.rows.CheckoutSession[0].checkout_data.referral_discount, 5);
+  }
+});
+await test('member total and direct points value are recomputed rather than trusting the submitted final total', async () => {
+  const ctx = fixture(); const response = await ctx.handle({ total: 0.01 }); const result = await response.json();
+  assert.equal(response.status, 200); assert.equal(result.effectiveTotal, 42.99);
+  const forged = fixture(); const rejected = await forged.handle({ points_used: 1, points_discount: 10 });
+  assert.equal((await rejected.json()).error_code, 'INVALID_POINTS_SELECTION'); assert.equal(forged.effects.length, 0);
+});
+await test('ordinary member credits are price-checked, persisted and held before payment secret', async () => {
+  const ctx = fixture({ seed: creditSeed }); const response = await ctx.handle({ credits_discount: 6, total: 0.01 });
+  const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+  assert.ok(result.clientSecret); assert.equal(ctx.intent().amount, 3699); assert.equal(result.effectiveTotal, 36.99);
+  assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 6); assert.equal(ctx.rows.NuViraCredit[0].balance, 10);
+  assert.ok(ctx.effects.indexOf('credit.CAS') > ctx.effects.indexOf('CheckoutSession.create'));
+  assert.equal(ctx.rows.CheckoutSession[0].checkout_data.credit_reservation_id, ctx.intent().metadata.credit_reservation_id);
+  assert.ok(Object.keys(ctx.intent().metadata).length <= 50);
+});
+await test('earned reward plus credits reserves both benefits without exceeding Stripe metadata capacity', async () => {
+  const ctx = fixture({ seed: creditSeed }); const response = await ctx.handle({ active_reward: selected, credits_discount: 6 });
+  const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 1500); assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 6);
+  assert.ok(Object.keys(ctx.intent().metadata).length <= 50); assert.equal(ctx.intent().amount, 3699);
+});
+await test('retry recognizes its existing credit hold without changing provider parameters', async () => {
+  const ctx = fixture({ seed: creditSeed, strictStripe: true });
+  assert.equal((await ctx.handle({ credits_discount: 6 })).status, 200); ctx.advance();
+  const response = await ctx.handle({ credits_discount: 6 }); assert.equal(response.status, 200, JSON.stringify(await response.json()));
+  assert.equal(ctx.rows.NuViraCredit[0].checkout_reservations.length, 1);
+  assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 6); assert.equal(ctx.effects.filter(e => e === 'credit.CAS').length, 1);
+});
+await test('unacknowledged hold safely cancels and releases both points and credits without exposing secret', async () => {
+  const ctx = fixture({ seed: creditSeed, loseCreditAck: true });
+  const response = await ctx.handle({ credits_discount: 6, active_reward: selected }); const result = await response.json();
+  assert.equal(result.error_code, 'CREDIT_PAYMENT_NOT_READY'); assert.equal(result.clientSecret, undefined);
+  assert.equal(result.payment_attempt_canceled, true); assert.equal(result.credit_reservation_released, true);
+  assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 0); assert.equal(ctx.rows.NuViraCredit[0].balance, 10);
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 0);
+});
+await test('unconfirmed credit cancellation keeps its hold and payment secret withheld', async () => {
+  const ctx = fixture({ seed: creditSeed, loseCreditAck: true, failCancel: true });
+  const result = await (await ctx.handle({ credits_discount: 6 })).json();
+  assert.equal(result.error_code, 'CREDIT_PAYMENT_NOT_READY'); assert.equal(result.clientSecret, undefined);
+  assert.equal(result.payment_attempt_canceled, false); assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 6);
+});
+await test('a false successful credit storage acknowledgement fails independent readback', async () => {
+  const ctx = fixture({ seed: creditSeed, ignoreCreditWrite: true });
+  const result = await (await ctx.handle({ credits_discount: 6 })).json();
+  assert.equal(result.error_code, 'CREDIT_PAYMENT_NOT_READY'); assert.equal(result.clientSecret, undefined);
+  assert.equal(result.credit_reservation_released, false);
+});
+await test('unsecured, malformed and excessive credit selections fail before provider writes', async () => {
+  for (const patch of [{ credits_discount: 11 }, { credits_discount: -1 }, { credits_discount: 0.001 },
+    { credits_discount: 1, checkout_idempotency_key: null }]) {
+    const ctx = fixture({ seed: creditSeed }); const response = await ctx.handle(patch);
+    assert.equal(response.status, 409); assert.equal((await response.json()).clientSecret, undefined); assert.equal(ctx.effects.length, 0);
+  }
+});
+await test('credits reducing the provider charge below its minimum are not silently charged extra', async () => {
+  const ctx = fixture({ distanceMiles: 2, seed: { NuViraCredit: [{ ...creditSeed.NuViraCredit[0], balance: 50 }],
+    Subscription: [{ customer_email: email, status: 'active', plan_id: 'plan' }], SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }] } });
+  const result = await (await ctx.handle({ credits_discount: 35.1 })).json();
+  assert.equal(result.error_code, 'CREDIT_BALANCE_REQUIRES_REVIEW'); assert.equal(ctx.effects.length, 0);
 });
 console.log(`Checkout record persistence: ${passed}/${passed} passed. Real handler, synthetic storage/Maps/Stripe only; no external calls or production writes.`);

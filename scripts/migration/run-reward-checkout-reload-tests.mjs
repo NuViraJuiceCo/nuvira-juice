@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as creditReservation from '../../base44/shared/checkoutCredit.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -96,6 +97,7 @@ function backendFixture({ user = { id: owner, email }, balancePatch = {}, holdPa
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('noPaymentCheckout')) return noPayment;
       if (name.includes('rewardCheckout')) return rewards;
+      if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('firstOrderEligibility')) return offers;
       if (name.includes('stripe')) return class { constructor() { return stripe; } };
       throw new Error(`Unexpected dependency ${name}`);

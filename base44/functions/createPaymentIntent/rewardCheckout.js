@@ -1,3 +1,5 @@
+import { availableCheckoutCredit } from '../../shared/checkoutCredit.js';
+import { readPointsAccount } from '../enrollNewCustomerInLoyalty/pointsAccount.js';
 // Pure pricing policy. Callers must load products, rewards and balance from the
 // authenticated customer's server records. This quote never reserves/debits points.
 export const REWARD_CHECKOUT_REVISION = '2026-09-08.reward-checkout-v1';
@@ -180,7 +182,7 @@ export async function loadRewardCheckoutQuote(base44, user, body, resolveProgram
 
 // Canonical reward checkout arithmetic. Customer input selects how many points
 // or credits to spend, never the value of the reward or the product prices.
-export async function priceRewardPayment(base44, email, quote, body, subscriptionPercent = 0) {
+export async function priceRewardPayment(base44, email, quote, body, subscriptionPercent = 0, creditReservationId = null) {
   const subtotal = cents(quote.subtotal);
   const rewardDiscount = cents(quote.reward_discount);
   const percent = Number(subscriptionPercent);
@@ -194,9 +196,8 @@ export async function priceRewardPayment(base44, email, quote, body, subscriptio
   const requestedCredits = cents(body.credits_discount ?? 0);
   if (requestedCredits > afterSubscription - requestedPoints) fail('CREDITS_EXCEED_ORDER_VALUE', 'Reduce the credits to match the remaining merchandise total.');
   if (requestedCredits) {
-    const rows = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: email }, undefined, 2);
-    if (!Array.isArray(rows) || rows.length !== 1) fail('CREDIT_BALANCE_UNAVAILABLE', 'Your credit balance could not be confirmed.');
-    if (requestedCredits > cents(rows[0].balance)) fail('INSUFFICIENT_CHECKOUT_CREDITS', 'Your available credits changed. Please review checkout.');
+    const available = await availableCheckoutCredit(base44.asServiceRole.entities, email, creditReservationId);
+    if (requestedCredits > cents(available)) fail('INSUFFICIENT_CHECKOUT_CREDITS', 'Your available credits changed. Please review checkout.');
   }
   return { merchandise_total: dollars(afterSubscription - requestedPoints - requestedCredits),
     points_used: requestedPoints, points_discount: dollars(requestedPoints),
@@ -218,4 +219,23 @@ export async function reservePaymentReward(base44, payment, quote, pricing, emai
     fail('REWARD_RESERVATION_UNCONFIRMED', 'Your reward could not be secured. Payment was not started.');
   }
   return data;
+}
+
+// Ordinary member discounts use the same cent arithmetic as tier rewards.
+// Catalog/birthday item normalization is a separate release gate; this helper
+// never turns a caller-supplied final total or unselected reward into a discount.
+export async function priceMemberPayment(base44, email, subtotal, body, subscriptionPercent = 0, creditReservationId = null) {
+  if (body.active_reward || cents(body.reward_discount ?? 0) !== 0) {
+    fail('REWARD_SELECTION_REQUIRED', 'Please select your earned reward again.');
+  }
+  const points = integer(body.points_used ?? 0, 'INVALID_POINTS_SELECTION');
+  let available = 0;
+  if (points) {
+    try {
+      const account = await readPointsAccount(base44.asServiceRole.entities, email);
+      available = account.total_points - (account.reserved_points ?? 0);
+    } catch { fail('POINTS_BALANCE_UNAVAILABLE', 'Your available points could not be confirmed. Please review checkout.'); }
+  }
+  return priceRewardPayment(base44, email, { subtotal, reward_discount: 0,
+    points_required: 0, available_points_after_reward: available }, body, subscriptionPercent, creditReservationId);
 }

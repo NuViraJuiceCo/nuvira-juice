@@ -1040,8 +1040,14 @@ export default async function handler(req: Request) {
     let creditRecord = null;
     for (const email of identityList) {
       const credits = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: email });
+      if (credits.length > 1) throw new Error('credit_account_ambiguous');
       if (credits[0]) { creditRecord = credits[0]; break; }
     }
+
+    const creditTotal = Number(creditRecord?.balance ?? 0);
+    const creditHeld = Number(creditRecord?.reserved_balance ?? 0);
+    const availableCredits = [creditTotal, creditHeld].every(value => Number.isFinite(value) && value >= 0)
+      && creditHeld <= creditTotal ? Math.round((creditTotal - creditHeld) * 100) / 100 : 0;
 
     // ── STEP 6: Load loyalty points across all identities ─────────────────────
     let pointsRecord = null;
@@ -1103,7 +1109,7 @@ export default async function handler(req: Request) {
       order_count: allOrdersForHistory.length,
 
       // Credits
-      credits: creditRecord?.balance || 0,
+      credits: availableCredits,
       lifetime_credits: creditRecord?.lifetime_issued || 0,
       applied_credits: creditRecord?.lifetime_used || 0,
       credit_record: creditRecord || null,

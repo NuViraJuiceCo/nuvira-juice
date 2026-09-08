@@ -22,10 +22,11 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
 import Stripe from 'npm:stripe@14.21.0';
+import { settleCheckoutCredit } from '../../shared/checkoutCredit.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const EXACT_CANCEL_CONFIRMATION = 'cancel_unpaid_checkout';
-const CANCELLATION_REVISION = '2026-09-08.confirmed-provider-cancellation-v2';
+const CANCELLATION_REVISION = '2026-09-08.confirmed-credit-cancellation-v3';
 
 function safeId(value, maxLength = 180) {
   const normalized = String(value ?? '').trim();
@@ -72,6 +73,7 @@ async function cancelPendingPaymentIntent(order, internalSecret = '') {
   }
   return { provider_cancelled: payment.status !== terminalStatus, provider_status: terminalStatus,
     idempotent: payment.status === terminalStatus, reward_reservation_id: meta.reward_reservation_id || null,
+    credit_reservation_id: meta.credit_reservation_id || null,
     provider_id: id, checkout_session: noPayment };
 }
 
@@ -100,6 +102,14 @@ async function markOrderAbandoned(base44, order, message) {
 }
 
 async function releaseCanceledReward(base44, order, provider, internalSecret) {
+  if (provider.credit_reservation_id) {
+    if (provider.checkout_session) throw new Error('credit_checkout_session_unsupported');
+    const latest = await stripe.paymentIntents.retrieve(provider.provider_id);
+    if (latest.id !== provider.provider_id || latest.status !== 'canceled') throw new Error('credit_cancellation_unconfirmed');
+    const released = await settleCheckoutCredit({ entities: base44.asServiceRole.entities,
+      payment: latest, email: order.customer_email });
+    if (released.reservation_status !== 'released') throw new Error('credit_release_unconfirmed');
+  }
   if (!provider.reward_reservation_id) return;
   // The ledger independently retrieves Stripe again. A cancellation response
   // supplied by this job alone cannot release points.
@@ -161,7 +171,7 @@ Deno.serve(async (req) => {
         provider_cancelled: provider.provider_cancelled,
         provider_status: provider.provider_status,
         order_cancelled: marked, revision: CANCELLATION_REVISION,
-        writes_performed: provider.provider_cancelled || marked || Boolean(provider.reward_reservation_id),
+        writes_performed: provider.provider_cancelled || marked || Boolean(provider.reward_reservation_id || provider.credit_reservation_id),
       });
     }
 

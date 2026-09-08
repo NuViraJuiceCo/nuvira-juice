@@ -166,7 +166,11 @@ assert.doesNotMatch(checkoutSource, /BRClub \(10% off\)/);
 assert.doesNotMatch(paymentIntentSource, /const BRCLUB_CODE/);
 assert.match(paymentIntentSource, /entities\.DiscountCode\.filter/);
 assert.match(paymentIntentSource, /mode === 'validate_discount_code'/);
-assert.match(paymentIntentSource, /legacyReferralAdjustment/);
+// The old legacy-total adjustment is no longer needed: member benefit pricing
+// is recomputed before applying the canonical code once. Actual legacy/new
+// request arithmetic is covered by the checkout-record handler fixture.
+assert.match(paymentIntentSource, /await priceMemberPayment\(/);
+assert.doesNotMatch(paymentIntentSource, /Number\(total\)\s*-\s*Number\(delivery_fee/);
 assert.match(paymentIntentSource, /promotionDiscountAmt = promotion\.type === 'promotion'/);
 assert.match(
   paymentIntentSource,

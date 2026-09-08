@@ -1,3 +1,4 @@
+import { creditAccountState, settleCheckoutCredit } from '../../shared/checkoutCredit.js';
 // Retry-safe bookkeeping for an already confirmed embedded payment. All inputs
 // are server-held CheckoutSession / Order records and the signed Stripe event.
 export const PAYMENT_BENEFITS_REVISION = '2026-09-08.payment-benefits-replay-v1';
@@ -25,11 +26,10 @@ export async function applyCheckoutCredit(entities, { email, orderId, orderNumbe
         || (matches[0].payment_intent_id && matches[0].payment_intent_id !== paymentId)) throw new Error('checkout_credit_replay_conflict');
       return { idempotent: true };
     }
-    const balance = Math.round(Number(row.balance ?? 0) * 100);
-    const lifetime = Math.round(Number(row.lifetime_used ?? 0) * 100);
-    const revision = Number(row.credit_ledger_revision ?? 0);
+    const { balance, lifetime, revision, available } = creditAccountState(row);
     if (![balance, lifetime, revision].every(finiteInteger)) throw new Error('invalid_credit_balance');
-    if (balance < cents) throw new Error('insufficient_checkout_credit');
+    // Legacy payments may only use value not held by a newer checkout.
+    if (available < cents) throw new Error('insufficient_checkout_credit');
     const revisionQuery = row.credit_ledger_revision === undefined
       ? { $or: [{ credit_ledger_revision: { $exists: false } }, { credit_ledger_revision: 0 }] }
       : { credit_ledger_revision: revision };
@@ -74,8 +74,14 @@ export async function settleEmbeddedPaymentBenefits({ entities, postLoyalty, pay
       description: checkoutData.active_reward?.title ? `Redeemed at checkout: ${checkoutData.active_reward.title}`
         : `Redeemed at checkout for order ${order.order_number}` });
   }
-  await applyCheckoutCredit(entities, { email, orderId: order.id, orderNumber: order.order_number,
-    paymentId, amount: checkoutData.credits_discount || 0 });
+  if (paymentIntent.metadata?.credit_reservation_id) {
+    const result = await settleCheckoutCredit({ entities, payment: paymentIntent, email });
+    if (result.reservation_status !== 'consumed') throw new Error('credit_payment_settlement_unconfirmed');
+  } else {
+    if (checkoutData.credit_reservation_id) throw new Error('credit_payment_reservation_mismatch');
+    await applyCheckoutCredit(entities, { email, orderId: order.id, orderNumber: order.order_number,
+      paymentId, amount: checkoutData.credits_discount || 0 });
+  }
   // A new double-points reward needs the canonical quote AND its consumed
   // reservation. An unvalidated legacy active_reward object cannot grant it.
   const quote = checkoutData.reward_checkout;

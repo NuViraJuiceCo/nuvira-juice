@@ -1,4 +1,5 @@
 import React from 'react';
+import { availableCreditBalance } from '@/lib/creditBalance';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Leaf, ArrowLeft, Package, CheckCircle, Truck, DollarSign, HelpCircle } from 'lucide-react';
@@ -82,12 +83,12 @@ export default function ReturnReward() {
     queryKey: ['nuvira-credits-rr', user?.email],
     queryFn: async () => {
       const res = await base44.entities.NuViraCredit.filter({ customer_email: user?.email });
-      return res[0] || null;
+      return res.length === 1 ? res[0] : null;
     },
     enabled: !!user?.email,
   });
 
-  const balance = creditData?.balance || 0;
+  const balance = availableCreditBalance(creditData);
   const lifetimeEarned = creditData?.lifetime_issued || 0;
 
   return (
