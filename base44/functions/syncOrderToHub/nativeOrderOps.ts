@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { nativeItemSnapshot } from './nativeItemSnapshot.js';
+import { readRewardNativeOrder } from './rewardNativeGuard.js';
 
 const SUPPORTED_SOURCES = new Set(['customer_app_one_time', 'website_one_time', 'shopify_pos']);
 const MAX_LINE_ITEMS = 60;
@@ -79,13 +81,15 @@ function normalizePaymentStatus(order, source) {
   return status || 'pending';
 }
 
-function sanitizeLineItems(items) {
+function sanitizeLineItems(items, strict = false) {
   if (!Array.isArray(items)) return [];
+  if (strict && (items.length === 0 || items.length > MAX_LINE_ITEMS)) throw new Error('native_item_snapshot_invalid:count');
   return items.slice(0, MAX_LINE_ITEMS).map(item => {
     const title = sanitizeText(item?.title || item?.name || item?.product_title, 160);
     const quantity = safeNumber(item?.quantity, 0);
     const price = item?.price === undefined || item?.price === null ? null : safeNumber(item.price, 0);
     return {
+      ...nativeItemSnapshot(item, strict),
       shopify_line_item_id: sanitizeText(item?.shopify_line_item_id || item?.id, 120),
       title,
       variant_title: sanitizeText(item?.variant_title, 120),
@@ -252,17 +256,39 @@ async function resolveAuth({ base44, req, body, mode }) {
   return { ok: false };
 }
 
-async function findExistingOrder(base44, record) {
+async function findExistingOrder(base44, record, strict = false) {
   const candidates = [];
   if (record.base44_order_id) candidates.push({ base44_order_id: record.base44_order_id });
   if (record.shopify_order_id) candidates.push({ shopify_order_id: record.shopify_order_id });
   if (record.shopify_order_number) candidates.push({ shopify_order_number: record.shopify_order_number });
 
+  const found = new Map();
   for (const filter of candidates) {
-    const matches = await base44.asServiceRole.entities.ShopifyOrder.filter(filter, '-created_date', 5).catch(() => []);
+    const matches = strict
+      ? await base44.asServiceRole.entities.ShopifyOrder.filter(filter, '-created_date', 5)
+      : await base44.asServiceRole.entities.ShopifyOrder.filter(filter, '-created_date', 5).catch(() => []);
+    if (strict) {
+      if (!Array.isArray(matches) || matches.length >= 5) throw new Error('reward_native_mirror_read_incomplete');
+      for (const row of matches) found.set(row.id, row);
+      continue;
+    }
     if (Array.isArray(matches) && matches.length > 0) return matches[0];
   }
-
+  if (strict && found.size > 1) throw new Error('reward_native_mirror_not_unique');
+  if (strict && found.size === 1) {
+    const row: any = [...found.values()][0];
+    if (row.base44_order_id !== record.base44_order_id || row.shopify_order_number !== record.shopify_order_number
+      || row.customer_email !== record.customer_email || row.total_price !== 0
+      || row.payment_status !== 'paid' || !['pending', ''].includes(row.fulfillment_status || '')
+      || !['awaiting_production', ''].includes(row.production_status || '')
+      || row.stripe_checkout_session_id !== record.stripe_checkout_session_id
+      || row.assigned_delivery_date !== record.assigned_delivery_date || row.production_date !== record.production_date
+      || JSON.stringify(row.line_items) !== JSON.stringify(record.line_items)
+      || row.delivered_at || row.fulfilled_at || row.excluded_from_production === true) {
+      throw new Error('reward_native_existing_mirror_conflict');
+    }
+    return row;
+  }
   return null;
 }
 
@@ -758,7 +784,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
   });
 }
 
-async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outputs, idempotencyKey, requestId, source, eventType, mode }) {
+async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outputs, idempotencyKey, requestId, source, eventType, mode, strict = false }) {
   const fulfillmentNeed = outputs?.fulfillment_need || {};
   if (!fulfillmentNeed.requires_fulfillment_task) {
     return { action: 'not_required', record: null };
@@ -775,7 +801,8 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
 
   const taskItems = Array.isArray(outputs.record.line_items)
     ? outputs.record.line_items.map(item => ({
-        product_id: item.shopify_line_item_id || '',
+        ...nativeItemSnapshot(item),
+        product_id: item.product_id || item.shopify_line_item_id || '',
         title: item.title || 'Item',
         price: item.price ?? 0,
         quantity: item.quantity ?? 0,
@@ -850,10 +877,14 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
 
   if (mode !== 'live') return { action: 'would_create_or_update', draft };
 
-  const existing = await base44.asServiceRole.entities.FulfillmentTask.filter({
+  const filter = {
     order_id: shopifyOrder.id,
     fulfillment_number: 1,
-  }, '-created_date', 1).catch(() => []);
+  };
+  const existing = strict
+    ? await base44.asServiceRole.entities.FulfillmentTask.filter(filter, '-created_date', 2)
+    : await base44.asServiceRole.entities.FulfillmentTask.filter(filter, '-created_date', 1).catch(() => []);
+  if (strict && (!Array.isArray(existing) || existing.length > 1)) throw new Error('reward_native_task_not_unique');
 
   if (Array.isArray(existing) && existing.length > 0) {
     return { action: 'deduped_existing_task_not_backfilled', record: existing[0] };
@@ -914,8 +945,13 @@ export async function handleNativeOrderOpsRequest(req: Request) {
 
     const source = normalizeLower(body?.source || body?.order?.source_type || 'customer_app_one_time');
     const eventType = normalizeText(body?.event_type || body?.event || 'order.created') || 'order.created';
-    const order = body?.order && typeof body.order === 'object' ? body.order : {};
-    const lineItems = sanitizeLineItems(order.line_items || order.items);
+    const strict = Boolean(body?.reward_native_handoff);
+    const order = strict ? await readRewardNativeOrder(base44.asServiceRole.entities, body)
+      : body?.order && typeof body.order === 'object' ? body.order : {};
+    if (!strict && order.reward_settlement && !isRefundEvent(eventType)) {
+      return Response.json({ success: false, error_code: 'reward_native_claim_required' }, { status: 409 });
+    }
+    const lineItems = sanitizeLineItems(order.line_items || order.items, strict);
     const paymentStatus = normalizePaymentStatus(order, source);
     const fulfillmentMethod = source === 'shopify_pos'
       ? 'pos'
@@ -976,7 +1012,7 @@ export async function handleNativeOrderOpsRequest(req: Request) {
     const outputs: any = source === 'shopify_pos'
       ? buildPosRecord({ order, source, eventType, lineItems, paymentStatus })
       : buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus });
-    const existing = await findExistingOrder(base44, outputs.record);
+    const existing = await findExistingOrder(base44, outputs.record, strict);
     const planner = await runPlanner({ base44, source, record: outputs.record, existing, idempotencyKey });
 
     if (!planner?.success || planner?.would_reject === true) {
@@ -1036,7 +1072,13 @@ export async function handleNativeOrderOpsRequest(req: Request) {
     };
 
     if (mode === 'live') {
-      if (existing) {
+      if (strict) await readRewardNativeOrder(base44.asServiceRole.entities, body);
+      if (existing && strict) {
+        // The exact settled snapshot already exists. Never reset its lifecycle
+        // or rewrite its audit trail while recovering a missing task receipt.
+        writtenRecord = existing;
+        writeAction = 'skipped';
+      } else if (existing) {
         const updatePayload = compactObject({
           ...planner.accepted_fields,
           sync_status: 'native_ops_ready',
@@ -1062,7 +1104,9 @@ export async function handleNativeOrderOpsRequest(req: Request) {
         source,
         eventType,
         mode,
+        strict,
       }).catch(error => {
+        if (strict) throw error;
         console.warn(`[syncOrderToHub:nativeOrderOps] FulfillmentTask mirror failed safely: ${error?.message || 'unknown'}`);
         return { action: 'failed', record: null, reason: 'fulfillment_task_write_failed' };
       });

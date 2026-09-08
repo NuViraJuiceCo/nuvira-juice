@@ -668,7 +668,10 @@ test('Factory cannot accidentally advertise all stages or change the production 
     /Bundle revision: reward-communications-20260908/);
 });
 
+export { fixture as createCommunicationFixture };
+if (process.argv[1]?.endsWith('run-reward-customer-handoff-tests.mjs')) {
 let passed = 0;
 for (const [name, run] of tests) { try { await run(); passed++; console.log(`PASS ${name}`); }
   catch (error) { console.error(`FAIL ${name}`, error); process.exitCode = 1; } }
 console.log(`Reward customer handoff: ${passed}/${tests.length}. Actual customer/staff email/in-app/push/SMS handlers, simulated storage and provider only; native and Shopify runner stages remain synthetic.`);
+}

@@ -1208,6 +1208,30 @@ function expandLineItemProducts(item, bundleIndex, productIndex) {
   const quantity = numberOrZero(item?.quantity);
   if (!title || quantity <= 0) return [];
 
+  // New checkout snapshots are authoritative for the purchased composition.
+  // A later catalog edit must not change an already-earned or purchased bundle.
+  // Legacy rows without a snapshot retain the existing catalog lookup below.
+  if (item?.bundle_composition !== undefined && item?.bundle_composition !== null) {
+    const components = item.bundle_composition;
+    if (!Array.isArray(components) || components.length < 1 || components.length > 100
+      || !Number.isSafeInteger(quantity) || !Number.isSafeInteger(item.bottles_per_unit)
+      || item.bottles_per_unit < 1 || item.bottles_per_unit > 100
+      || components.some(component => !component
+        || typeof component.product_id !== 'string' || !/^[A-Za-z0-9._:-]{1,120}$/.test(component.product_id)
+        || typeof component.product_name !== 'string' || !component.product_name.trim()
+        || component.product_name.trim() !== component.product_name || component.product_name.length > 120
+        || !Number.isSafeInteger(component.quantity) || component.quantity < 1 || component.quantity > 100)
+      || components.reduce((sum, component) => sum + component.quantity, 0) !== item.bottles_per_unit) {
+      throw new Error('native_bundle_snapshot_invalid');
+    }
+    return components.map(component => ({
+      product_name: component.product_name,
+      quantity: quantity * component.quantity,
+      source_line_item: title,
+      source_type: 'bundle_component',
+    }));
+  }
+
   const bundle = firstUnambiguous(bundleIndex, title);
   if (bundle && !bundle.ambiguous && Array.isArray(bundle.components) && bundle.components.length > 0) {
     return bundle.components
@@ -1365,6 +1389,9 @@ async function loadNativePlanning(base44, dateFrom, dateTo) {
         sourceReadFailures.add(`${entityName}_invalid_read_result`);
         return [];
       }
+      // A full page cannot prove the absence of older demand or lifecycle rows.
+      // Do not write batch totals from a potentially truncated source snapshot.
+      if (rows.length >= limit) sourceReadFailures.add(`${entityName}_read_incomplete`);
       return rows;
     } catch {
       sourceReadFailures.add(`${entityName}_read_failed`);
@@ -1716,6 +1743,7 @@ async function loadMaterializationProductionBatches(base44, nativePlanning) {
   for (const productionDate of dates) {
     const matches = await entity.filter({ production_date: productionDate }, '-created_date', 500);
     if (!Array.isArray(matches)) throw new Error('ProductionBatch_invalid_read_result');
+    if (matches.length >= 500) throw new Error('ProductionBatch_read_incomplete');
     rows.push(...matches);
   }
   const seen = new Set();

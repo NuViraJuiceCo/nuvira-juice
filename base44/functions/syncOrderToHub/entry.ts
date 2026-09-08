@@ -20,7 +20,9 @@ function isVerifiedNoPaymentOrder(order) {
 
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
 import productionMaterializationHandler from './productionMaterializer/handler.ts';
+import { readRewardNativeOrder } from './rewardNativeGuard.js';
 
+// Bundle revision: reward-native-item-snapshots-20260908 (unreleased).
 // Bundle revision: g115h-local-production-materializer-20260812.
 // Bundle revision: g115g-bundle-safe-signed-production-materializer-20260812.
 // Bundle revision: g115f-direct-production-materializer-composition-20260812.
@@ -718,8 +720,10 @@ async function maybeRunNativeOrderOps({ req, payload, body }) {
         order: nativeOrder,
         request_id: body?.request_id || `syncOrderToHub:${eventType}:${nativeOrder?.id || orderNumber || Date.now()}`,
         idempotency_key: body?.idempotency_key || `native_order_ops:${source}:${eventType}:${orderNumber}${refundSuffix}`,
-        internal_secret: getCustomerAppSyncSecret(),
+        internal_secret: body?.reward_native_handoff
+          ? (Deno.env.get('NATIVE_ORDER_OPS_SECRET') || getCustomerAppSyncSecret()) : getCustomerAppSyncSecret(),
         actor_email: body?.actor_email || null,
+        ...(body?.reward_native_handoff ? { reward_native_handoff: body.reward_native_handoff } : {}),
       }),
     }));
     const result = await response.json().catch(() => null);
@@ -775,11 +779,36 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'No order data' }, { status: 400 });
   }
 
+  if (body?.reward_native_handoff || (order.reward_settlement && !['order.refunded'].includes(body?.event_type || body?.event))) {
+    const secret = getCustomerAppSyncSecret();
+    if (!secret || req.headers.get('x-internal-secret') !== secret) {
+      return Response.json({ success: false, error_code: 'reward_native_internal_auth_required' }, { status: 403 });
+    }
+    if (body.native_only !== true || (body.event_type || body.event || 'order.created') !== 'order.created'
+      || body.native_order || body.native_source === 'shopify_pos') {
+      return Response.json({ success: false, error_code: 'reward_native_scope_invalid' }, { status: 409 });
+    }
+    try { order = await readRewardNativeOrder(base44.asServiceRole.entities, { ...body, order_id: order.id }); }
+    catch { return Response.json({ success: false, error_code: 'reward_native_claim_or_order_unconfirmed' }, { status: 409 }); }
+  }
+
   if (body?.native_only === true) {
     const nativeEventType = body?.event_type || body?.event || 'order.created';
     const source = ['customer_app_one_time', 'website_one_time', 'shopify_pos'].includes(body?.native_source)
       ? body.native_source
       : 'customer_app_one_time';
+    // Reward planning reads native mirrors/tasks. Create that exact projection
+    // first; otherwise a brand-new settled reward has no demand to materialize.
+    // Keep the established non-reward ordering unchanged.
+    let rewardNativeResult = null;
+    if (body.reward_native_handoff) {
+      rewardNativeResult = await maybeRunNativeOrderOps({ req, payload: { event: nativeEventType, order },
+        body: { ...body, native_order: order } });
+      if (rewardNativeResult?.success !== true) return Response.json({ success: false,
+        error_code: 'reward_native_projection_unconfirmed', native_only: true }, { status: 503 });
+      try { order = await readRewardNativeOrder(base44.asServiceRole.entities, { ...body, order_id: order.id }); }
+      catch { return Response.json({ success: false, error_code: 'reward_native_order_changed' }, { status: 409 }); }
+    }
     const productionBatchMaterialization = await materializePaidOrderProduction({
       base44,
       req,
@@ -788,7 +817,7 @@ Deno.serve(async (req) => {
       source,
       requestId: body?.request_id || order?.order_number || order?.id,
     });
-    const nativeResult = await maybeRunNativeOrderOps({
+    const nativeResult = rewardNativeResult || await maybeRunNativeOrderOps({
       req,
       payload: { event: nativeEventType, order },
       body: { ...body, native_order: body?.native_order || order },

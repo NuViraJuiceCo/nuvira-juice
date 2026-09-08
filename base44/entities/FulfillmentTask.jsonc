@@ -133,6 +133,28 @@
       "items": {
         "type": "object",
         "properties": {
+          "category": { "type": "string" },
+          "size": { "type": "string" },
+          "cart_line_key": { "type": "string" },
+          "reward_id": { "type": "string" },
+          "reward_type": { "type": "string" },
+          "isFreeReward": { "type": "boolean" },
+          "catalog_unit_price": { "type": "number" },
+          "reward_discount_amount": { "type": "number" },
+          "shopify_product_id": { "type": "string" },
+          "shopify_variant_id": { "type": "string" },
+          "meta_catalog_content_id": { "type": "string" },
+          "is_program": { "type": "boolean" },
+          "program_key": { "type": "string", "enum": ["radiance", "hydration", "reset"] },
+          "program_days": { "type": "number", "enum": [2, 3] },
+          "program_schedule_version": { "type": "string" },
+          "bottles_per_unit": { "type": "number" },
+          "bundle_composition": { "type": "array", "items": { "type": "object", "properties": {
+            "product_id": { "type": "string" }, "product_name": { "type": "string" }, "quantity": { "type": "number" }
+          } } },
+          "program_addon_for": { "type": "string", "enum": ["radiance", "hydration", "reset"] },
+          "program_addon_days": { "type": "number", "enum": [2, 3] },
+          "program_addon_schedule_version": { "type": "string" },
           "product_id": {
             "type": "string"
           },

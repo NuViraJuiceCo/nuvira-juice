@@ -363,7 +363,12 @@ assert.match(materializationInvokeSource, /productionMaterializationHandler\(new
 assert.doesNotMatch(materializationInvokeSource, /asServiceRole\.functions\.(fetch|invoke)/);
 assert.equal(bundledPlanningSource, planningSource, 'Bundled automatic materializer must exactly match the canonical admin handler.');
 assert.equal(bundledPlanningReadModelSource, planningReadModelSource, 'Bundled materializer read model must exactly match the canonical admin read model.');
-assert.ok(nativeOnlySource.indexOf('materializePaidOrderProduction') < nativeOnlySource.indexOf('maybeRunNativeOrderOps'));
+const legacyNativeTail = nativeOnlySource.slice(nativeOnlySource.indexOf('const productionBatchMaterialization'));
+assert.ok(legacyNativeTail.indexOf('materializePaidOrderProduction') < legacyNativeTail.indexOf('maybeRunNativeOrderOps'),
+  'The established non-reward ordering remains unchanged.');
+assert.ok(nativeOnlySource.indexOf('if (body.reward_native_handoff)') < nativeOnlySource.indexOf('const productionBatchMaterialization')
+  && nativeOnlySource.indexOf('rewardNativeResult = await maybeRunNativeOrderOps') < nativeOnlySource.indexOf('const productionBatchMaterialization'),
+  'New reward demand is projected before the materializer reads it; actual behavior is covered by the native handoff harness.');
 assert.ok(primaryOperationalSource.indexOf('materializePaidOrderProduction') < primaryOperationalSource.indexOf('maybeRunNativeOrderOps'));
 
 console.log(JSON.stringify({
