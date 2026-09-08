@@ -26,7 +26,8 @@ function assertNoHardRedirects(source, label) {
 
 test('1. App routes are lazy-loaded and wrapped in Suspense.', () => {
   assert.match(appSource, /import React,\s*\{\s*Suspense\s*\}/);
-  assert.match(appSource, /React\.lazy\(\(\) => import\('@\/pages\/Shop'\)\)/);
+  assert.match(appSource, /React\.lazy\(startupPageLoaders\.shop\)/);
+  assert.match(fs.readFileSync('src/lib/startupPages.js', 'utf8'), /shop: \(\) => import\('@\/pages\/Shop'\)/);
   assert.match(appSource, /React\.lazy\(\(\) => import\('@\/pages\/Checkout'\)\)/);
   assert.match(appSource, /React\.lazy\(\(\) => import\('@\/pages\/admin\/Operations'\)\)/);
   assert.match(appSource, /<Suspense fallback=\{<AppRouteFallback \/>}/);
