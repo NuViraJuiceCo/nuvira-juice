@@ -139,6 +139,40 @@ export async function cancelNoPaymentCheckout({ base44, stripe, sessionId, custo
   return { ok: true, checkout_session_expired: true, reward_reservation_released: true };
 }
 
+// A lost preparation response can be recovered using the account-bound attempt
+// hash already stored in the central points ledger. This reads only; it does
+// not create/retry a provider Session, release points, or expose client secrets.
+export async function readNoPaymentCheckoutRecovery({ base44, stripe, customerEmail, attemptKey }) {
+  const owner = email(customerEmail);
+  assert(owner && /^[A-Za-z0-9_-]{20,200}$/.test(attemptKey || ''), 'reward_recovery_identity_required');
+  const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(`${owner}:${attemptKey}`)))].map(value => value.toString(16).padStart(2, '0')).join('');
+  const reservationId = `reward:${digest}`;
+  const rows = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: owner }, undefined, 2);
+  assert(Array.isArray(rows) && rows.length === 1 && email(rows[0]?.customer_email) === owner
+    && Array.isArray(rows[0].reward_reservations), 'reward_recovery_balance_unconfirmed');
+  const holds = rows[0].reward_reservations.filter(hold => hold?.reservation_id === reservationId);
+  // No record does not prove a concurrent request never reached the provider.
+  assert(holds.length === 1, 'reward_recovery_attempt_unconfirmed');
+  const hold = holds[0];
+  assert(sessionPattern.test(hold.checkout_session_id || '') && !hold.payment_intent_id
+    && hashPattern.test(hold.context_hash || '') && ['held', 'consumed', 'released'].includes(hold.status),
+  'reward_recovery_hold_unconfirmed');
+  const session = await stripe.checkout.sessions.retrieve(hold.checkout_session_id);
+  const metadata = session?.metadata || {};
+  assert(session?.id === hold.checkout_session_id && metadata.checkout_version === NO_PAYMENT_CHECKOUT_VERSION
+    && metadata.checkout_mode === 'account' && email(metadata.customer_email) === owner
+    && metadata.reward_reservation_id === reservationId && metadata.checkout_context_hash === hold.context_hash
+    && metadata.order_number === `NV-${digest.slice(0, 24).toUpperCase()}`
+    && metadata.is_test_order !== 'true' && metadata.internal_sandbox_checkout !== 'true',
+  'reward_recovery_provider_mismatch');
+  verifySession(session, metadata);
+  return { ok: true, state: session.status, writes_performed: false,
+    payment_confirmation_attempted: false, reward_reservation_released: false,
+    reward_checkout_recovery: { kind: 'reward_no_payment', checkout_session_id: session.id,
+      order_number: metadata.order_number } };
+}
+
 export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata, quote, pricing, secret }) {
   // This is not a way to waive a nonzero balance, delivery charge or unreserved credit.
   assert(secret && data?.total === 0 && data.delivery_fee === 0 && pricing?.merchandise_total === 0

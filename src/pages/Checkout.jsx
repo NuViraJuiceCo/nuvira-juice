@@ -5,6 +5,7 @@ import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
 import RewardEmbeddedCheckout from '@/components/checkout/RewardEmbeddedCheckout';
 import { readRewardCheckoutRecovery, cancelRewardCheckoutRecovery } from '@/lib/rewardCheckoutRecovery';
+import { readRewardCheckoutAttempt, saveRewardCheckoutAttempt, clearRewardCheckoutAttempt } from '@/lib/rewardCheckoutAttempt';
 import { rewardDeliveryMinimumSubtotal } from '@/lib/rewardDeliveryMinimum';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ChevronDown, Truck, Gift, LockKeyhole } from 'lucide-react';
@@ -134,7 +135,7 @@ function CheckoutFlow() {
   }, []);
 
   const { items, subtotal, clearCart, trackCheckoutStarted } = useCart();
-  const { user } = useAuth();
+  const { user, isLoadingAuth } = useAuth();
   const journeyCheckoutTrackedRef = useRef(false);
   const fulfillmentType = 'delivery';
   const isGuestCheckout = !user?.email;
@@ -151,6 +152,10 @@ function CheckoutFlow() {
   const [clientSecret, setClientSecret] = useState(null);
   const [rewardCheckoutSessionId, setRewardCheckoutSessionId] = useState(null);
   const [rewardCheckoutRecovery, setRewardCheckoutRecovery] = useState(null);
+  const [rewardRecoveryState, setRewardRecoveryState] = useState(null);
+  const [rewardRecoveryCheckedOwner, setRewardRecoveryCheckedOwner] = useState(null);
+  const rewardAttemptTrackedRef = useRef(false);
+  const rewardRecoveryOwnerRef = useRef(null);
   const [publishableKey, setPublishableKey] = useState(null);
   const [pendingOrderNumber, setPendingOrderNumber] = useState(null);
   const [paymentTotal, setPaymentTotal] = useState(0);
@@ -465,6 +470,72 @@ function CheckoutFlow() {
     setCheckoutStartLocked(locked);
   };
 
+  const forgetRewardAttempt = () => {
+    if (!rewardAttemptTrackedRef.current) return;
+    if (!user?.id) throw new Error('reward_recovery_owner_unavailable');
+    clearRewardCheckoutAttempt(localStorage, user.id, checkoutIdempotencyKey.current);
+    rewardAttemptTrackedRef.current = false;
+  };
+
+  React.useEffect(() => {
+    if (isLoadingAuth) return;
+    const owner = user?.id || '';
+    // Rechecking auth for the same account must not tear down its active frame.
+    if (rewardRecoveryOwnerRef.current === owner) return;
+    let cancelled = false;
+    let recoveryTimer;
+    const recover = async () => {
+      try {
+        setRewardCheckoutRecovery(null);
+        setRewardRecoveryState(null);
+        setRewardCheckoutSessionId(null);
+        setClientSecret(null);
+        setCheckoutStartLockedSafely(false);
+        setCheckoutStartMessage('');
+        rewardAttemptTrackedRef.current = false;
+        const pending = owner ? readRewardCheckoutAttempt(localStorage, owner) : null;
+        if (!pending) return;
+        rewardAttemptTrackedRef.current = true;
+        checkoutIdempotencyKey.current = pending.attempt_key;
+        setCheckoutStartLockedSafely(true);
+        setCheckoutStartStage(CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN);
+        setCheckoutStartMessage('Checking your earlier reward checkout. Please do not start another order yet.');
+        const response = await Promise.race([
+          base44.functions.invoke('createPaymentIntent', {
+            mode: 'read_reward_checkout_recovery', checkout_idempotency_key: pending.attempt_key,
+          }),
+          new Promise((_, reject) => {
+            recoveryTimer = setTimeout(() => reject(new Error('reward_recovery_timeout')), 15000);
+          }),
+        ]);
+        if (cancelled) return;
+        const payload = response?.data;
+        const recovery = payload?.ok === true && payload.writes_performed === false
+          && ['open', 'complete', 'expired'].includes(payload.state)
+          ? readRewardCheckoutRecovery({ ...payload, ok: false, error_code: 'REWARD_CHECKOUT_NOT_READY' }) : null;
+        if (!recovery) throw new Error('reward_recovery_unconfirmed');
+        setRewardCheckoutRecovery(recovery);
+        setRewardRecoveryState(payload.state);
+        setCheckoutStartMessage(payload.state === 'complete'
+          ? 'Your earlier reward confirmation reached the payment provider. Check your orders for its fulfillment status. Do not place it again.'
+          : 'An earlier reward checkout was found. Check your orders, or cancel that attempt before starting again.');
+      } catch {
+        if (cancelled) return;
+        setCheckoutStartLockedSafely(true);
+        setCheckoutStartStage(CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN);
+        setCheckoutStartMessage('We could not confirm your earlier reward checkout. Check your orders or contact NuVira before starting again.');
+      } finally {
+        clearTimeout(recoveryTimer);
+        if (!cancelled) {
+          rewardRecoveryOwnerRef.current = owner;
+          setRewardRecoveryCheckedOwner(owner);
+        }
+      }
+    };
+    void recover();
+    return () => { cancelled = true; clearTimeout(recoveryTimer); };
+  }, [user?.id, isLoadingAuth]);
+
   const clearCheckoutProcessingWatchdog = () => {
     if (checkoutWatchdogRef.current) {
       clearTimeout(checkoutWatchdogRef.current);
@@ -523,6 +594,10 @@ function CheckoutFlow() {
   };
 
   const showExplicitNoWriteCheckoutFailure = (message) => {
+    try { forgetRewardAttempt(); } catch {
+      showAmbiguousCheckoutStartState();
+      return;
+    }
     clearCheckoutProcessingWatchdog();
     checkoutAttemptInFlightRef.current = false;
     setCheckoutStartLockedSafely(false);
@@ -703,6 +778,14 @@ function CheckoutFlow() {
         ? getMetaCapiAttributionContext()
         : null;
 
+      // Persist before the request can reach Stripe. Only the fully covered
+      // reward candidate uses this no-payment recovery contract. Storage
+      // failure stops preparation; no secret, contact data or cart is saved.
+      if (!isGuestCheckout && activeReward && totalBeforePromotion === 0) {
+        saveRewardCheckoutAttempt(localStorage, user.id, checkoutIdempotencyKey.current);
+        rewardAttemptTrackedRef.current = true;
+      }
+
       const res = await base44.functions.invoke('createPaymentIntent', {
         items,
         subtotal,
@@ -769,6 +852,7 @@ function CheckoutFlow() {
         // A provider replay is not proof of local settlement. The confirmation
         // page polls the owned order and requires the verified reward receipt.
         clearCart();
+        try { forgetRewardAttempt(); } catch { /* The owned order remains the recovery destination. */ }
         localStorage.removeItem('nuvira_pending_checkout_session');
         navigate(`/order-confirmation?order_number=${encodeURIComponent(res.data.orderNumber)}`);
         return;
@@ -781,6 +865,11 @@ function CheckoutFlow() {
       const validPaymentIntent = !rewardSessionResponse && !res.data?.checkoutKind
         && typeof res.data?.clientSecret === 'string' && res.data.clientSecret.startsWith('pi_');
       if (isValidCheckoutStartSuccess(res.data) && (validPaymentIntent || validRewardSession)) {
+        if (validRewardSession) {
+          saveRewardCheckoutAttempt(localStorage, user.id, checkoutIdempotencyKey.current);
+          rewardAttemptTrackedRef.current = true;
+        }
+        else forgetRewardAttempt();
         console.group('[NuVira Checkout] createPaymentIntent Response');
         console.log('Source              : FRESH call to createPaymentIntent (not localStorage/sessionStorage)');
         console.log('orderNumber         :', res.data.orderNumber);
@@ -854,7 +943,13 @@ function CheckoutFlow() {
     }
   };
 
-  if (items.length === 0) {
+  if (isLoadingAuth || rewardRecoveryCheckedOwner !== (user?.id || '')) {
+    return <div className="min-h-[50vh] flex items-center justify-center px-6 text-center" role="status">
+      Checking your secure checkout…
+    </div>;
+  }
+
+  if (items.length === 0 && !checkoutStartLocked) {
     return <Navigate to="/cart" replace />;
   }
 
@@ -1337,6 +1432,7 @@ function CheckoutFlow() {
             clientSecret={clientSecret} publishableKey={publishableKey} checkoutSessionId={rewardCheckoutSessionId}
             onComplete={() => {
               clearCart();
+              try { forgetRewardAttempt(); } catch { /* Continue to the receipt-verified owned order. */ }
               localStorage.removeItem('nuvira_pending_checkout_session');
               navigate(`/order-confirmation?order_number=${encodeURIComponent(pendingOrderNumber)}`);
             }}
@@ -1393,6 +1489,7 @@ function CheckoutFlow() {
                   });
                   if (result.data?.ok !== true || result.data.checkout_session_expired !== true
                     || result.data.reward_reservation_released !== true) throw new Error('cancel_unconfirmed');
+                  forgetRewardAttempt();
                   checkoutIdempotencyKey.current = crypto.randomUUID();
                   setRewardCheckoutSessionId(null);
                   await refreshCheckoutPoints();
@@ -1453,7 +1550,14 @@ function CheckoutFlow() {
                     onClick={() => navigate('/account/orders')}>
                     Check my orders
                   </button>
-                  <button type="button" className="text-left font-semibold underline" disabled={isSubmitting}
+                  {rewardRecoveryState === 'complete' ? <button type="button" className="text-left font-semibold underline"
+                    onClick={() => {
+                      clearCart();
+                      try { forgetRewardAttempt(); } catch { /* Keep the owned order as the recovery destination. */ }
+                      navigate(`/order-confirmation?order_number=${encodeURIComponent(rewardCheckoutRecovery.order_number)}`);
+                    }}>
+                    View this reward order
+                  </button> : <button type="button" className="text-left font-semibold underline" disabled={isSubmitting}
                     onClick={async () => {
                       if (checkoutAttemptInFlightRef.current) return;
                       checkoutAttemptInFlightRef.current = true;
@@ -1461,6 +1565,7 @@ function CheckoutFlow() {
                       try {
                         await cancelRewardCheckoutRecovery(
                           (_name, payload) => base44.functions.invoke('createPaymentIntent', payload), rewardCheckoutRecovery);
+                        forgetRewardAttempt();
                         checkoutIdempotencyKey.current = crypto.randomUUID();
                         setRewardCheckoutRecovery(null);
                         setRewardCheckoutSessionId(null);
@@ -1479,12 +1584,20 @@ function CheckoutFlow() {
                       }
                     }}>
                     {isSubmitting ? 'Checking cancellation…' : 'Cancel this reward checkout'}
-                  </button>
-                  <p>No new checkout will start until cancellation and points release are confirmed.</p>
+                  </button>}
+                  <p>{rewardRecoveryState === 'complete'
+                    ? 'This confirmation must not be repeated. Your order page checks its saved receipt independently.'
+                    : 'No new checkout will start until cancellation and points release are confirmed.'}</p>
                 </div>
               ) : (checkoutStartStage === CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN ||
                 checkoutStartStage === CHECKOUT_START_STAGES.SLOW_PROCESSING) && (
-                <p className="mt-2 font-medium">Please contact NuVira before trying again.</p>
+                <div className="mt-2 space-y-2">
+                  <p className="font-medium">Please contact NuVira before trying again.</p>
+                  {user?.email && <button type="button" className="block font-semibold underline"
+                    onClick={() => navigate('/account/orders')}>Open order history</button>}
+                  <button type="button" className="block font-semibold underline"
+                    onClick={() => navigate('/contact')}>Contact NuVira</button>
+                </div>
               )}
             </div>
           )}

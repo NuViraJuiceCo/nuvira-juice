@@ -2,8 +2,7 @@
   "version": "4",
   "specifiers": {
     "npm:@base44/sdk@0.8.25": "0.8.25",
-    "npm:@base44/sdk@~0.8.44": "0.8.44",
-    "npm:@base44/vite-plugin@^1.0.31": "1.0.31",
+    "npm:@base44/sdk@0.8.48": "0.8.48",
     "npm:@capacitor-firebase/messaging@^8.2.0": "8.3.0_@capacitor+core@8.4.0_firebase@12.14.0__@firebase+app@0.14.13__@firebase+app-types@0.9.5__@firebase+app-compat@0.5.13",
     "npm:@capacitor/android@8.3.4": "8.3.4_@capacitor+core@8.4.0",
     "npm:@capacitor/app@^8.1.0": "8.1.0_@capacitor+core@8.4.0",
@@ -250,22 +249,13 @@
         "uuid"
       ]
     },
-    "@base44/sdk@0.8.44": {
-      "integrity": "sha512-LcjNE6l56gVFgW8QSC2b8aMQuYU3OOq7pc5eUdzNx+6t6WpWGJyZ38owO1rhmODIvk/PF8lUBTeEJn2OjeL2hg==",
+    "@base44/sdk@0.8.48": {
+      "integrity": "sha512-AXDLduglymT+RM6OZu+VFQtsLe++FhXZlvn/I/M2PFOVAC3MTpdmqnm5zL5D0BPK86JBeNpeK5vd9tkKFmAdZQ==",
       "dependencies": [
         "axios@1.20.0",
         "partysocket",
         "socket.io-client",
         "uuid"
-      ]
-    },
-    "@base44/vite-plugin@1.0.31": {
-      "integrity": "sha512-g4B4AoEyl5MQea3PSVLiYJgQSO5klfRfFSpntr2zWEw5m1oRrsNno7zsumreB18G6L++g/GBcX8ioPYUpMdbNA==",
-      "dependencies": [
-        "@babel/generator",
-        "@babel/parser",
-        "@babel/traverse",
-        "@babel/types"
       ]
     },
     "@capacitor-firebase/messaging@8.3.0_@capacitor+core@8.4.0_firebase@12.14.0__@firebase+app@0.14.13__@firebase+app-types@0.9.5__@firebase+app-compat@0.5.13": {
@@ -5643,10 +5633,11 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
-        "npm:@base44/sdk@~0.8.44",
-        "npm:@base44/vite-plugin@^1.0.31",
+        "npm:@base44/sdk@~0.8.48",
+        "npm:@base44/vite-plugin@^1.0.35",
         "npm:@capacitor-firebase/messaging@^8.2.0",
         "npm:@capacitor/android@8.3.4",
+        "npm:@capacitor/app-launcher@8.0.1",
         "npm:@capacitor/app@^8.1.0",
         "npm:@capacitor/browser@8.0.4",
         "npm:@capacitor/cli@^8.3.4",

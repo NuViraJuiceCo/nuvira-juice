@@ -2,7 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from './firstOrderEligibility.js';
 import { loadRewardCheckoutQuote, priceRewardPayment, reservePaymentReward, RewardCheckoutError, REWARD_CHECKOUT_REVISION } from './rewardCheckout.js';
-import { prepareNoPaymentCheckout, cancelNoPaymentCheckout } from './noPaymentCheckout.js';
+import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, readNoPaymentCheckoutRecovery } from './noPaymentCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const CHECKOUT_RECORD_REVISION = '2026-09-08.reward-session-preparation-v2';
@@ -973,6 +973,19 @@ Deno.serve(async (req) => {
       return Response.json({ ok: true, mode, checkout_record_revision: CHECKOUT_RECORD_REVISION,
         reward_quote_revision: REWARD_CHECKOUT_REVISION, reward_payment_integration_complete: false,
         writes_performed: false, provider_calls_performed: false, payment_intent_created: false, order_created: false });
+    }
+
+    if (mode === 'read_reward_checkout_recovery') {
+      if (!authenticatedUser?.email || internalSandboxCheckout) return Response.json({ error: 'forbidden' }, { status: 403 });
+      try {
+        return Response.json(await readNoPaymentCheckoutRecovery({ base44, stripe,
+          customerEmail: authenticatedUser.email, attemptKey: requestBody.checkout_idempotency_key }));
+      } catch {
+        return Response.json({ ok: false, error_code: 'REWARD_RECOVERY_UNCONFIRMED',
+          error: 'We could not confirm this earlier checkout. Check your orders or contact NuVira before starting again.',
+          writes_performed: false, payment_confirmation_attempted: false,
+          reward_reservation_released: false }, { status: 409 });
+      }
     }
 
     if (mode === 'cancel_reward_checkout') {

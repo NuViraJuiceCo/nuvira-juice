@@ -108,6 +108,7 @@ function cancelFixture(result, throwing = false) {
   const calls = []; const ref = { current: false }; const key = { current: 'old-attempt' };
   const callback = vm.runInNewContext(`(${attribute.initializer.expression.getText(tree)})`, {
     rewardCheckoutSessionId: sessionId, checkoutAttemptInFlightRef: ref, checkoutIdempotencyKey: key,
+    forgetRewardAttempt: () => calls.push('forget-attempt'),
     setIsSubmitting: value => calls.push(`submitting:${value}`),
     setRewardCheckoutSessionId: value => calls.push(`session:${value}`),
     setClientSecret: value => calls.push(`secret:${value}`),
@@ -127,7 +128,7 @@ function cancelFixture(result, throwing = false) {
 await test('actual edit callback unlocks only after confirmed expiry and points release', async () => {
   const f = cancelFixture({ ok: true, checkout_session_expired: true, reward_reservation_released: true });
   await f.callback(); assert.equal(f.key.current, 'new-attempt'); assert.equal(f.ref.current, false);
-  assert.deepEqual(f.calls, ['submitting:true', 'cancel', 'session:null', 'refresh-points', 'submitting:false', 'secret:null', 'order:null', 'schedule:null']);
+  assert.deepEqual(f.calls, ['submitting:true', 'cancel', 'forget-attempt', 'session:null', 'refresh-points', 'submitting:false', 'secret:null', 'order:null', 'schedule:null']);
 });
 for (const [name, result, throwing] of [
   ['provider/network failure', null, true], ['not expired', { ok: true, reward_reservation_released: true }, false],
@@ -159,6 +160,7 @@ function recoveryFixture(result, throwing = false) {
   const calls = []; const ref = { current: false }; const key = { current: 'old-attempt' };
   const callback = vm.runInNewContext(`(${attribute.initializer.expression.getText(tree)})`, {
     rewardCheckoutRecovery: recovery, checkoutAttemptInFlightRef: ref, checkoutIdempotencyKey: key,
+    forgetRewardAttempt: () => calls.push('forget-attempt'),
     cancelRewardCheckoutRecovery, crypto: { randomUUID: () => 'new-attempt' }, CHECKOUT_START_STAGES: { IDLE: 'idle' },
     setIsSubmitting: value => calls.push(`submitting:${value}`),
     setRewardCheckoutRecovery: value => calls.push(`recovery:${value}`),
@@ -179,7 +181,7 @@ function recoveryFixture(result, throwing = false) {
 await test('actual recovery callback releases the checkout lock only after exact cancellation proof', async () => {
   const f = recoveryFixture({ ok: true, checkout_session_expired: true, reward_reservation_released: true });
   await f.callback(); assert.equal(f.key.current, 'new-attempt'); assert.equal(f.ref.current, false);
-  assert.deepEqual(f.calls, ['submitting:true', 'cancel', 'recovery:null', 'session:null', 'secret:null', 'order:null',
+  assert.deepEqual(f.calls, ['submitting:true', 'cancel', 'forget-attempt', 'recovery:null', 'session:null', 'secret:null', 'order:null',
     'schedule:null', 'locked:false', 'stage:idle', 'message:', 'refresh-points', 'submitting:false']);
 });
 for (const [name, result, throwing] of [
