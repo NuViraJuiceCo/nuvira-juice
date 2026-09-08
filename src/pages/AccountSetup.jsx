@@ -20,8 +20,10 @@ import {
   splitGuestCustomerName,
 } from '@/lib/guestLoyaltyActivation';
 import { normalizeReturnRoute } from '@/lib/nativeAuthRedirect';
+import { onboardingQueryOptions } from '@/lib/onboardingQuery';
+import { BRAND_IMAGES } from '@/lib/brandImages';
 
-const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
+const LOGO_URL = BRAND_IMAGES.wordmark;
 
 export default function AccountSetup() {
   const { user, isLoadingAuth } = useAuth();
@@ -51,16 +53,12 @@ export default function AccountSetup() {
   // Fetch existing profile if available
   useEffect(() => {
     if (!user?.email || isLoadingAuth) return;
+    let active = true;
 
     const fetchProfile = async () => {
       try {
-        const profiles = await base44.entities.UserProfile.filter(
-          { customer_email: user.email },
-          undefined,
-          1
-        );
-        if (profiles.length > 0) {
-          const profile = profiles[0];
+        const profile = await queryClient.ensureQueryData(onboardingQueryOptions(user.email));
+        if (active && profile) {
           setFormData(prev => ({
             ...prev,
             first_name: prev.first_name || profile.first_name || '',
@@ -82,7 +80,8 @@ export default function AccountSetup() {
     };
 
     fetchProfile();
-  }, [user?.email, isLoadingAuth]);
+    return () => { active = false; };
+  }, [user?.email, isLoadingAuth, queryClient]);
 
   React.useEffect(() => {
     if (!isLoadingAuth && !user) {

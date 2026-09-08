@@ -236,6 +236,8 @@ const formImports = {
   '@/lib/nativeAuthRedirect': { beginNativeSignInAttempt: operation.beginAuthOperation },
   '@/lib/authOperation': operation,
   '@/lib/sessionCredentials': { createSessionCredentials },
+  '@/lib/startupPages': { preloadStartupPage: async () => true },
+  '@/lib/brandImages': { BRAND_IMAGES: { wordmark: '/images/brand/nuvira-wordmark.webp' } },
   '@/lib/AuthContext': { useAuth: () => ({ isAuthenticated: false, user: null }) },
   '@/lib/authReturnTo': { sanitizeAuthReturnRoute: () => '/account' },
   '@/components/SEO': { default: 'SEO' },

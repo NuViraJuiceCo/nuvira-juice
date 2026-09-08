@@ -29,6 +29,8 @@ import {
 } from '@/lib/nativeAuthRedirect';
 import { isCurrentAuthOperation } from '@/lib/authOperation';
 import { createSessionCredentials } from '@/lib/sessionCredentials';
+import { preloadStartupPage } from '@/lib/startupPages';
+import { BRAND_IMAGES } from '@/lib/brandImages';
 import { useAuth } from '@/lib/AuthContext';
 import { sanitizeAuthReturnRoute } from '@/lib/authReturnTo';
 import SEO from '@/components/SEO';
@@ -37,7 +39,7 @@ import {
   readGuestLoyaltyActivationContext,
 } from '@/lib/guestLoyaltyActivation';
 
-const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
+const LOGO_URL = BRAND_IMAGES.wordmark;
 const NativeWebAuth = registerPlugin('NativeWebAuth');
 const IS_NATIVE_PLATFORM = Capacitor.isNativePlatform();
 const HAS_NATIVE_WEB_AUTH = IS_NATIVE_PLATFORM && Capacitor.isPluginAvailable('NativeWebAuth');
@@ -90,6 +92,10 @@ export default function NativeLogin() {
   const normalizedEmail = email.trim().toLowerCase();
   const isRegistering = mode === 'register';
   const isVerifying = mode === 'verify';
+
+  useEffect(() => {
+    if (IS_NATIVE_PLATFORM) void preloadStartupPage(returnTo);
+  }, [returnTo]);
 
   const switchToVerifyMode = (message = 'Enter the verification code from your email.') => {
     setMode('verify');
