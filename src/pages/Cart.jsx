@@ -18,11 +18,12 @@ import FreeProductPicker from '@/components/FreeProductPicker';
 import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewCart } from '@/lib/googleAnalytics';
 import { orderMinimumStatus } from '@/lib/orderMinimums';
+import { isEarnedRewardItem } from '@/lib/rewardSelection';
 
 export default function Cart() {
-  const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem } = useCart();
+  const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem, clearEarnedRewardItems } = useCart();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isLoadingAuth } = useAuth();
   const analyticsCartSignatureRef = React.useRef('');
 
   useEffect(() => {
@@ -76,31 +77,58 @@ export default function Cart() {
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [activeReward, setActiveReward] = useState(null);
   const [isValidatingReward, setIsValidatingReward] = useState(false);
+  const rewardMutationRef = React.useRef(0);
   const { rewardInCart, addBirthdayReward, removeBirthdayReward } = useBirthdayReward(items, addItem, removeItem);
 
   // On mount and user change, validate active reward against backend
   useEffect(() => {
+    if (isLoadingAuth) return;
+    let cancelled = false;
     const validateReward = async () => {
       if (!user?.email) {
         setActiveReward(null);
+        setIsValidatingReward(false);
+        clearEarnedRewardItems();
         return;
       }
       setIsValidatingReward(true);
       const stored = getStoredActiveReward(user.email);
       if (stored) {
+        const mutationVersion = rewardMutationRef.current;
         const validated = await validateActiveReward(stored, user.email);
+        if (cancelled || mutationVersion !== rewardMutationRef.current) return;
         if (validated) {
+          localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(validated));
           setActiveReward(validated);
         } else {
           // Reward is invalid, clear it
           localStorage.removeItem(`activeReward_${user.email}`);
           setActiveReward(null);
+          clearEarnedRewardItems();
         }
+      } else {
+        setActiveReward(null);
+        clearEarnedRewardItems();
       }
       setIsValidatingReward(false);
     };
     validateReward();
-  }, [user?.email]);
+    return () => { cancelled = true; };
+  }, [user?.email, isLoadingAuth, clearEarnedRewardItems]);
+
+  const handleRemoveCartItem = (item) => {
+    if (isEarnedRewardItem(item)) {
+      // Removing an earned product also removes its selected points cost.
+      // A late validation response must not resurrect the removed reward.
+      rewardMutationRef.current += 1;
+      if (user?.email) localStorage.removeItem(`activeReward_${user.email}`);
+      setActiveReward(null);
+      setIsValidatingReward(false);
+      clearEarnedRewardItems();
+      return;
+    }
+    removeItem(item.cart_line_key || item.product_id);
+  };
 
   const handleBirthdayProductSelect = (product) => {
     addItem({ ...product, id: '__birthday_reward__', price: 0, title: `🎂 ${product.title} (Free)` }, 1, { isBirthdayReward: true });
@@ -271,10 +299,12 @@ export default function Cart() {
                       <p className="text-sm font-bold mt-1 text-primary">${(item.price * item.quantity).toFixed(2)}</p>
                     </div>
                     <div className="flex flex-col items-end justify-between gap-2">
-                      <button type="button" onClick={() => removeItem(item.cart_line_key || item.product_id)} aria-label={`Remove ${item.title} from cart`} className="p-1 hover:opacity-60 transition-opacity">
+                      <button type="button" onClick={() => handleRemoveCartItem(item)} aria-label={`Remove ${item.title} from cart`} className="p-1 hover:opacity-60 transition-opacity">
                         <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                       </button>
-                      <div className="flex items-center gap-1.5 bg-secondary rounded-lg px-2 py-1.5">
+                      {isEarnedRewardItem(item) ? (
+                        <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-1.5 rounded-lg">1 earned item</span>
+                      ) : <div className="flex items-center gap-1.5 bg-secondary rounded-lg px-2 py-1.5">
                         <button type="button" onClick={() => updateQuantity(item.cart_line_key || item.product_id, item.quantity - 1)} aria-label={`Decrease ${item.title} quantity`} className="hover:opacity-60">
                           <Minus className="w-3 h-3" />
                         </button>
@@ -282,7 +312,7 @@ export default function Cart() {
                         <button type="button" onClick={() => updateQuantity(item.cart_line_key || item.product_id, item.quantity + 1)} aria-label={`Increase ${item.title} quantity`} className="hover:opacity-60">
                           <Plus className="w-3 h-3" />
                         </button>
-                      </div>
+                      </div>}
                     </div>
                   </div>
 

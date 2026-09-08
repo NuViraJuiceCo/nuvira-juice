@@ -150,8 +150,8 @@ export default function DiscountCodes() {
       toast.error('The end time must be after the start time.');
       return;
     }
-    if (form.first_order_only && (!form.once_per_customer || !endsAt)) {
-      toast.error('First-order offers require one use per customer and an end date.');
+    if (form.first_order_only && !form.once_per_customer) {
+      toast.error('First-order offers require one use per customer.');
       return;
     }
     if (codes.some((item) => item.id !== editingId && normalizeCode(item.code) === code)) {
@@ -317,7 +317,7 @@ export default function DiscountCodes() {
             <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
               <div>
                 <p className="text-sm font-medium text-foreground">First order only</p>
-                <p className="text-xs text-muted-foreground">Guests and members without a previous paid purchase. Requires an end date. Cannot combine with other discounts or rewards.</p>
+                <p className="text-xs text-muted-foreground">Guests and members without a previous paid purchase. Leave the end date blank for an ongoing offer. Cannot combine with other discounts or rewards.</p>
               </div>
               <Switch aria-label="First order only" checked={form.first_order_only} onCheckedChange={(first_order_only) => setForm((prev) => ({ ...prev, first_order_only, once_per_customer: first_order_only || prev.once_per_customer }))} />
             </div>

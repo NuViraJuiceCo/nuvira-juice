@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: reward-selection-validation-20260908 (read-only revalidation and canonical selection).
 // Bundle revision: first-order-offer-20260907 (opt-in policy; no offer activation).
 // Bundle revision: g174-guest-address-20260906 (public lookup only; account auth unchanged).
 // Bundle revision: g172-guest-loyalty-activation-20260902.

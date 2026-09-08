@@ -107,7 +107,7 @@ function validatePayload(body: any) {
   const startsAt = isoDate(body.starts_at);
   const endsAt = isoDate(body.ends_at);
   if (body.first_order_only !== undefined && typeof body.first_order_only !== 'boolean') throw new Error('invalid_first_order_policy');
-  if (!firstOrderOfferIsConfigured({ ...body, ends_at: endsAt })) throw new Error('invalid_first_order_policy_requires_one_use_and_end');
+  if (!firstOrderOfferIsConfigured({ ...body, ends_at: endsAt })) throw new Error('invalid_first_order_policy_requires_one_use');
 
   if (!/^[A-Z0-9_-]{3,32}$/.test(normalizedCode)) throw new Error('invalid_discount_code');
   if (!displayName) throw new Error('display_name_required');
@@ -196,7 +196,7 @@ export default async function handler(req: Request) {
     if (active) {
       const rows = await base44.asServiceRole.entities.DiscountCode.filter({ id: recordId }, '-created_date', 1);
       if (!rows[0]) throw new Error('invalid_discount_code_id');
-      if (!firstOrderOfferIsConfigured(rows[0])) throw new Error('invalid_first_order_policy_requires_one_use_and_end');
+      if (!firstOrderOfferIsConfigured(rows[0])) throw new Error('invalid_first_order_policy_requires_one_use');
     }
     const commandState = await createCommand(base44, user, body, 'discount_code_toggle_active', recordId);
     if (commandState.replay) return Response.json(commandState.replay, { status: commandState.replay.error ? 409 : 200 });

@@ -19,12 +19,20 @@ const checks = [
     assert.match(analytics, /REORDER_SOURCES = new Set\(\['order_history'\]\)/);
   }],
   ['reward measurement runs after the customer-visible state change', () => {
-    const standardApply = rewards.indexOf("trackGoogleRetentionEvent('reward_apply', { reward_type: reward.reward_type })");
-    const freeApply = rewards.indexOf("trackGoogleRetentionEvent('reward_apply', { reward_type: rewardType })");
-    const remove = rewards.indexOf("trackGoogleRetentionEvent('reward_remove', { reward_type: rewardType })");
-    assert.ok(standardApply > rewards.indexOf('setActiveReward(r);'));
-    assert.ok(freeApply > rewards.indexOf('setPendingReward(null);'));
-    assert.ok(remove > rewards.indexOf('setActiveReward(null);', rewards.indexOf('const handleRemoveReward')));
+    const apply = rewards.slice(rewards.indexOf('const handleApplyReward ='), rewards.indexOf('const handleFreeProductSelect ='));
+    const free = rewards.slice(rewards.indexOf('const handleFreeProductSelect ='), rewards.indexOf('const handleRemoveReward ='));
+    const remove = rewards.slice(rewards.indexOf('const handleRemoveReward ='));
+    for (const handler of [apply, free]) {
+      const validation = handler.indexOf('await selectActiveReward(');
+      const state = handler.indexOf('setActiveReward(selected);');
+      const measurement = handler.indexOf("trackGoogleRetentionEvent('reward_apply', { reward_type: selected.reward_type })");
+      assert.ok(validation >= 0 && state > validation && measurement > state);
+    }
+    assert.ok(free.indexOf('setPendingReward(null);') >= 0);
+    assert.ok(free.indexOf("trackGoogleRetentionEvent('reward_apply'") > free.indexOf('setPendingReward(null);'));
+    const removedState = remove.indexOf('setActiveReward(null);');
+    assert.ok(removedState >= 0);
+    assert.ok(remove.indexOf("trackGoogleRetentionEvent('reward_remove', { reward_type: rewardType })") > removedState);
   }],
   ['reorder measurement runs after cart additions and excludes order identity', () => {
     const handler = orders.slice(orders.indexOf('const handleReorder'), orders.indexOf('return (', orders.indexOf('const handleReorder')));

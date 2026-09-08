@@ -1,10 +1,16 @@
-# Limited-time first-order offer: implementation and release boundary
+# Ongoing first-order offer: implementation and release boundary
+
+## September 8 current status (supersedes historical audit notes below)
+
+WELCOME10 remains uncreated/inactive. The ongoing no-expiration policy passes 49 focused tests, and reward-selection safety passes 49 cases. The combined critical suite has 123 harnesses; final rerun evidence is stored outside the repository. Selection defects described in the historical audit below are corrected locally; full checkout pricing/redemption/reservation and deployment validation are not complete. No source merge, Base44/site/schema/Appflow release, paid provider event, customer balance change or ad publication occurred. The Base44 published-runtime promotion incident remains an explicit release boundary, not permission for a broad publish.
+
+C01 is the selected combined carousel, with no dollar-price or September-deadline copy. Six matching square/landscape graphics were uploaded; only the three square variants were assigned. Incompatible placements and letterboxed Facebook Reels were excluded from the draft ad set; C01 now reports compatibility with all selected placements. The $20/day / 35-mile draft setup remains unchanged. See earned-reward-checkout-contract-20260907.md for the exact saved copy and current exclusions. Older creative/placement observations below are historical, not current readiness claims.
 
 ## Owner-approved commercial scope
 
 - 10% off a customer's first purchase, for eligible guests and members.
-- Available through September 30, 2026, America/Chicago. Stop new redemptions at **2026-10-01T05:00:00.000Z**, exclusive (midnight October 1 Central).
-- Not evergreen. Do not invent urgency before a real activation date.
+- Owner superseded the earlier September cutoff: WELCOME10 runs year-round with no scheduled expiration. Do not invent seasonal urgency.
+- The NuVira Trio is one OASIS, one AURA and one RE-NU for $36. WELCOME10 makes the merchandise price $32.40, before delivery and applicable tax. The live product page and add-to-cart label were read back at $36; source public catalog also uses $36. No price mutation was needed.
 - Preserve NUVIRASUMMER and its existing signup/next-purchase promise. No existing offer is reclassified by this patch.
 - Proposed separate code: WELCOME10. It was absent from the live admin list at inspection. No record has been created, activated, or edited by this change.
 - Ad and offer remain unpublished/inactive until runtime validation and creative/Meta validation finish. Existing Traffic spend and approved additional $20/day Sales / 35-mile plan are unchanged.
@@ -13,7 +19,7 @@
 
 Fresh independent clone of canonical main 38ca788d794fcc8a36d2b47d8a38af9ff524a76b. The older local clone's packfile issue was avoided; no repair/reset/overwrite was attempted.
 
-Changes are opt-in via DiscountCode.first_order_only, default false. New policy requires once_per_customer plus finite ends_at. Old admin clients omitting the new field preserve its existing value. New UI exposes the choice and requires the end date.
+Changes are opt-in via DiscountCode.first_order_only, default false. New policy requires once_per_customer. An end date is optional for ongoing offers; if supplied, it must be valid. Old admin clients omitting the new field preserve its existing value. The UI explicitly explains that a blank end date means an ongoing offer.
 
 Three existing function packages own the implementation:
 - createPaymentIntent: discount validation and standard payment-intent path.
@@ -45,7 +51,7 @@ Each package contains an identical firstOrderEligibility.js helper to avoid cros
 - Critical regression runner: final run passed 121/121 harnesses with writes_performed=false and provider_calls_performed=false.
 - Typecheck, lint, diagnostic baseline, production build with the explicit NuVira app identity, and diff checks passed.
 - No live first-order validation, payment, confirmation email, loyalty, inventory, fulfillment, Google/Meta purchase event, Appflow or physical device evidence is asserted here.
-- Final focused suite: 45 tests, including exclusive midnight October 1 Central cutoff in both standard and route-review resolvers and zero-dollar reward non-stacking.
+- Updated focused suite: 47 tests, including ongoing eligibility across month/year boundaries, optional explicit cutoff behavior, and zero-dollar reward non-stacking. Current guest/member validation fixtures have no expiration.
 - Final typecheck, full lint, diagnostic baseline, explicit-app production build, staged secret scan (1,225 text files; zero findings) and diff checks passed. These are local-source gates, not release/runtime approval.
 
 ## Required coordinated activation
@@ -54,23 +60,23 @@ Each package contains an identical firstOrderEligibility.js helper to avoid cros
 2. PR/CI and fresh canonical/publisher conflict checks; no older source snapshot.
 3. Scoped schema and existing-function package deployment only, including parent gateways; verify actual published runtime, not just CLI success or a source pull. Stop on a version mismatch. Do not use a broad publish to bypass the Base44 help-center issue.
 4. Deploy frontend from that exact approved source and coordinate Appflow for shared code, keeping native/store claims separate.
-5. Create the separate offer inactive, 10%, first_order_only=true, once_per_customer=true, expiry 2026-10-01T05:00:00.000Z. No minimum override and no delivery-fee discount.
+5. Create the separate offer inactive, 10%, first_order_only=true, once_per_customer=true, ends_at=null. No minimum override and no delivery-fee discount.
 6. Verify controlled guest/member first-order cases and returning-customer rejection; expiration boundary, no-stacking, route review, current checkout UI and existing-code compatibility. No real customer test or charge without separate authorization.
-7. Verify the real offer code before adding it to the Meta drafts. Schedule the offer-bearing creatives to stop no later than the expiry in the ad account timezone. No automatic change to the existing Traffic campaign.
+7. Verify the real offer code before publishing the Meta drafts. There is no offer-driven September stop date. No automatic change to the existing Traffic campaign or ad budgets.
 8. Clear Meta #2446880 WhatsApp validation without linking WhatsApp, resolve C01 Facebook Reels framing/placement strategy, inspect actual previews, and retain owner image approval. No ad publication until these gates pass.
 
-## Draft copy direction, not saved to Meta
+## Draft copy direction (superseded by the combined carousel below)
 
 Primary hook: "Your first taste of NuVira, with 10% off."
 
 Supporting copy:
 "Cold-pressed flavor. Real ingredients. Delivered locally.
 Discover OASIS, AURA and RE-NU, then choose the blends that speak to you.
-Take 10% off your first order with WELCOME10 through September 30.
-Three-bottle minimum. Three featured $13 juices are $35.10 after the offer, before delivery and applicable tax.
+Take 10% off your first order with WELCOME10.
+The NuVira Trio is $36, or $32.40 with the first-order offer, before delivery and applicable tax.
 Check your address and available delivery dates at checkout. First order only; cannot combine with other discounts or rewards."
 
-Do not publish WELCOME10 as a working code until its live configuration and checkout behavior have been verified. Keep product-specific card images and URLs matched. The $35.10 example applies to three individual $13 juices, not the differently priced Trio bundle.
+Do not publish WELCOME10 as a working code until its live configuration and checkout behavior have been verified. Keep product-specific card images and URLs matched. Distinguish the $36 Trio from three separately purchased $13 bottles.
 
 ## Earned-reward promotion: audit hold
 
@@ -95,7 +101,7 @@ Before using free-product claims, verify/fix the full selection -> authenticated
 
 Recommended promotional hierarchy, pending those gates:
 
-- Acquisition: the approved 10% first-order offer through September 30.
+- Acquisition: the approved ongoing 10% first-order offer with no scheduled expiration.
 - Retention: earned rewards as the supporting benefit, not another discount stacked on the first-order code.
 - Lifecycle: a factual reminder when a customer actually has enough points, showing the specific unlocked reward. Do not send prematurely or imply automatic free delivery/order.
 - Additional future test: a narrowly timed bonus-points offer only after reward redemption and contribution margins are verified; do not launch several incentives at once.

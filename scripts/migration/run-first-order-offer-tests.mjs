@@ -19,7 +19,7 @@ const adminPath = 'base44/functions/getAdminOperationsDashboardSummary/handlers/
 const email = 'buyer@example.test';
 const offer = { code: 'FIRST10_QA', display_name: 'Synthetic first order', active: true,
   discount_type: 'percent', discount_kind: 'promotion', discount_value: 10,
-  first_order_only: true, once_per_customer: true, ends_at: '2099-09-25T05:00:00.000Z' };
+  first_order_only: true, once_per_customer: true, ends_at: null };
 function backend(data = {}, user = null) {
   const calls = [];
   const writes = [];
@@ -78,9 +78,10 @@ await test('existing offers require no new history reads or expiry', async () =>
   assert.equal(policy.firstOrderOfferIsConfigured({ code: 'NUVIRASUMMER' }), true);
   assert.equal(await policy.firstOrderEligibilityBlock({}, { code: 'NUVIRASUMMER' }, email), null);
 });
-await test('first-order offers require one-use enforcement and finite expiration', () => {
+await test('ongoing first-order offers require one-use enforcement, with valid optional expiration', () => {
   assert.equal(policy.firstOrderOfferIsConfigured(offer), true);
-  for (const value of ['', 'invalid', null]) assert.equal(policy.firstOrderOfferIsConfigured({ ...offer, ends_at: value }), false);
+  for (const value of ['', null, undefined, '2099-01-01T00:00:00.000Z']) assert.equal(policy.firstOrderOfferIsConfigured({ ...offer, ends_at: value }), true);
+  assert.equal(policy.firstOrderOfferIsConfigured({ ...offer, ends_at: 'invalid' }), false);
   assert.equal(policy.firstOrderOfferIsConfigured({ ...offer, once_per_customer: false }), false);
 });
 await test('guest without paid history is eligible without account or writes', async () => {
@@ -189,7 +190,7 @@ for (const [path, normalizer, resolver] of [
   [piPath, 'normalizePromotionCode', 'resolvePromotion'],
   [zonePath, 'normalizeDiscountCode', 'resolveDiscount'],
 ]) {
-  await test(resolver + ' stops the September offer at midnight October 1 Central, exclusively', async () => {
+  await test(resolver + ' honors an optional explicit deadline, exclusively', async () => {
     const source = read(path);
     const context = { firstOrderOfferIsConfigured: policy.firstOrderOfferIsConfigured };
     vm.runInNewContext(source.slice(source.indexOf('function ' + normalizer), source.indexOf('function normalizeNamePart')) +
@@ -203,6 +204,17 @@ for (const [path, normalizer, resolver] of [
     const legacy = backend({ DiscountCode: [{ ...seasonal, first_order_only: false }] });
     assert.equal((await context.resolve(legacy, offer.code, 39, new Date(cutoff))).amount, 3.9);
   });
+  await test(resolver + ' keeps an ongoing first-order offer available across month and year boundaries', async () => {
+    const source = read(path);
+    const context = { firstOrderOfferIsConfigured: policy.firstOrderOfferIsConfigured };
+    vm.runInNewContext(source.slice(source.indexOf('function ' + normalizer), source.indexOf('function normalizeNamePart')) +
+      '\nthis.resolve = ' + resolver + ';', context);
+    for (const instant of ['2026-09-30T23:59:59.000Z', '2026-10-01T05:00:00.000Z', '2027-01-01T06:00:00.000Z', '2099-01-01T00:00:00.000Z']) {
+      const db = backend({ DiscountCode: [offer] });
+      assert.equal((await context.resolve(db, offer.code, 39, new Date(instant))).amount, 3.9);
+      assert.equal(db.writes.length, 0);
+    }
+  });
 }
 for (const member of [false, true]) {
   await test((member ? 'member' : 'guest') + ' real validation handler accepts eligible 10% offer with $3.90 savings and no writes', async () => {
@@ -215,12 +227,22 @@ for (const member of [false, true]) {
     assert.equal(payload.discount.first_order_only, true);
     assert.equal(db.writes.length, 0);
   });
+  await test((member ? 'member' : 'guest') + ' Trio example is $36 less $3.60, not three separate $13 bottles', async () => {
+    const db = backend({ DiscountCode: [offer] }, member ? { email, role: 'user' } : null);
+    const response = await loadHandler(piPath, db)(request({ mode: 'validate_discount_code', discount_code: offer.code,
+      eligible_subtotal: 36, customer_email: email, guest_checkout: !member }));
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.discount.amount, 3.6);
+    assert.equal(Math.round((36 - payload.discount.amount) * 100), 3240);
+    assert.equal(db.writes.length, 0);
+  });
 }
-await test('actual validation rejects prior buyer, expiry, missing expiry and stacking', async () => {
+await test('actual validation rejects prior buyer, expiry, malformed expiry and stacking', async () => {
   for (const [data, payload, expected] of [
     [{ Order: [paid()], DiscountCode: [offer] }, {}, 409],
     [{ DiscountCode: [{ ...offer, ends_at: '2020-01-01T00:00:00Z' }] }, {}, 400],
-    [{ DiscountCode: [{ ...offer, ends_at: '' }] }, {}, 400],
+    [{ DiscountCode: [{ ...offer, ends_at: 'invalid' }] }, {}, 400],
     [{ DiscountCode: [offer] }, { points_discount: 1 }, 400],
     [{ DiscountCode: [offer] }, { active_reward: { reward_type: 'double_points' } }, 400],
     [{ DiscountCode: [offer] }, { items: [{ product_id: '__free_reward_synthetic__' }] }, 400],
@@ -232,14 +254,14 @@ await test('actual validation rejects prior buyer, expiry, missing expiry and st
     assert.equal(db.writes.length, 0);
   }
 });
-await test('admin rejects an unbounded first-order offer before writing', async () => {
+await test('admin rejects repeated-use first-order offers before writing', async () => {
   const db = backend({}, { email: 'admin@example.test', role: 'admin' });
-  const result = await loadHandler(adminPath, db)(request({ ...offer, ends_at: '', action: 'upsert',
+  const result = await loadHandler(adminPath, db)(request({ ...offer, once_per_customer: false, action: 'upsert',
     request_id: 'qa-unbounded', confirmation: 'SAVE FIRST10_QA' }));
   assert.equal(result.status, 400);
   assert.equal(db.writes.length, 0);
 });
-await test('admin can save a bounded inactive offer; no real record is created', async () => {
+await test('admin can save an ongoing inactive offer; no real record is created', async () => {
   const db = backend({}, { email: 'admin@example.test', role: 'admin' });
   const result = await loadHandler(adminPath, db)(request({ ...offer, active: false, action: 'upsert',
     request_id: 'qa-draft', confirmation: 'SAVE FIRST10_QA' }));
@@ -247,6 +269,7 @@ await test('admin can save a bounded inactive offer; no real record is created',
   const payload = await result.json();
   assert.equal(payload.row.first_order_only, true);
   assert.equal(payload.row.active, false);
+  assert.equal(payload.row.ends_at, null);
 });
 await test('old admin client cannot silently erase first-order restriction', async () => {
   const stored = { id: 'offer1', ...offer };
@@ -258,7 +281,7 @@ await test('old admin client cannot silently erase first-order restriction', asy
   assert.equal((await response.json()).row.first_order_only, true);
 });
 await test('old admin toggle cannot activate an unsafe first-order record', async () => {
-  const db = backend({ DiscountCode: [{ ...offer, id: 'unsafe', ends_at: '', active: false }] }, { email: 'admin@example.test', role: 'admin' });
+  const db = backend({ DiscountCode: [{ ...offer, id: 'unsafe', once_per_customer: false, active: false }] }, { email: 'admin@example.test', role: 'admin' });
   const result = await loadHandler(adminPath, db)(request({ action: 'toggle_active', discount_code_id: 'unsafe',
     active: true, request_id: 'qa-toggle', confirmation: 'SET unsafe ACTIVE' }));
   assert.equal(result.status, 400);

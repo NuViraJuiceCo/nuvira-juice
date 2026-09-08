@@ -70,6 +70,15 @@
           "reward_type": {
             "type": "string"
           },
+          "points_required": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Canonical catalog cost at selection; selection itself does not debit points."
+          },
+          "status": {
+            "type": "string",
+            "description": "Selection lifecycle, including selected_pending_checkout; not proof of completed redemption."
+          },
           "claimed_at": {
             "type": "string"
           }

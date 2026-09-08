@@ -15,6 +15,11 @@
       "type": "string",
       "enum": [
         "free_bottle",
+        "free_shot",
+        "double_points",
+        "discount_10pct",
+        "bundle_upgrade",
+        "vip_box",
         "discount",
         "free_delivery",
         "bundle",

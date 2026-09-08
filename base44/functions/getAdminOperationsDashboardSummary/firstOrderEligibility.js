@@ -3,8 +3,11 @@
 // Run run-first-order-offer-tests.mjs to enforce cross-package parity.
 export function firstOrderOfferIsConfigured(discount) {
   if (discount?.first_order_only !== true) return true;
+  const end = String(discount.ends_at ?? '').trim();
+  // First-order eligibility does not require a seasonal deadline. An optional
+  // deadline must still be valid; omission means ongoing, never unlimited uses.
   return discount.once_per_customer === true &&
-    Number.isFinite(Date.parse(String(discount.ends_at || '')));
+    (!end || Number.isFinite(Date.parse(end)));
 }
 
 function normalizedEmail(value) {
