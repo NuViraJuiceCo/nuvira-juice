@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
 import * as policy from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
+import * as rewardCheckout from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
 
 let passed = 0;
 async function test(name, run) {
@@ -56,6 +57,7 @@ function loadHandler(path, db, env = {}, stripeMock = null) {
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('firstOrderEligibility')) return policy;
+      if (name.includes('rewardCheckout')) return rewardCheckout;
       if (name.includes('stripe')) return class {
         constructor() {
           this.paymentIntents = stripeMock || new Proxy({}, { get: () => async () => { throw new Error('Provider calls forbidden'); } });

@@ -47,7 +47,7 @@
     "first_order_only": {
       "type": "boolean",
       "default": false,
-      "description": "Opt-in first-purchase restriction for guests and members. Requires one use per customer and a finite end timestamp; existing next-purchase offers remain unchanged."
+      "description": "Opt-in first-purchase restriction for guests and members. Requires one use per customer. Expiration is optional for ongoing offers; existing next-purchase offers remain unchanged."
     },
     "starts_at": {
       "type": "string",

@@ -1,8 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from './firstOrderEligibility.js';
+import { loadRewardCheckoutQuote, RewardCheckoutError, REWARD_CHECKOUT_REVISION } from './rewardCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+const CHECKOUT_RECORD_REVISION = '2026-09-08.persist-before-payment-v1';
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
 const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
@@ -965,6 +967,33 @@ Deno.serve(async (req) => {
     } = requestBody;
     const isGuestCheckout = internalSandboxCheckout || (!authenticatedUser?.email && guest_checkout === true);
 
+    if (mode === 'checkout_runtime_status') {
+      if (authenticatedUser?.role !== 'admin') return Response.json({ error: 'forbidden' }, { status: 403 });
+      return Response.json({ ok: true, mode, checkout_record_revision: CHECKOUT_RECORD_REVISION,
+        reward_quote_revision: REWARD_CHECKOUT_REVISION, reward_payment_integration_complete: false,
+        writes_performed: false, provider_calls_performed: false, payment_intent_created: false, order_created: false });
+    }
+
+    // Explicit read-only contract. Do not reserve points or create a payment
+    // while showing a customer the actual catalog-backed reward calculation.
+    if (mode === 'preview_reward_checkout') {
+      try {
+        const quote = await loadRewardCheckoutQuote(base44, authenticatedUser, requestBody, (item) => {
+          const key = programKeyForCheckoutItem(item);
+          if (!key || invalidProgramCheckoutItem(item)) return null;
+          return normalizeCheckoutItem(item);
+        });
+        return Response.json({ ok: true, quote, preview_only: true, writes_performed: false,
+          provider_calls_performed: false, payment_intent_created: false, order_created: false });
+      } catch (error) {
+        return Response.json({ ok: false,
+          error: error instanceof RewardCheckoutError ? error.message : 'We could not confirm your reward. Please try again.',
+          error_code: error instanceof RewardCheckoutError ? error.code : 'REWARD_QUOTE_UNAVAILABLE',
+          writes_performed: false, provider_calls_performed: false,
+          payment_intent_created: false, order_created: false }, { status: authenticatedUser?.email ? 409 : 401 });
+      }
+    }
+
     if (mode === 'guest_order_status') {
       return await readGuestOrderStatus(base44, requestBody);
     }
@@ -1259,9 +1288,16 @@ Deno.serve(async (req) => {
       merchandiseTotalBeforePromotion - appliedCheckoutCodeDiscount
     ) + effectiveDeliveryFee;
 
-    let orderNumber = internalSandboxCheckout
-      ? `NV-SBX-${Date.now().toString(36).toUpperCase()}`
-      : `NV-${Date.now().toString(36).toUpperCase()}`;
+    // The provider requires identical parameters for an idempotent retry. A
+    // fresh timestamp-based order number made every later retry incompatible.
+    // Hash the account + opaque attempt key; never expose that key in a receipt.
+    const checkoutAttemptDigest = checkout_idempotency_key
+      ? await sha256Hex(`${normalizedCustomerEmail}:${checkout_idempotency_key}`)
+      : null;
+    const orderSuffix = checkoutAttemptDigest
+      ? checkoutAttemptDigest.slice(0, 24).toUpperCase()
+      : Date.now().toString(36).toUpperCase();
+    let orderNumber = internalSandboxCheckout ? `NV-SBX-${orderSuffix}` : `NV-${orderSuffix}`;
 
     // ── CENTRAL SCHEDULE ENGINE ──────────────────────────────────────────
     // Read latest backend options as the single source of truth for checkout dates.
@@ -1342,6 +1378,30 @@ Deno.serve(async (req) => {
       marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
     );
 
+    // Bind non-provider cart/reward data as well as the amount. Otherwise two
+    // different carts at the same price could accidentally reuse one intent.
+    // Volatile observation timestamps and advertising attribution are excluded;
+    // the first persisted CheckoutSession remains the authoritative snapshot.
+    const checkoutContextHash = await sha256Hex(JSON.stringify({
+      version: 1, items: normalizedItems, subtotal: authoritativeSubtotal,
+      total: effectiveTotal, delivery_fee: effectiveDeliveryFee,
+      customer_email: normalizedCustomerEmail, customer_name, phone: normalizedPhone,
+      address: normalizedAddress, fulfillment_type: fulfillment_type || 'delivery',
+      delivery_date: deliveryDate, production_date: resolvedProdDate,
+      delivery_window_start: resolvedWindowStart, delivery_window_end: resolvedWindowEnd,
+      points_used: isGuestCheckout ? 0 : points_used || 0,
+      points_discount: isGuestCheckout ? 0 : points_discount || 0,
+      active_reward: isGuestCheckout ? null : active_reward || null,
+      reward_discount: isGuestCheckout ? 0 : reward_discount || 0,
+      credits_discount: isGuestCheckout ? 0 : credits_discount || 0,
+      discount_code: promotion.code || null, discount_amount: appliedCheckoutCodeDiscount,
+      bag_return_request_id: isGuestCheckout ? null : bag_return_request_id || null,
+      guest_order_token_hash: isGuestCheckout ? await sha256Hex(guest_order_token) : null,
+      health_advisory_version: HEALTH_ADVISORY_VERSION,
+      analytics_measurement_consent: analytics_measurement_consent === 'granted' ? 'granted' : 'denied',
+      marketing_measurement_consent: marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
+    }));
+
     // Metadata — centralized schedule fields from calculateNuViraFulfillmentSchedule
     // Keep this provider projection deliberately compact. Stripe accepts at most
     // 50 metadata keys; the complete checkout, eligibility, and audit payloads
@@ -1387,7 +1447,9 @@ Deno.serve(async (req) => {
       discount_codes:             discountCodes.join(','),
       bag_return_request_id:      isGuestCheckout ? '' : String(bag_return_request_id || '').trim(),
       health_advisory_acknowledged: 'true',
-      health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
+      // Server-observed acknowledgment time is saved on Order/CheckoutSession,
+      // not on this immutable provider request where it would break retries.
+      checkout_context_hash:     checkoutContextHash,
       health_advisory_version:    HEALTH_ADVISORY_VERSION,
       internal_sandbox_checkout:  internalSandboxCheckout ? 'true' : 'false',
       is_test_order:              internalSandboxCheckout ? 'true' : 'false',
@@ -1456,8 +1518,12 @@ Deno.serve(async (req) => {
       normalizedAddress.state,
       normalizedAddress.postalCode,
     ].filter(Boolean).join(', ');
-    let sandboxOrderReady = !internalSandboxCheckout;
-    let sandboxSessionReady = !internalSandboxCheckout;
+    // Readiness must be proved for normal checkout too. Initializing these to
+    // !internalSandboxCheckout silently skipped both records for real buyers.
+    let sandboxOrderReady = false;
+    let sandboxSessionReady = false;
+    let checkoutStorageError = false;
+    let idempotentReplay = false;
 
     try {
       // Deduplication guard: if a retry call hit Stripe idempotency and returned the same PI,
@@ -1466,49 +1532,28 @@ Deno.serve(async (req) => {
         const existingOrders = await base44.asServiceRole.entities.Order.filter({
           stripe_payment_intent_id: paymentIntent.id,
         });
-        if (existingOrders.length > 0) {
+        if (existingOrders.length > 1) throw new Error('DUPLICATE_PENDING_CHECKOUT_RECORDS');
+        if (existingOrders.length === 1) {
           const existing = existingOrders[0];
+          if (!existing.id || existing.customer_email !== normalizedCustomerEmail || !existing.order_number) {
+            throw new Error('PENDING_CHECKOUT_IDENTITY_MISMATCH');
+          }
           console.log(`[PI] Idempotent retry — returning existing pending Order ${existing.order_number} for PI ${paymentIntent.id}`);
           if (internalSandboxCheckout) {
             sandboxOrderReady = existing.is_test_order === true
               && existing.source_type === 'guest_sandbox'
               && existing.customer_email === CHECKOUT_PROVIDER_SANDBOX_RECIPIENT;
           } else {
-          return Response.json({
-            clientSecret:         paymentIntent.client_secret,
-            paymentIntentId:      paymentIntent.id,
-            publishableKey:       internalSandboxCheckout
-              ? Deno.env.get('STRIPE_SANDBOX_PUBLISHABLE_KEY')
-              : Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
-            orderNumber:          existing.order_number,
-            effectiveTotal,
-            effectiveDeliveryFee,
-            subFreeDelivery,
-            subDiscountPct,
-            subDiscountAmt,
-            discountCode:       promotion.code,
-            discountType:       promotion.type,
-            discountLabel:      promotion.label,
-            discountAmount:     appliedCheckoutCodeDiscount,
-            promotionCode:      appliedPromotionCode,
-            promotionDiscountPercent: promotion.percent,
-            promotionDiscountAmount: appliedPromotionDiscountAmt,
-            idempotent_replay:    true,
-            confirmedDeliverySchedule: {
-              delivery_date:         deliveryDate,
-              production_date:       resolvedProdDate,
-              delivery_window_label: resolvedWindowLabel,
-              delivery_window_start: resolvedWindowStart,
-              delivery_window_end:   resolvedWindowEnd,
-              final_schedule_source: canonicalSchedule.finalScheduleSource,
-            },
-          });
+            sandboxOrderReady = true;
           }
+          if (!sandboxOrderReady) throw new Error('PENDING_CHECKOUT_SANDBOX_MISMATCH');
+          orderNumber = existing.order_number;
+          idempotentReplay = true;
         }
       }
 
       if (!sandboxOrderReady) {
-        await base44.asServiceRole.entities.Order.create({
+        const pendingOrder = await base44.asServiceRole.entities.Order.create({
         order_number:             orderNumber,
         customer_email:           normalizedCustomerEmail,
         customer_name,
@@ -1569,28 +1614,37 @@ Deno.serve(async (req) => {
           message:   'Order created — awaiting payment confirmation.',
         }],
         });
-        sandboxOrderReady = internalSandboxCheckout;
+        if (!pendingOrder?.id) throw new Error('PENDING_CHECKOUT_RECORD_NOT_CONFIRMED');
+        sandboxOrderReady = true;
       }
       console.log(`[PI] Pending Order ${orderNumber} pre-created`);
     } catch (orderErr) {
-      // Non-fatal — webhook will create order if this fails
+      checkoutStorageError = true;
       console.error(`[PI] Failed to pre-create Order ${orderNumber}: ${orderErr.message}`);
     }
 
     // Also store CheckoutSession for legacy compatibility / admin tools
     try {
-      if (internalSandboxCheckout) {
+      if (!checkoutStorageError) {
         const existingSessions = await base44.asServiceRole.entities.CheckoutSession.filter({
           stripe_session_id: paymentIntent.id,
         }, '-created_date', 2);
-        sandboxSessionReady = existingSessions.some((candidate) => (
-          candidate?.checkout_data?.internal_sandbox_checkout === true
-            && candidate?.checkout_data?.sandbox_test_id === sandboxTestId
-            && candidate?.customer_email === CHECKOUT_PROVIDER_SANDBOX_RECIPIENT
-        ));
+        if (existingSessions.length > 1) throw new Error('DUPLICATE_CHECKOUT_CONTEXT');
+        const candidate = existingSessions[0];
+        if (candidate) {
+          if (!candidate.id || candidate.customer_email !== normalizedCustomerEmail
+            || candidate.order_number !== orderNumber || !Array.isArray(candidate.checkout_data?.items)
+            || candidate.checkout_data.items.length === 0
+            || candidate.checkout_data.customer_email !== normalizedCustomerEmail
+            || (internalSandboxCheckout && (candidate.checkout_data.internal_sandbox_checkout !== true
+              || candidate.checkout_data.sandbox_test_id !== sandboxTestId))) {
+            throw new Error('CHECKOUT_CONTEXT_IDENTITY_MISMATCH');
+          }
+          sandboxSessionReady = true;
+        }
       }
-      if (!sandboxSessionReady) {
-        await base44.asServiceRole.entities.CheckoutSession.create({
+      if (!checkoutStorageError && !sandboxSessionReady) {
+        const storedSession = await base44.asServiceRole.entities.CheckoutSession.create({
         stripe_session_id: paymentIntent.id, // re-use field for PI ID
         order_number:      orderNumber,
         customer_email:    normalizedCustomerEmail,
@@ -1659,10 +1713,31 @@ Deno.serve(async (req) => {
         },
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         });
-        sandboxSessionReady = internalSandboxCheckout;
+        if (!storedSession?.id) throw new Error('CHECKOUT_CONTEXT_NOT_CONFIRMED');
+        sandboxSessionReady = true;
       }
     } catch (csErr) {
+      checkoutStorageError = true;
       console.warn(`[PI] Failed to store CheckoutSession for ${orderNumber}: ${csErr.message}`);
+    }
+
+    if (!internalSandboxCheckout && (checkoutStorageError || !sandboxOrderReady || !sandboxSessionReady)) {
+      // The client must never confirm payment without the authoritative cart /
+      // reward / guest-ownership context. Cancel only this unconfirmed attempt.
+      let paymentAttemptCanceled = false;
+      try {
+        if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(paymentIntent.status)) {
+          const canceled = await checkoutStripe.paymentIntents.cancel(paymentIntent.id);
+          paymentAttemptCanceled = canceled.status === 'canceled';
+        }
+      } catch {
+        // Cancellation uncertainty is not a reason to expose the client secret.
+        console.error('[PI] Incomplete checkout cancellation could not be confirmed');
+      }
+      return Response.json({ ok: false, error_code: 'CHECKOUT_RECORDS_NOT_READY',
+        error: 'We could not confirm your checkout records. Do not submit another payment while checkout status is uncertain. Please contact NuVira support.',
+        payment_confirmation_attempted: false, payment_attempt_canceled: paymentAttemptCanceled,
+      }, { status: 503 });
     }
 
     if (internalSandboxCheckout) {
@@ -1722,7 +1797,9 @@ Deno.serve(async (req) => {
     return Response.json({
       clientSecret:         paymentIntent.client_secret,
       paymentIntentId:      paymentIntent.id,
-      publishableKey:       Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
+      publishableKey:       internalSandboxCheckout
+        ? Deno.env.get('STRIPE_SANDBOX_PUBLISHABLE_KEY')
+        : Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
       orderNumber,
       effectiveTotal,
       effectiveDeliveryFee,
@@ -1738,6 +1815,8 @@ Deno.serve(async (req) => {
       promotionDiscountAmount: appliedPromotionDiscountAmt,
       totalDiscountAmount,
       discountCodes,
+      idempotent_replay: idempotentReplay,
+      checkout_record_revision: CHECKOUT_RECORD_REVISION,
       confirmedDeliverySchedule: {
         delivery_date: deliveryDate,
         production_date: resolvedProdDate,
@@ -1749,6 +1828,11 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
+    if (error?.type === 'StripeIdempotencyError') {
+      return Response.json({ ok: false, error_code: 'CHECKOUT_ATTEMPT_CHANGED',
+        error: 'This checkout changed after payment was prepared. Return to your cart and start checkout again. If you already submitted payment, check your order status first.',
+        payment_confirmation_attempted: false }, { status: 409 });
+    }
     console.error('[PI] createPaymentIntent error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }

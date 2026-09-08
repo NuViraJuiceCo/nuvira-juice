@@ -402,7 +402,7 @@ function CheckoutFlow() {
     : null;
 
   const rewardFreeDelivery = activeReward?.reward_type === 'free_delivery';
-  const rewardDiscountPct = activeReward?.reward_type === 'discount' ? 10 : 0;
+  const rewardDiscountPct = ['discount', 'discount_10pct'].includes(activeReward?.reward_type) ? 10 : 0;
   const rewardDiscountAmt = rewardDiscountPct > 0 ? subtotal * rewardDiscountPct / 100 : 0;
   const baseFee = zoneEligibility?.delivery_fee ?? deliveryZone?.fee ?? 0;
   const deliveryFee = (fulfillmentType === 'delivery' && !rewardFreeDelivery && !subFreeDelivery) ? baseFee : 0;
