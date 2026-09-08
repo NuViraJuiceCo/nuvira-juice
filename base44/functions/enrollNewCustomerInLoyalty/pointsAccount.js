@@ -2,7 +2,7 @@
 // query/update operators; never falls back to an unconditional balance write.
 // Release requires an isolated Base44 conditional-write contract test in addition
 // to local fixtures. This module does not claim multi-record transactions.
-export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-no-payment-v2';
+export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-no-payment-v3';
 
 export class PointsAccountError extends Error {
   constructor(code) { super(code); this.code = code; }
@@ -35,6 +35,8 @@ function balances(row) {
     if ((hold.payment_intent_id != null && !/^pi_[a-zA-Z0-9_]+$/.test(hold.payment_intent_id))
       || (hold.checkout_session_id != null && !/^cs_[a-zA-Z0-9_]+$/.test(hold.checkout_session_id))
       || (hold.payment_intent_id && hold.checkout_session_id)) fail('invalid_points_reservations');
+    if (hold.preparation_attempt_id != null && (!hold.checkout_session_id
+      || !/^[a-zA-Z0-9_-]{16,80}$/.test(hold.preparation_attempt_id))) fail('invalid_points_reservations');
     return sum + (hold.status === 'held' ? points : 0);
   }, 0);
   if (reserved !== held || reserved > total) fail('invalid_points_reservations');
@@ -136,6 +138,8 @@ export async function applyPointsTransaction(entities, customerEmail, transactio
 export async function reserveRewardPoints(entities, customerEmail, request) {
   const points = integer(request.points);
   const sessionId = request.checkout_session_id;
+  if (request.preparation_attempt_id != null && (!sessionId
+    || !/^[a-zA-Z0-9_-]{16,80}$/.test(request.preparation_attempt_id))) fail('invalid_points_reservation_request');
   if (sessionId && (!/^cs_[a-zA-Z0-9_]+$/.test(sessionId) || request.payment_intent_id)) fail('invalid_points_reservation_request');
   if (!points || !/^[a-zA-Z0-9:_-]{16,180}$/.test(request.reservation_id || '')
     || !/^[a-f0-9]{64}$/.test(request.context_hash || '')) fail('invalid_points_reservation_request');
@@ -152,6 +156,7 @@ export async function reserveRewardPoints(entities, customerEmail, request) {
     const reservation = { reservation_id: request.reservation_id, context_hash: request.context_hash,
       points, status: 'held', ...(request.payment_intent_id ? { payment_intent_id: request.payment_intent_id } : {}),
       ...(sessionId ? { checkout_session_id: sessionId } : {}),
+      ...(request.preparation_attempt_id ? { preparation_attempt_id: request.preparation_attempt_id } : {}),
       created_at: request.created_at || new Date().toISOString() };
     return { reservation, patch: { reserved_points: state.reserved + points,
       reward_reservations: [...state.holds, reservation] } };

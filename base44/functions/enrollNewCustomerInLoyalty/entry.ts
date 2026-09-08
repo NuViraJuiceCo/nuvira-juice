@@ -61,6 +61,7 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
         if (existing && existing[providerField] === payment.id && existing.context_hash === metadata.checkout_context_hash
           && existing.points === body.points && ['held', 'consumed'].includes(existing.status)) {
           return Response.json({ success: true, idempotent: true, reservation_status: existing.status,
+            ...(noPayment ? { preparation_attempt_id: existing.preparation_attempt_id || null } : {}),
             revision: POINTS_ACCOUNT_REVISION, writes_performed: false });
         }
       }
@@ -69,10 +70,12 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
     const result = await reserveRewardPoints(entities, customerEmail, {
       reservation_id: metadata.reward_reservation_id, context_hash: metadata.checkout_context_hash,
       [providerField]: payment.id, points: body.points,
+      ...(noPayment && body.preparation_attempt_id ? { preparation_attempt_id: body.preparation_attempt_id } : {}),
     });
     await syncPointsMemberProjection(entities, customerEmail);
     return Response.json({ success: true, idempotent: result.idempotent,
       revision: POINTS_ACCOUNT_REVISION, reservation_status: result.reservation.status,
+      ...(noPayment ? { preparation_attempt_id: result.reservation.preparation_attempt_id || null } : {}),
       available_points: result.account.total_points - result.account.reserved_points });
   }
   const account = await readPointsAccount(entities, customerEmail);

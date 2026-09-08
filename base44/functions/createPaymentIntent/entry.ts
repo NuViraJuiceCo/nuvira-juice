@@ -2,9 +2,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from './firstOrderEligibility.js';
 import { loadRewardCheckoutQuote, priceRewardPayment, reservePaymentReward, RewardCheckoutError, REWARD_CHECKOUT_REVISION } from './rewardCheckout.js';
+import { prepareNoPaymentCheckout, cancelNoPaymentCheckout } from './noPaymentCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const CHECKOUT_RECORD_REVISION = '2026-09-08.persist-before-payment-v1';
+const CHECKOUT_RECORD_REVISION = '2026-09-08.reward-session-preparation-v2';
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
 const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
@@ -974,6 +975,21 @@ Deno.serve(async (req) => {
         writes_performed: false, provider_calls_performed: false, payment_intent_created: false, order_created: false });
     }
 
+    if (mode === 'cancel_reward_checkout') {
+      if (!authenticatedUser?.email || internalSandboxCheckout) return Response.json({ error: 'forbidden' }, { status: 403 });
+      try {
+        const result = await cancelNoPaymentCheckout({ base44, stripe,
+          sessionId: requestBody.checkout_session_id, customerEmail: authenticatedUser.email,
+          secret: Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '',
+        });
+        return Response.json(result);
+      } catch {
+        return Response.json({ ok: false, error_code: 'REWARD_CANCEL_NOT_CONFIRMED',
+          error: 'We could not confirm cancellation. Check your order status before starting another checkout.',
+          reward_reservation_released: false }, { status: 409 });
+      }
+    }
+
     // Explicit read-only contract. Do not reserve points or create a payment
     // while showing a customer the actual catalog-backed reward calculation.
     if (mode === 'preview_reward_checkout') {
@@ -1497,15 +1513,58 @@ Deno.serve(async (req) => {
       throw new Error('CHECKOUT_PROVIDER_METADATA_LIMIT_EXCEEDED');
     }
 
-    // Account discounts are represented in the pre-code total. The checkout
-    // code is resolved and subtracted exactly once on the server above.
-    // Never silently turn a fully covered reward order into a 50-cent charge.
-    // A separate no-payment order finalization path must be verified before
-    // this zero-charge case can be released with the reward integration.
+    // A fully earned order uses Checkout Session completion, not a fabricated
+    // minimum PaymentIntent. Delivery charges remain in effectiveTotal.
     if (rewardQuote && Math.round(effectiveTotal * 100) < 50) {
-      return Response.json({ ok: false, error_code: 'REWARD_NO_PAYMENT_FINALIZATION_REQUIRED',
-        error: 'Your reward covers this order. We could not finalize the no-payment order yet; please contact NuVira. Do not add merchandise just to redeem it.',
-        writes_performed: false, payment_intent_created: false }, { status: 409 });
+      if (effectiveTotal !== 0 || rewardPricing.credits_discount !== 0 || internalSandboxCheckout) {
+        return Response.json({ ok: false, error_code: 'REWARD_BALANCE_REQUIRES_REVIEW',
+          error: 'Please review your points or credits selection. We will not add a minimum charge or waive an outstanding balance.',
+          writes_performed: false, payment_intent_created: false, order_created: false }, { status: 409 });
+      }
+      const data = {
+        order_number: orderNumber, customer_email: normalizedCustomerEmail, customer_name,
+        customer_first_name: customerIdentity.firstName, customer_last_name: customerIdentity.lastName,
+        customer_name_source: customerIdentity.source, customer_app_user_id: authenticatedUser.id,
+        checkout_idempotency_key, bag_return_request_id: bag_return_request_id || null,
+        address_line1: normalizedAddress.line1, address_line2: normalizedAddress.line2,
+        address_city: normalizedAddress.city, address_state: normalizedAddress.state,
+        address_postal_code: normalizedAddress.postalCode, address_country: 'US',
+        delivery_address: delivery_address || [normalizedAddress.line1, normalizedAddress.city,
+          normalizedAddress.state, normalizedAddress.postalCode].filter(Boolean).join(', '),
+        contact_phone: normalizedPhone, items: normalizedItems, subtotal: authoritativeSubtotal,
+        delivery_fee: effectiveDeliveryFee, total: effectiveTotal, fulfillment_type: fulfillment_type || 'delivery',
+        estimated_delivery_date: deliveryDate, assigned_delivery_date: deliveryDate,
+        assigned_production_day: resolvedProdDate, production_date: resolvedProdDate,
+        delivery_window_label: resolvedWindowLabel, delivery_window_start: resolvedWindowStart,
+        delivery_window_end: resolvedWindowEnd, assigned_delivery_window_start: resolvedWindowStart,
+        assigned_delivery_window_end: resolvedWindowEnd, delivery_window_timezone: canonicalSchedule.deliveryWindowTimezone,
+        delivery_schedule_source: canonicalSchedule.finalScheduleSource, final_schedule_source: canonicalSchedule.finalScheduleSource,
+        scheduling_reason: resolvedScheduleSrc, cutoff_window_label: canonicalSchedule.cutoffWindowLabel || '',
+        schedule_timezone: canonicalSchedule.scheduleTimezone, delivery_zone_id: eligibility?.zone_key || '',
+        is_preorder: false, referral_code: appliedReferralCode, referral_discount: appliedReferralDiscountAmt,
+        promotion_code: appliedPromotionCode, promotion_discount_percent: promotion.percent,
+        promotion_discount_amount: appliedPromotionDiscountAmt, total_discounts: totalDiscountAmount, discount_codes: discountCodes,
+        points_used: rewardPricing.points_used, points_discount: rewardPricing.points_discount,
+        active_reward: rewardQuote.active_reward, reward_discount: rewardPricing.reward_discount, credits_discount: 0,
+        reward_checkout: rewardQuote, reward_reservation_id: rewardReservationId,
+        reward_reservation_points: rewardPricing.reservation_points, checkout_context_hash: checkoutContextHash,
+        guest_checkout: false, guest_order_token_hash: null, internal_sandbox_checkout: false, sandbox_test_id: null,
+        analytics_measurement_consent: analytics_measurement_consent === 'granted' ? 'granted' : 'denied',
+        google_measurement_context: normalizedGoogleMeasurementContext,
+        marketing_measurement_consent: marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
+        meta_capi_context: normalizedMetaCapiContext, meta_capi_test_enabled: false,
+        health_advisory_acknowledged: true, health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
+        health_advisory_version: HEALTH_ADVISORY_VERSION,
+      };
+      const prepared = await prepareNoPaymentCheckout({ base44, stripe, data, metadata: intentMetadata,
+        quote: rewardQuote, pricing: rewardPricing, secret: rewardInternalSecret });
+      if (prepared.ok === false) return Response.json(prepared, { status: 503 });
+      return Response.json({ ...prepared, publishableKey: Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
+        effectiveDeliveryFee, rewardQuote, rewardPricing, checkout_record_revision: CHECKOUT_RECORD_REVISION,
+        confirmedDeliverySchedule: { delivery_date: deliveryDate, production_date: resolvedProdDate,
+          delivery_window_label: resolvedWindowLabel, delivery_window_start: resolvedWindowStart,
+          delivery_window_end: resolvedWindowEnd, final_schedule_source: canonicalSchedule.finalScheduleSource },
+      });
     }
     const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
 

@@ -37,7 +37,7 @@ export function CheckoutAction({ children }) {
 }
 
 export default function CheckoutExperience({
-  children, items, total, paymentReady, locked, memberReady, contactReady,
+  children, items, total, paymentReady, rewardOnly = false, locked, memberReady, contactReady,
   contactSummary, deliverySummary, deliveryReady, deliveryMessage,
   onBack, summary, benefits, benefitsLabel, guest, contact, delivery, payment,
 }) {
@@ -93,8 +93,9 @@ export default function CheckoutExperience({
     if (contactReady) moveTo(1);
     else sections.current[0]?.querySelector('input')?.focus();
   };
-  const titles = ['Contact', 'Delivery', 'Payment'];
-  const subtitles = [contactSummary || 'Receipt and order updates', deliverySummary || 'Choose where and when', paymentReady ? 'Choose your secure payment method' : 'Review, then securely pay'];
+  const titles = ['Contact', 'Delivery', rewardOnly ? 'Confirm' : 'Payment'];
+  const subtitles = [contactSummary || 'Receipt and order updates', deliverySummary || 'Choose where and when', rewardOnly
+    ? 'Covered by your earned rewards — no card required' : paymentReady ? 'Choose your secure payment method' : 'Review, then securely pay'];
   const bodies = [contact, delivery, payment];
 
   return (

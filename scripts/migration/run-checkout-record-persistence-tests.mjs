@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { transformSync } from 'esbuild';
 import * as offers from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
 import * as rewards from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
+import * as noPayment from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
 
 const source = fs.readFileSync('base44/functions/createPaymentIntent/entry.ts', 'utf8');
 const compiled = transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
@@ -37,7 +38,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       const row = { id: `${name}-${values.length}`, ...structuredClone(data) }; values.push(row); return row;
     },
   };
-  let served; let storedIntent; let originalParameters;
+  let served; let storedIntent; let storedSession; let originalParameters; let sessionParameters;
   let clock = Date.parse('2026-09-08T15:00:00Z');
   class FixtureDate extends Date {
     constructor(...args) { super(...(args.length ? args : [clock])); }
@@ -48,26 +49,29 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       if (name === 'enrollNewCustomerInLoyalty') {
         assert.equal(payload.internal_secret, 'synthetic-ledger-secret');
         assert.equal(payload.customer_email, email);
-        assert.equal(payload.stripe_payment_intent_id, storedIntent.id);
+        const provider = payload.stripe_checkout_session_id ? storedSession : storedIntent;
+        assert.equal(payload.stripe_checkout_session_id || payload.stripe_payment_intent_id, provider.id);
         const balance = rows.UserPoints[0];
-        const id = storedIntent.metadata.reward_reservation_id;
+        const id = provider.metadata.reward_reservation_id;
         let hold = balance.reward_reservations.find(row => row.reservation_id === id);
         if (payload.action === 'reserve_reward_checkout') {
           effects.push('reward.reserve');
           const tier = rows.RewardTier.find(row => row.id === payload.reward_id);
           assert.equal(payload.points, tier.points_required + payload.direct_points);
           if (failReserve) return { data: { success: false } };
-          if (hold) assert.equal(hold.context_hash, storedIntent.metadata.checkout_context_hash);
+          if (hold) assert.equal(hold.context_hash, provider.metadata.checkout_context_hash);
           else {
-            hold = { reservation_id: id, context_hash: storedIntent.metadata.checkout_context_hash,
-              payment_intent_id: storedIntent.id, points: payload.points, status: 'held' };
+            hold = { reservation_id: id, context_hash: provider.metadata.checkout_context_hash,
+              [payload.stripe_checkout_session_id ? 'checkout_session_id' : 'payment_intent_id']: provider.id,
+              ...(payload.preparation_attempt_id ? { preparation_attempt_id: payload.preparation_attempt_id } : {}),
+              points: payload.points, status: 'held' };
             balance.reward_reservations.push(hold); balance.reserved_points += hold.points;
           }
-          return { data: { success: true, reservation_status: hold.status } };
+          return { data: { success: true, reservation_status: hold.status, preparation_attempt_id: hold.preparation_attempt_id } };
         }
         assert.equal(payload.action, 'settle_reward_checkout'); effects.push('reward.release');
         if (failRelease) throw new Error('Synthetic release unavailable');
-        assert.equal(storedIntent.status, 'canceled');
+        assert.equal(provider.status, payload.stripe_checkout_session_id ? 'expired' : 'canceled');
         if (hold?.status === 'held') { hold.status = 'released'; balance.reserved_points -= hold.points; }
         return { data: { success: true, reservation_status: 'released' } };
       }
@@ -89,6 +93,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('firstOrderEligibility')) return offers;
       if (name.includes('rewardCheckout')) return rewards;
+      if (name.includes('noPaymentCheckout')) return noPayment;
       if (name.includes('stripe')) return class {
         constructor() { this.paymentIntents = {
           create: async (data, options) => {
@@ -103,12 +108,26 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
               status: 'requires_payment_method', ...structuredClone(data) }; return storedIntent;
           },
           cancel: async id => { effects.push('PI.cancel'); assert.equal(id, 'pi_test_synthetic'); if (failCancel) throw new Error('Synthetic cancellation unavailable'); storedIntent.status = 'canceled'; return { id, status: 'canceled' }; },
-        }; }
+        }; this.checkout = { sessions: {
+          create: async (data, options) => {
+            effects.push('Session.create');
+            const parameters = JSON.stringify({ data, options });
+            if (strictStripe && sessionParameters && sessionParameters !== parameters) throw new Error('Synthetic session idempotency conflict');
+            sessionParameters ||= parameters;
+            storedSession ||= { id: 'cs_live_synthetic', client_secret: ['cs_live_synthetic', 'secret', 'synthetic'].join('_'),
+              currency: 'usd', amount_total: 0, payment_intent: null, status: 'open', payment_status: 'unpaid',
+              livemode: true, expires_at: Math.floor(clock / 1000) + 86400, ...structuredClone(data) };
+            return structuredClone(storedSession);
+          },
+          retrieve: async id => { assert.equal(id, storedSession.id); return structuredClone(storedSession); },
+          expire: async id => { assert.equal(id, storedSession.id); effects.push('Session.expire');
+            if (failCancel) throw new Error('Synthetic expiry failure'); storedSession.status = 'expired'; return structuredClone(storedSession); },
+        } }; }
       };
       throw new Error(`Unexpected module ${name}`);
     },
   });
-  return { rows, effects, intent: () => storedIntent, advance: () => { clock += 12000; }, handle: patch => served(new Request('https://unit.test/checkout', {
+  return { rows, effects, intent: () => storedIntent, session: () => storedSession, advance: () => { clock += 12000; }, handle: patch => served(new Request('https://unit.test/checkout', {
     method: 'POST', body: JSON.stringify({ ...body, guest_checkout: guest, ...patch }),
   })) };
 }
@@ -255,8 +274,24 @@ await test('fully covered reward order never becomes a fabricated 50-cent paymen
     SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }] } });
   const response = await ctx.handle({ active_reward: tier,
     items: [{ ...body.items[0], quantity: 6, price: 0, reward_id: 'vip', isFreeReward: true }] });
-  const result = await response.json(); assert.equal(result.error_code, 'REWARD_NO_PAYMENT_FINALIZATION_REQUIRED');
-  assert.equal(ctx.effects.length, 0); assert.equal(result.clientSecret, undefined);
+  const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(result.effectiveTotal, 0); assert.equal(result.checkoutKind, 'reward_no_payment');
+  assert.equal(result.checkoutSessionId, 'cs_live_synthetic'); assert.ok(result.clientSecret);
+  assert.equal(ctx.intent(), undefined); assert.equal(ctx.session().amount_total, 0);
+  assert.equal(ctx.session().payment_intent, null); assert.equal(ctx.session().ui_mode, 'embedded');
+  assert.equal(ctx.session().redirect_on_completion, 'never');
+  assert.equal(ctx.session().line_items[0].price_data.unit_amount, 0);
+  assert.equal(ctx.session().line_items[0].quantity, 6);
+  assert.deepEqual(ctx.effects, ['Session.create', 'reward.reserve', 'Order.create', 'CheckoutSession.create']);
+  assert.equal(ctx.rows.Order[0].status, 'pending_payment'); assert.equal(ctx.rows.Order[0].payment_captured, false);
+  assert.equal(ctx.rows.Order[0].assigned_delivery_date, option.delivery_date);
+  assert.equal(ctx.rows.Order[0].contact_phone, body.contact_phone);
+  assert.equal(ctx.rows.CheckoutSession[0].checkout_data.reward_reservation_points, 6000);
+  const retry = await (await ctx.handle({ active_reward: tier,
+    items: [{ ...body.items[0], quantity: 6, price: 0, reward_id: 'vip', isFreeReward: true }] })).json();
+  assert.equal(retry.checkoutSessionId, result.checkoutSessionId); assert.equal(retry.idempotent_replay, true);
+  assert.equal(ctx.rows.Order.length, 1); assert.equal(ctx.rows.CheckoutSession.length, 1);
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 6000);
 });
 await test('unconfirmed reward reserve cancels only its PI and never exposes secret', async () => {
   const ctx = fixture({ failReserve: true }); const response = await ctx.handle({ active_reward: selected });

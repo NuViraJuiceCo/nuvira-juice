@@ -3,6 +3,8 @@ import SEO from '@/components/SEO';
 import CheckoutExperience, { CheckoutAction, CheckoutAddress } from '@/components/checkout/CheckoutExperience';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
+import RewardEmbeddedCheckout from '@/components/checkout/RewardEmbeddedCheckout';
+import { readRewardCheckoutRecovery, cancelRewardCheckoutRecovery } from '@/lib/rewardCheckoutRecovery';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ChevronDown, Truck, Gift, LockKeyhole } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
@@ -146,6 +148,8 @@ function CheckoutFlow() {
   const [checkoutStartMessage, setCheckoutStartMessage] = useState('');
   const [checkoutStartLocked, setCheckoutStartLocked] = useState(false);
   const [clientSecret, setClientSecret] = useState(null);
+  const [rewardCheckoutSessionId, setRewardCheckoutSessionId] = useState(null);
+  const [rewardCheckoutRecovery, setRewardCheckoutRecovery] = useState(null);
   const [publishableKey, setPublishableKey] = useState(null);
   const [pendingOrderNumber, setPendingOrderNumber] = useState(null);
   const [paymentTotal, setPaymentTotal] = useState(0);
@@ -357,7 +361,7 @@ function CheckoutFlow() {
     enabled: !!user?.email,
   });
 
-  const { data: userPointsData } = useQuery({
+  const { data: userPointsData, refetch: refreshCheckoutPoints } = useQuery({
     queryKey: ['user-points', user?.email],
     queryFn: () => base44.entities.UserPoints.filter({ customer_email: user?.email }),
     enabled: !!user?.email,
@@ -749,7 +753,26 @@ function CheckoutFlow() {
         meta_capi_context: metaCapiContext,
       });
 
-      if (isValidCheckoutStartSuccess(res.data)) {
+      if (res.data?.checkoutKind === 'reward_no_payment' && res.data.checkoutCompleted === true
+        && res.data.effectiveTotal === 0 && typeof res.data.orderNumber === 'string'
+        && /^cs_[A-Za-z0-9_]+$/.test(res.data.checkoutSessionId || '') && !isGuestCheckout) {
+        clearCheckoutProcessingWatchdog();
+        checkoutAttemptInFlightRef.current = false;
+        // A provider replay is not proof of local settlement. The confirmation
+        // page polls the owned order and requires the verified reward receipt.
+        clearCart();
+        localStorage.removeItem('nuvira_pending_checkout_session');
+        navigate(`/order-confirmation?order_number=${encodeURIComponent(res.data.orderNumber)}`);
+        return;
+      }
+
+      const rewardSessionResponse = res.data?.checkoutKind === 'reward_no_payment';
+      const validRewardSession = rewardSessionResponse && !isGuestCheckout && res.data.effectiveTotal === 0
+        && /^cs_[A-Za-z0-9_]+$/.test(res.data.checkoutSessionId || '')
+        && res.data.clientSecret?.startsWith(`${res.data.checkoutSessionId}_secret_`);
+      const validPaymentIntent = !rewardSessionResponse && !res.data?.checkoutKind
+        && typeof res.data?.clientSecret === 'string' && res.data.clientSecret.startsWith('pi_');
+      if (isValidCheckoutStartSuccess(res.data) && (validPaymentIntent || validRewardSession)) {
         console.group('[NuVira Checkout] createPaymentIntent Response');
         console.log('Source              : FRESH call to createPaymentIntent (not localStorage/sessionStorage)');
         console.log('orderNumber         :', res.data.orderNumber);
@@ -775,6 +798,7 @@ function CheckoutFlow() {
 
         // Embedded flow: surface PaymentElement in-page
         setClientSecret(res.data.clientSecret);
+        setRewardCheckoutSessionId(validRewardSession ? res.data.checkoutSessionId : null);
         setPublishableKey(res.data.publishableKey);
         setPendingOrderNumber(res.data.orderNumber);
         setPaymentTotal(res.data.effectiveTotal ?? total);
@@ -783,6 +807,13 @@ function CheckoutFlow() {
         return;
       }
 
+      const recoverableReward = !isGuestCheckout && readRewardCheckoutRecovery(res.data);
+      if (recoverableReward) {
+        setRewardCheckoutRecovery(recoverableReward);
+        showAmbiguousCheckoutStartState();
+        setCheckoutStartMessage('Your reward checkout could not finish preparing. Check your orders, or safely cancel this attempt before starting again.');
+        return;
+      }
       if (isExplicitNoWriteCheckoutStartFailure(res.data)) {
         showExplicitNoWriteCheckoutFailure(res.data?.message || res.data?.error);
         if (res.data?.error_code === 'STALE_DELIVERY_SELECTION') {
@@ -796,6 +827,13 @@ function CheckoutFlow() {
       showAmbiguousCheckoutStartState();
     } catch (error) {
       const explicitFailure = error?.data || error?.response?.data || null;
+      const recoverableReward = !isGuestCheckout && readRewardCheckoutRecovery(explicitFailure);
+      if (recoverableReward) {
+        setRewardCheckoutRecovery(recoverableReward);
+        showAmbiguousCheckoutStartState();
+        setCheckoutStartMessage('Your reward checkout could not finish preparing. Check your orders, or safely cancel this attempt before starting again.');
+        return;
+      }
       if (isExplicitNoWriteCheckoutStartFailure(explicitFailure)) {
         showExplicitNoWriteCheckoutFailure(explicitFailure?.message || explicitFailure?.error);
         return;
@@ -848,6 +886,7 @@ function CheckoutFlow() {
       items={items}
       total={clientSecret ? paymentTotal : total}
       paymentReady={Boolean(clientSecret)}
+      rewardOnly={Boolean(rewardCheckoutSessionId)}
       locked={isSubmitting || checkoutStartLocked}
       memberReady={Boolean(user?.email && prefilled && contactReady)}
       contactReady={contactReady}
@@ -1267,8 +1306,10 @@ function CheckoutFlow() {
       {clientSecret ? (
         <div className="px-4 md:px-6">
           <div className="mb-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Payment</h3>
-            <p className="text-[11px] text-muted-foreground">Secure checkout — card, Link, and wallet payments accepted where available.</p>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{rewardCheckoutSessionId ? 'Confirm your reward order' : 'Payment'}</h3>
+            <p className="text-[11px] text-muted-foreground">{rewardCheckoutSessionId
+              ? 'Your earned rewards cover this order. No card or payment is required.'
+              : 'Secure checkout — card, Link, and wallet payments accepted where available.'}</p>
           </div>
           {confirmedDeliverySchedule?.delivery_date && (
             <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
@@ -1283,7 +1324,14 @@ function CheckoutFlow() {
               </p>
             </div>
           )}
-          <EmbeddedPayment
+          {rewardCheckoutSessionId ? <RewardEmbeddedCheckout
+            clientSecret={clientSecret} publishableKey={publishableKey} checkoutSessionId={rewardCheckoutSessionId}
+            onComplete={() => {
+              clearCart();
+              localStorage.removeItem('nuvira_pending_checkout_session');
+              navigate(`/order-confirmation?order_number=${encodeURIComponent(pendingOrderNumber)}`);
+            }}
+          /> : <EmbeddedPayment
             clientSecret={clientSecret}
             publishableKey={publishableKey}
             total={paymentTotal}
@@ -1322,9 +1370,33 @@ function CheckoutFlow() {
             onError={(msg) => {
               toast.error(msg || 'Payment failed. Please try again.');
             }}
-          />
+          />}
           <button
-            onClick={() => { setClientSecret(null); setPendingOrderNumber(null); setConfirmedDeliverySchedule(null); }}
+            disabled={isSubmitting}
+            onClick={async () => {
+              if (rewardCheckoutSessionId) {
+                if (checkoutAttemptInFlightRef.current) return;
+                checkoutAttemptInFlightRef.current = true;
+                setIsSubmitting(true);
+                try {
+                  const result = await base44.functions.invoke('createPaymentIntent', {
+                    mode: 'cancel_reward_checkout', checkout_session_id: rewardCheckoutSessionId,
+                  });
+                  if (result.data?.ok !== true || result.data.checkout_session_expired !== true
+                    || result.data.reward_reservation_released !== true) throw new Error('cancel_unconfirmed');
+                  checkoutIdempotencyKey.current = crypto.randomUUID();
+                  setRewardCheckoutSessionId(null);
+                  await refreshCheckoutPoints();
+                } catch {
+                  toast.error('We could not confirm cancellation. Check your orders before starting another checkout.');
+                  return;
+                } finally {
+                  checkoutAttemptInFlightRef.current = false;
+                  setIsSubmitting(false);
+                }
+              }
+              setClientSecret(null); setPendingOrderNumber(null); setConfirmedDeliverySchedule(null);
+            }}
             className="w-full text-center text-xs text-muted-foreground underline mt-3"
           >
             ← Edit order details
@@ -1366,7 +1438,42 @@ function CheckoutFlow() {
                     : 'Checkout needs attention'}
               </p>
               <p className="mt-1">{checkoutStartMessage}</p>
-              {(checkoutStartStage === CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN ||
+              {rewardCheckoutRecovery ? (
+                <div className="mt-3 flex flex-col gap-2">
+                  <button type="button" className="text-left font-semibold underline" disabled={isSubmitting}
+                    onClick={() => navigate('/account/orders')}>
+                    Check my orders
+                  </button>
+                  <button type="button" className="text-left font-semibold underline" disabled={isSubmitting}
+                    onClick={async () => {
+                      if (checkoutAttemptInFlightRef.current) return;
+                      checkoutAttemptInFlightRef.current = true;
+                      setIsSubmitting(true);
+                      try {
+                        await cancelRewardCheckoutRecovery(
+                          (_name, payload) => base44.functions.invoke('createPaymentIntent', payload), rewardCheckoutRecovery);
+                        checkoutIdempotencyKey.current = crypto.randomUUID();
+                        setRewardCheckoutRecovery(null);
+                        setRewardCheckoutSessionId(null);
+                        setClientSecret(null);
+                        setPendingOrderNumber(null);
+                        setConfirmedDeliverySchedule(null);
+                        setCheckoutStartLockedSafely(false);
+                        setCheckoutStartStage(CHECKOUT_START_STAGES.IDLE);
+                        setCheckoutStartMessage('');
+                        await refreshCheckoutPoints();
+                      } catch {
+                        toast.error('Cancellation could not be confirmed. Please check your orders or contact NuVira before trying again.');
+                      } finally {
+                        checkoutAttemptInFlightRef.current = false;
+                        setIsSubmitting(false);
+                      }
+                    }}>
+                    {isSubmitting ? 'Checking cancellation…' : 'Cancel this reward checkout'}
+                  </button>
+                  <p>No new checkout will start until cancellation and points release are confirmed.</p>
+                </div>
+              ) : (checkoutStartStage === CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN ||
                 checkoutStartStage === CHECKOUT_START_STAGES.SLOW_PROCESSING) && (
                 <p className="mt-2 font-medium">Please contact NuVira before trying again.</p>
               )}
@@ -1385,7 +1492,7 @@ function CheckoutFlow() {
             const isBlocked = fulfillmentType === 'delivery' && (
               !addressValidated || needsMinimum || isWaitlist
             );
-            let label = `Review Payment · $${total.toFixed(2)}`;
+            let label = activeReward && total === 0 ? 'Review reward order' : `Review Payment · $${total.toFixed(2)}`;
             if (checkoutStartStage === CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN) label = 'Checkout status unknown';
             else if (checkoutStartStage === CHECKOUT_START_STAGES.SLOW_PROCESSING) label = 'Still checking...';
             else if (isSubmitting) label = 'Processing...';
