@@ -12,6 +12,10 @@
       "type": "string",
       "description": "Customer's full name"
     },
+    "bag_return_request_id": {
+      "type": "string",
+      "description": "Exact customer-requested BagReturn reference preserved from the verified checkout snapshot; linkage does not verify collection or issue credits"
+    },
     "items": {
       "type": "array",
       "items": {

@@ -75,6 +75,8 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
     && Number.isSafeInteger(data.reward_reservation_points) && data.reward_reservation_points > 0
     && data.reward_reservation_points === Number(data.active_reward?.points_required) + Number(data.points_used || 0)
     && data.total === 0 && order.total === 0 && order.payment_captured === false && !order.stripe_payment_intent_id
+    && (data.bag_return_request_id || null) === (order.bag_return_request_id || null)
+    && (data.bag_return_request_id || null) === (metadata.bag_return_request_id || null)
     && data.guest_checkout !== true && data.internal_sandbox_checkout !== true && order.is_test_order !== true
     && Array.isArray(data.items) && data.items.length > 0 && same(data.items, order.items), 'reward_checkout_snapshot_mismatch');
   // Credit reservation is a separate unfinished contract. Never debit an

@@ -30,7 +30,8 @@ function orderSnapshot(data, session) {
     'promotion_discount_amount', 'total_discounts', 'discount_codes', 'health_advisory_acknowledged',
     'health_advisory_acknowledged_at', 'health_advisory_version', 'delivery_zone_id'];
   const order = Object.fromEntries(keys.filter(key => data[key] !== undefined).map(key => [key, data[key]]));
-  return { ...order, status: 'pending_payment', payment_status: 'pending', financial_status: 'pending',
+  return { ...order, ...(data.bag_return_request_id ? { bag_return_request_id: data.bag_return_request_id } : {}),
+    status: 'pending_payment', payment_status: 'pending', financial_status: 'pending',
     payment_captured: false, stripe_checkout_session_id: session.id, is_preorder: false,
     source_type: 'one_time', is_test_order: false,
     status_history: [{ status: 'pending_payment', timestamp: new Date().toISOString(),
@@ -50,6 +51,7 @@ function verifyRecords(orders, contexts, data, session) {
     && stored?.reward_reservation_points === data.reward_reservation_points
     && stored?.customer_email === data.customer_email && stored?.order_number === data.order_number
     && stored?.total === 0 && stored?.credits_discount === 0
+    && (order.bag_return_request_id || null) === (data.bag_return_request_id || null)
     && same(stored?.items, data.items) && same(order.items, data.items)
     && same(stored?.active_reward, data.active_reward), 'reward_checkout_records_mismatch');
   for (const key of ['assigned_delivery_date', 'assigned_production_day', 'assigned_delivery_window_start',
@@ -70,6 +72,23 @@ function verifyRecords(orders, contexts, data, session) {
     && !(Number(order.amount_refunded || 0) > 0), 'reward_checkout_order_terminal');
   if (session.status === 'open') assert(order.status === 'pending_payment' && order.payment_status === 'pending'
     && order.financial_status === 'pending' && !order.reward_settlement, 'reward_checkout_not_pending');
+}
+
+async function verifyRequestedBagReturn(entities, data) {
+  if (!data.bag_return_request_id) return;
+  const bags = await entities.BagReturn.filter({ id: data.bag_return_request_id }, undefined, 2);
+  assert(Array.isArray(bags) && bags.length === 1 && bags[0]?.id === data.bag_return_request_id
+    && email(bags[0].customer_email) === email(data.customer_email), 'reward_bag_request_unconfirmed');
+  const bag = bags[0];
+  if (bag.order_id === 'pending' && bag.verification_status === 'requested') return;
+  // A completed checkout may legitimately replay after its handoff linked or
+  // collected the bag. Only that exact persisted order may reuse the reference.
+  const orders = await entities.Order.filter({ id: bag.order_id }, undefined, 2);
+  assert(Array.isArray(orders) && orders.length === 1 && orders[0]?.order_number === data.order_number
+    && email(orders[0].customer_email) === email(data.customer_email)
+    && orders[0].bag_return_request_id === bag.id && orders[0].total === 0
+    && orders[0].payment_captured === false && sessionPattern.test(orders[0].stripe_checkout_session_id || ''),
+  'reward_bag_already_assigned');
 }
 
 // Expiration is provider-authoritative. A completion race, failed read, or lost
@@ -132,11 +151,17 @@ export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata,
     && data.reward_reservation_id === metadata.reward_reservation_id
     && hashPattern.test(data.checkout_context_hash || '') && data.checkout_context_hash === metadata.checkout_context_hash
     && metadata.checkout_mode === 'account' && metadata.customer_email === data.customer_email
+    && (data.bag_return_request_id == null || (typeof data.bag_return_request_id === 'string'
+      && /^[A-Za-z0-9._:-]{1,120}$/.test(data.bag_return_request_id)))
+    && (metadata.bag_return_request_id || null) === (data.bag_return_request_id || null)
     && metadata.order_number === data.order_number && Array.isArray(data.items) && data.items.length > 0
     && data.items.length <= 50 && data.items.every(item => typeof item.title === 'string' && item.title.trim()
       && Number.isSafeInteger(item.quantity) && item.quantity > 0 && item.quantity <= 100), 'reward_zero_checkout_invalid');
   const sessionMetadata = { ...metadata, checkout_version: NO_PAYMENT_CHECKOUT_VERSION };
   assert(Object.keys(sessionMetadata).length <= 50, 'reward_metadata_limit');
+  // Fail before creating a provider Session or holding points, not only after
+  // settlement when the customer would already have spent their reward.
+  await verifyRequestedBagReturn(base44.asServiceRole.entities, data);
   let session;
   let ownsPreparation = false;
   let verifiedSessionId = null;

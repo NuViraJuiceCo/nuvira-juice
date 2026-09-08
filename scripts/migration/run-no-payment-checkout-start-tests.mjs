@@ -42,6 +42,7 @@ function fixture() {
     order_number: data.order_number, reward_reservation_id: data.reward_reservation_id,
     checkout_context_hash: data.checkout_context_hash, is_test_order: 'false', internal_sandbox_checkout: 'false' };
   const rows = { Order: [], CheckoutSession: [], RewardTier: [tier],
+    BagReturn: [{ id: 'synthetic-bag', customer_email: email, order_id: 'pending', verification_status: 'requested' }],
     UserPoints: [{ id: 'points', customer_email: email, total_points: 7000, lifetime_points: 7000,
       redeemed_points: 0, reserved_points: 0, points_history: [], reward_reservations: [] }],
     LoyaltyMember: [{ id: 'member', email, total_points: 7000, reserved_points: 0 }], LoyaltyTransaction: [] };
@@ -151,6 +152,54 @@ await test('exact retry preserves provider parameters, reservation, original ack
   assert.equal(f.rows.Order.length, 1); assert.equal(f.rows.CheckoutSession.length, 1);
   assert.equal(f.rows.UserPoints[0].reserved_points, 6000); assert.equal(f.rows.UserPoints[0].reward_reservations.length, 1);
   assert.equal(f.rows.CheckoutSession[0].checkout_data.health_advisory_acknowledged_at, '2026-09-08T09:00:00Z');
+});
+await test('requested bag return survives no-cost order/context/provider preparation and settlement', async () => {
+  const f = fixture(); f.data.bag_return_request_id = 'synthetic-bag'; f.metadata.bag_return_request_id = 'synthetic-bag';
+  const response = await f.run(); assert.ok(response.clientSecret);
+  assert.equal(f.rows.Order[0].bag_return_request_id, 'synthetic-bag');
+  assert.equal(f.rows.CheckoutSession[0].checkout_data.bag_return_request_id, 'synthetic-bag');
+  assert.equal(f.session().metadata.bag_return_request_id, 'synthetic-bag');
+  const schema = JSON.parse(fs.readFileSync('base44/entities/Order.jsonc', 'utf8'));
+  assert.equal(schema.properties.bag_return_request_id.type, 'string');
+  f.complete(); assert.equal((await f.webhook('checkout.session.completed')).body.error, 'reward_checkout_handoff_pending');
+  assert.equal(f.rows.Order[0].bag_return_request_id, 'synthetic-bag');
+});
+await test('changed bag-return reference in the pending order cannot expose a replay secret', async () => {
+  const f = fixture(); f.data.bag_return_request_id = 'synthetic-bag'; f.metadata.bag_return_request_id = 'synthetic-bag';
+  await f.run(); f.rows.Order[0].bag_return_request_id = 'foreign-bag';
+  assert.equal((await f.run()).clientSecret, undefined);
+});
+for (const target of ['order', 'provider']) await test(`changed ${target} bag-return reference cannot settle or debit the reward`, async () => {
+  const f = fixture(); f.data.bag_return_request_id = 'synthetic-bag'; f.metadata.bag_return_request_id = 'synthetic-bag';
+  await f.run(); f.complete();
+  if (target === 'order') f.rows.Order[0].bag_return_request_id = 'foreign-bag';
+  else f.session().metadata.bag_return_request_id = 'foreign-bag';
+  assert.equal((await f.webhook('checkout.session.completed')).body.error, 'reward_checkout_processing_unconfirmed');
+  assert.equal(f.rows.UserPoints[0].total_points, 7000); assert.equal(f.rows.UserPoints[0].reserved_points, 6000);
+  assert.equal(f.rows.LoyaltyTransaction.length, 0);
+});
+await test('bag-return metadata mismatch fails before any provider Session or points hold is created', async () => {
+  const f = fixture(); f.data.bag_return_request_id = 'synthetic-bag';
+  await assert.rejects(f.run, /reward_zero_checkout_invalid/); assert.deepEqual(f.effects, []);
+});
+for (const [name, mutate] of [
+  ['foreign customer', f => { f.rows.BagReturn[0].customer_email = 'foreign@example.test'; }],
+  ['other order', f => { f.rows.BagReturn[0].order_id = 'foreign-order'; }],
+  ['unlinked verified bag', f => { f.rows.BagReturn[0].verification_status = 'verified'; }],
+  ['missing record', f => { f.rows.BagReturn.length = 0; }],
+  ['duplicate record', f => { f.rows.BagReturn.push({ ...f.rows.BagReturn[0] }); }],
+  ['read error', f => { f.faults['BagReturn.read'] = true; }],
+]) await test(`bag request ${name} fails before provider creation or reserving points`, async () => {
+  const f = fixture(); f.data.bag_return_request_id = 'synthetic-bag'; f.metadata.bag_return_request_id = 'synthetic-bag';
+  mutate(f); await assert.rejects(f.run); assert.deepEqual(f.effects, []);
+  assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+});
+await test('same settled checkout can replay after its exact bag return was linked and verified', async () => {
+  const f = fixture(); f.data.bag_return_request_id = 'synthetic-bag'; f.metadata.bag_return_request_id = 'synthetic-bag';
+  await f.run(); f.complete(); await f.webhook('checkout.session.completed');
+  f.rows.BagReturn[0].order_id = f.rows.Order[0].id; f.rows.BagReturn[0].verification_status = 'verified';
+  const result = await f.run(); assert.equal(result.checkoutCompleted, true); assert.equal(result.clientSecret, undefined);
+  assert.equal(f.rows.LoyaltyTransaction.length, 1);
 });
 await test('prepare -> real central hold -> signed-event dispatcher -> real central redemption, no false full handoff', async () => {
   const f = fixture(); await f.run(); f.complete(); const response = await f.webhook('checkout.session.completed');

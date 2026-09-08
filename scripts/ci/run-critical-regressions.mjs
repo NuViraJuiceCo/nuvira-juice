@@ -25,6 +25,7 @@ const harnesses = [
   'scripts/migration/run-no-payment-checkout-start-tests.mjs',
   'scripts/migration/run-reward-embedded-checkout-tests.mjs',
   'scripts/migration/run-reward-handoff-recovery-tests.mjs',
+  'scripts/migration/run-reward-customer-handoff-tests.mjs',
   'scripts/migration/run-order-confirmation-truth-tests.mjs',
   'scripts/migration/run-payment-benefit-retry-tests.mjs',
   'scripts/migration/run-g71-bag-return-activation-tests.mjs',
