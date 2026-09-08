@@ -46,6 +46,8 @@ for (const path of ['base44/functions/claimReward/entry.ts', 'base44/functions/g
     ['duplicate balance', { points: [{ total_points: 1000 }, { total_points: 1000 }] }, payload, 409],
     ['non-finite balance', { points: [{ total_points: 'bad' }] }, payload, 409],
     ['negative balance', { points: [{ total_points: -1 }] }, payload, 409],
+    ['points held by another checkout', { points: [{ total_points: 1000, reserved_points: 1 }] }, payload, 409],
+    ['invalid reserved balance', { points: [{ total_points: 1000, reserved_points: 1001 }] }, payload, 409],
   ]) await test(`${label}: ${name} rejected before write`, async () => {
     const ctx = loadHandler(path, options); const res = await ctx.handle(request(body));
     assert.equal(res.status, status); assert.equal(ctx.writes.length, 0);
@@ -58,6 +60,11 @@ for (const path of ['base44/functions/claimReward/entry.ts', 'base44/functions/g
     const ctx = loadHandler(path); const res = await ctx.handle(request({ ...payload, validate_only: true, points_required: 1 }));
     const data = await res.json(); assert.equal(res.status, 200); assert.equal(data.points_required, 1000);
     assert.equal(data.validated_only, true); assert.equal(data.writes_performed, false); assert.equal(ctx.writes.length, 0);
+  });
+  await test(`${label}: enough unreserved points remain selectable`, async () => {
+    const ctx = loadHandler(path, { points: [{ id: 'points-test', total_points: 1500, reserved_points: 500 }] });
+    const res = await ctx.handle(request({ ...payload, validate_only: true }));
+    assert.equal(res.status, 200); assert.equal(ctx.writes.length, 0);
   });
   await test(`${label}: valid selection and replay do not debit or duplicate`, async () => {
     const points = [{ id: 'points-test', total_points: 1000, claimed_rewards: [] }];

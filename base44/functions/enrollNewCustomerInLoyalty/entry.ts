@@ -1,8 +1,93 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.41';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
+import Stripe from 'npm:stripe@14.21.0';
+import { applyPointsTransaction, syncPointsMemberProjection, readPointsAccount, reserveRewardPoints,
+  settleRewardPoints, PointsAccountError, POINTS_ACCOUNT_REVISION } from './pointsAccount.js';
 
 type AnyRecord = Record<string, any>;
 
 const VALID_TYPES = new Set(['earned', 'bonus', 'redeemed', 'reversal', 'adjustment', 'migration']);
+
+async function rewardPaymentAction(base44: any, body: AnyRecord, action: string, actor: AnyRecord) {
+  const customerEmail = email(body.customer_email);
+  const paymentIntentId = text(body.stripe_payment_intent_id, 180);
+  if (!customerEmail.includes('@') || !/^pi_[a-zA-Z0-9_]+$/.test(paymentIntentId)) {
+    return Response.json({ error: 'reward_payment_identity_required' }, { status: 400 });
+  }
+  const key = Deno.env.get('STRIPE_SECRET_KEY');
+  if (!key) return Response.json({ error: 'reward_payment_verification_unavailable' }, { status: 503 });
+  // Do not trust a caller-provided payment status or release-on-timeout request.
+  // Retrieval is read-only; no confirm, capture, refund or cancel occurs here.
+  const payment = await new Stripe(key).paymentIntents.retrieve(paymentIntentId);
+  const metadata = payment.metadata || {};
+  if (payment.id !== paymentIntentId || payment.livemode !== true || payment.currency !== 'usd'
+    || metadata.checkout_mode !== 'account' || metadata.checkout_version !== '3.0_embedded'
+    || email(metadata.customer_email) !== customerEmail || metadata.internal_sandbox_checkout === 'true'
+    || metadata.is_test_order === 'true' || !metadata.reward_reservation_id || !metadata.checkout_context_hash) {
+    return Response.json({ error: 'reward_payment_identity_mismatch' }, { status: 409 });
+  }
+  const entities = base44.asServiceRole.entities;
+  if (action === 'reserve_reward_checkout') {
+    if (!['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(payment.status)) {
+      return Response.json({ error: 'reward_payment_not_reservable' }, { status: 409 });
+    }
+    const rewards = await entities.RewardTier.filter({ id: body.reward_id, is_active: true }, undefined, 2);
+    if (!body.reward_id || !Array.isArray(rewards) || rewards.length !== 1
+      || !Number.isSafeInteger(rewards[0].points_required) || rewards[0].points_required <= 0
+      || rewards[0].points_required !== body.points) return Response.json({ error: 'reward_cost_changed' }, { status: 409 });
+    const result = await reserveRewardPoints(entities, customerEmail, {
+      reservation_id: metadata.reward_reservation_id, context_hash: metadata.checkout_context_hash,
+      payment_intent_id: payment.id, points: rewards[0].points_required,
+    });
+    await syncPointsMemberProjection(entities, customerEmail);
+    return Response.json({ success: true, idempotent: result.idempotent,
+      revision: POINTS_ACCOUNT_REVISION, reservation_status: result.reservation.status,
+      available_points: result.account.total_points - result.account.reserved_points });
+  }
+  const account = await readPointsAccount(entities, customerEmail);
+  const hold = account.reward_reservations?.find((row: AnyRecord) => row.reservation_id === metadata.reward_reservation_id);
+  if (!hold || hold.context_hash !== metadata.checkout_context_hash || hold.payment_intent_id !== payment.id) {
+    return Response.json({ error: 'reward_reservation_payment_mismatch' }, { status: 409 });
+  }
+  if (!['succeeded', 'canceled'].includes(payment.status)) {
+    return Response.json({ success: true, deferred: true, reservation_status: hold.status,
+      reason: 'payment_still_retryable', writes_performed: false });
+  }
+  let transaction = null;
+  if (payment.status === 'succeeded') {
+    const idempotencyKey = `stripe_payment:${payment.id}:redeemed`;
+    const existing = await entities.LoyaltyTransaction.filter({ idempotency_key: idempotencyKey }, '-created_date', 3);
+    const active = existing.filter((row: AnyRecord) => row.status !== 'voided');
+    if (active.length > 1) return Response.json({ error: 'duplicate_loyalty_transactions' }, { status: 409 });
+    transaction = active[0] || await entities.LoyaltyTransaction.create({
+      idempotency_key: idempotencyKey, customer_email: customerEmail,
+      amount: -hold.points, transaction_type: 'redeemed', status: 'pending',
+      source_type: 'stripe_redemption', source_id: payment.id,
+      order_number: metadata.order_number || null, description: 'Earned reward redeemed at checkout',
+      occurred_at: new Date().toISOString(), actor_type: actor.actor_type, actor_email: actor.actor_email,
+      metadata: { reservation_id: hold.reservation_id, checkout_context_hash: hold.context_hash },
+    });
+    if (email(transaction.customer_email) !== customerEmail || transaction.amount !== -hold.points
+      || transaction.transaction_type !== 'redeemed') return Response.json({ error: 'idempotency_key_conflict' }, { status: 409 });
+  }
+  const result = await settleRewardPoints(entities, customerEmail, {
+    reservation_id: hold.reservation_id, context_hash: hold.context_hash,
+    payment_intent_id: payment.id, provider_status: payment.status,
+  }, transaction);
+  if (transaction) {
+    const receipt = result.receipt;
+    if (!receipt?.transaction_id) throw new PointsAccountError('reward_redemption_receipt_missing');
+    if (receipt.transaction_id !== transaction.id) await entities.LoyaltyTransaction.update(transaction.id, { status: 'voided' });
+    await entities.LoyaltyTransaction.update(receipt.transaction_id, {
+      status: 'posted', posted_at: new Date().toISOString(),
+      balance_before: receipt.balanceBefore, balance_after: receipt.balanceAfter,
+      lifetime_before: receipt.lifetimeBefore, lifetime_after: receipt.lifetimeAfter,
+      redeemed_before: receipt.redeemedBefore, redeemed_after: receipt.redeemedAfter,
+    });
+  }
+  await syncPointsMemberProjection(entities, customerEmail);
+  return Response.json({ success: true, idempotent: result.idempotent, revision: POINTS_ACCOUNT_REVISION,
+    reservation_status: result.reservation.status, available_points: result.account.total_points - result.account.reserved_points });
+}
 
 function text(value: unknown, maxLength = 300): string {
   return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, maxLength);
@@ -50,12 +135,6 @@ function hasInternalAuth(req: Request, body: AnyRecord): boolean {
   return presented.some((candidate) => allowed.includes(candidate));
 }
 
-function historyType(transactionType: string, amount = 0): 'earned' | 'redeemed' | 'bonus' {
-  if (transactionType === 'bonus') return 'bonus';
-  if (transactionType === 'redeemed' || transactionType === 'reversal' || amount < 0) return 'redeemed';
-  return 'earned';
-}
-
 function balanceProjection(current: AnyRecord | null, transactionType: string, amount: number) {
   const balanceBefore = number(current?.total_points);
   const lifetimeBefore = number(current?.lifetime_points);
@@ -77,55 +156,30 @@ function balanceProjection(current: AnyRecord | null, transactionType: string, a
   };
 }
 
-async function syncCaches(base44: any, customerEmail: string, transaction: AnyRecord, projection: AnyRecord) {
-  const historyEntry = {
-    amount: transaction.amount,
-    type: historyType(transaction.transaction_type, number(transaction.amount)),
-    description: transaction.description,
-    event_key: transaction.source_id || undefined,
-    idempotency_key: transaction.idempotency_key,
-    timestamp: transaction.occurred_at,
-  };
-  const [pointsRows, memberRows] = await Promise.all([
-    base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail }, '-updated_date', 5),
-    base44.asServiceRole.entities.LoyaltyMember.filter({ email: customerEmail }, '-updated_date', 5),
-  ]);
-  const points = pointsRows[0] || null;
-  const members = memberRows[0] || null;
-  const aggregate = {
-    total_points: projection.balanceAfter,
-    lifetime_points: projection.lifetimeAfter,
-    redeemed_points: projection.redeemedAfter,
-  };
-  if (points) {
-    const history = Array.isArray(points.points_history) ? points.points_history : [];
-    const hasEntry = history.some((row: AnyRecord) => row?.idempotency_key === transaction.idempotency_key);
-    await base44.asServiceRole.entities.UserPoints.update(points.id, {
-      ...aggregate,
-      points_history: hasEntry ? history : [...history, historyEntry],
-    });
-  } else {
-    await base44.asServiceRole.entities.UserPoints.create({
-      customer_email: customerEmail,
-      ...aggregate,
-      points_history: [historyEntry],
-      claimed_rewards: [],
-    });
+async function syncCaches(base44: any, customerEmail: string, transaction: AnyRecord,
+  snapshot: { balanceAfter: number; lifetimeAfter: number; redeemedAfter: number } | null = null) {
+  // entities.UserPoints is the conditional-write authority. entities.LoyaltyMember
+  // is a monotonic revisioned mirror, not a second balance calculation.
+  const entities = base44.asServiceRole.entities;
+  const result = await applyPointsTransaction(entities, customerEmail, transaction, snapshot);
+  const canonicalId = result.receipt?.transaction_id || transaction.id;
+  if (canonicalId !== transaction.id) {
+    // Concurrent requests can create pending rows, but only the CAS winner's
+    // receipt can become posted. Retain the losing row as a voided audit record.
+    await entities.LoyaltyTransaction.update(transaction.id, { status: 'voided' });
   }
-  if (members) {
-    const history = Array.isArray(members.points_history) ? members.points_history : [];
-    const hasEntry = history.some((row: AnyRecord) => row?.idempotency_key === transaction.idempotency_key);
-    await base44.asServiceRole.entities.LoyaltyMember.update(members.id, {
-      ...aggregate,
-      points_history: hasEntry ? history : [...history, historyEntry],
-    });
-  } else {
-    await base44.asServiceRole.entities.LoyaltyMember.create({
-      email: customerEmail,
-      ...aggregate,
-      points_history: [historyEntry],
-    });
-  }
+  const projection = result.projection;
+  await entities.LoyaltyTransaction.update(canonicalId, {
+    ...(projection ? {
+      amount: result.receipt.amount,
+      balance_before: projection.balanceBefore, balance_after: projection.balanceAfter,
+      lifetime_before: projection.lifetimeBefore, lifetime_after: projection.lifetimeAfter,
+      redeemed_before: projection.redeemedBefore, redeemed_after: projection.redeemedAfter,
+    } : {}),
+    status: 'posted', posted_at: new Date().toISOString(),
+  });
+  await syncPointsMemberProjection(entities, customerEmail);
+  return { ...result, transaction_id: canonicalId };
 }
 
 async function reconcileSnapshot(base44: any, body: AnyRecord, actor: AnyRecord) {
@@ -140,7 +194,21 @@ async function reconcileSnapshot(base44: any, body: AnyRecord, actor: AnyRecord)
     return Response.json({ error: 'valid_expected_balances_required' }, { status: 400 });
   }
   const prior = await base44.asServiceRole.entities.LoyaltyTransaction.filter({ idempotency_key: idempotencyKey }, '-created_date', 3);
-  if (prior[0]) return Response.json({ success: true, idempotent: true, transaction: prior[0] });
+  if (prior.length > 1) return Response.json({ error: 'duplicate_loyalty_transactions' }, { status: 409 });
+  if (prior[0]) {
+    if (email(prior[0].customer_email) !== customerEmail || prior[0].transaction_type !== 'adjustment'
+      || number(prior[0].balance_after) !== expectedTotal || number(prior[0].lifetime_after) !== expectedLifetime
+      || number(prior[0].redeemed_after) !== expectedRedeemed) {
+      return Response.json({ error: 'idempotency_key_conflict' }, { status: 409 });
+    }
+    if (prior[0].status === 'pending') {
+      await syncCaches(base44, customerEmail, prior[0], {
+        balanceAfter: expectedTotal, lifetimeAfter: expectedLifetime, redeemedAfter: expectedRedeemed,
+      });
+    } else if (prior[0].status === 'posted') await syncPointsMemberProjection(base44.asServiceRole.entities, customerEmail);
+    else return Response.json({ error: 'loyalty_transaction_voided' }, { status: 409 });
+    return Response.json({ success: true, idempotent: true, transaction: prior[0] });
+  }
 
   const pointsRows = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail }, '-updated_date', 5);
   const current = pointsRows[0] || null;
@@ -175,16 +243,15 @@ async function reconcileSnapshot(base44: any, body: AnyRecord, actor: AnyRecord)
     actor_email: actor.actor_email,
     metadata: safeMetadata(body.metadata),
   });
-  await syncCaches(base44, customerEmail, transaction, projection);
-  await base44.asServiceRole.entities.LoyaltyTransaction.update(transaction.id, { status: 'posted' });
+  const applied = await syncCaches(base44, customerEmail, transaction, projection);
   return Response.json({
     success: true,
-    idempotent: false,
-    transaction_id: transaction.id,
-    adjustment: amount,
-    available_points: projection.balanceAfter,
-    lifetime_points: projection.lifetimeAfter,
-    redeemed_points: projection.redeemedAfter,
+    idempotent: applied.idempotent,
+    transaction_id: applied.transaction_id,
+    adjustment: applied.receipt.amount,
+    available_points: applied.account.total_points - (applied.account.reserved_points || 0),
+    lifetime_points: applied.account.lifetime_points,
+    redeemed_points: applied.account.redeemed_points,
   });
 }
 
@@ -222,6 +289,11 @@ Deno.serve(async (req) => {
 
     if (!body.action && body?.data) return await enrollFromOrderAutomation(base44, body);
     const action = text(body.action || 'post', 40).toLowerCase();
+    if (['reserve_reward_checkout', 'settle_reward_checkout'].includes(action)) {
+      return await rewardPaymentAction(base44, body, action, {
+        actor_type: internal ? 'service' : 'admin', actor_email: internal ? null : email(user?.email),
+      });
+    }
     if (action === 'reconcile') {
       return await reconcileSnapshot(base44, body, {
         actor_type: internal ? 'service' : 'admin',
@@ -232,32 +304,41 @@ Deno.serve(async (req) => {
     const customerEmail = email(body.customer_email);
     const idempotencyKey = text(body.idempotency_key, 300);
     const transactionType = text(body.transaction_type, 40).toLowerCase();
-    const amount = Math.trunc(number(body.amount, Number.NaN));
+    const amount = number(body.amount, Number.NaN);
     if (!customerEmail || !customerEmail.includes('@')) return Response.json({ error: 'valid_customer_email_required' }, { status: 400 });
     if (!idempotencyKey) return Response.json({ error: 'idempotency_key_required' }, { status: 400 });
     if (!VALID_TYPES.has(transactionType)) return Response.json({ error: 'invalid_transaction_type' }, { status: 400 });
-    if (!Number.isFinite(amount) || amount === 0) return Response.json({ error: 'nonzero_integer_amount_required' }, { status: 400 });
+    if (!Number.isSafeInteger(amount) || amount === 0) return Response.json({ error: 'nonzero_integer_amount_required' }, { status: 400 });
     if ((transactionType === 'earned' || transactionType === 'bonus') && amount < 0) return Response.json({ error: 'earning_amount_must_be_positive' }, { status: 400 });
     if ((transactionType === 'redeemed' || transactionType === 'reversal') && amount > 0) return Response.json({ error: 'debit_amount_must_be_negative' }, { status: 400 });
 
-    const prior = await base44.asServiceRole.entities.LoyaltyTransaction.filter({ idempotency_key: idempotencyKey }, '-created_date', 3);
-    if (prior[0]) {
-      if (email(prior[0].customer_email) !== customerEmail || number(prior[0].amount) !== amount) {
+    const prior = await base44.asServiceRole.entities.LoyaltyTransaction.filter({ idempotency_key: idempotencyKey }, '-created_date', 20);
+    if (prior.length >= 20) return Response.json({ error: 'loyalty_transaction_lookup_incomplete' }, { status: 409 });
+    const activePrior = prior.filter((row: AnyRecord) => row.status !== 'voided');
+    if (activePrior[0]) {
+      if (activePrior.some((row: AnyRecord) => email(row.customer_email) !== customerEmail || number(row.amount) !== amount
+        || row.transaction_type !== transactionType)) {
         return Response.json({ error: 'idempotency_key_conflict' }, { status: 409 });
       }
-      if (prior[0].status === 'pending') {
-        const replayProjection = {
-          balanceBefore: number(prior[0].balance_before),
-          balanceAfter: number(prior[0].balance_after),
-          lifetimeBefore: number(prior[0].lifetime_before),
-          lifetimeAfter: number(prior[0].lifetime_after),
-          redeemedBefore: number(prior[0].redeemed_before),
-          redeemedAfter: number(prior[0].redeemed_after),
-        };
-        await syncCaches(base44, customerEmail, prior[0], replayProjection);
-        await base44.asServiceRole.entities.LoyaltyTransaction.update(prior[0].id, { status: 'posted' });
+      const posted = activePrior.filter((row: AnyRecord) => row.status === 'posted');
+      if (posted.length > 1) return Response.json({ error: 'duplicate_posted_loyalty_transactions' }, { status: 409 });
+      // Identical pending duplicates can be left by a process dying between
+      // creation and CAS. The account receipt still decides the single winner.
+      const priorTransaction = posted[0] || [...activePrior].sort((a, b) => a.id.localeCompare(b.id))[0];
+      let canonicalId = priorTransaction.id;
+      if (priorTransaction.status === 'pending') {
+        const repaired = await syncCaches(base44, customerEmail, priorTransaction);
+        canonicalId = repaired.transaction_id;
       }
-      return Response.json({ success: true, idempotent: true, transaction: prior[0] });
+      else if (priorTransaction.status === 'posted') await syncPointsMemberProjection(base44.asServiceRole.entities, customerEmail);
+      else return Response.json({ error: 'invalid_loyalty_transaction_status' }, { status: 409 });
+      for (const duplicate of activePrior) {
+        if (duplicate.id !== canonicalId && duplicate.status === 'pending') {
+          await base44.asServiceRole.entities.LoyaltyTransaction.update(duplicate.id, { status: 'voided' });
+        }
+      }
+      return Response.json({ success: true, idempotent: true, transaction_id: canonicalId,
+        transaction: { ...(activePrior.find((row: AnyRecord) => row.id === canonicalId) || priorTransaction), status: 'posted' } });
     }
 
     const pointsRows = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: customerEmail }, '-updated_date', 5);
@@ -295,17 +376,17 @@ Deno.serve(async (req) => {
       actor_email: internal ? null : email(user?.email),
       metadata: safeMetadata(body.metadata),
     });
-    await syncCaches(base44, customerEmail, transaction, projection);
-    await base44.asServiceRole.entities.LoyaltyTransaction.update(transaction.id, { status: 'posted' });
+    const applied = await syncCaches(base44, customerEmail, transaction);
     return Response.json({
       success: true,
-      idempotent: false,
-      transaction_id: transaction.id,
-      available_points: projection.balanceAfter,
-      lifetime_points: projection.lifetimeAfter,
-      redeemed_points: projection.redeemedAfter,
+      idempotent: applied.idempotent,
+      transaction_id: applied.transaction_id,
+      available_points: applied.account.total_points - (applied.account.reserved_points || 0),
+      lifetime_points: applied.account.lifetime_points,
+      redeemed_points: applied.account.redeemed_points,
     });
   } catch (error) {
+    if (error instanceof PointsAccountError) return Response.json({ error: error.code }, { status: 409 });
     const message = error instanceof Error ? error.message : String(error || 'loyalty_mutation_failed');
     console.error('[enrollNewCustomerInLoyalty]', message);
     return Response.json({ error: text(message, 500) || 'loyalty_mutation_failed' }, { status: 500 });

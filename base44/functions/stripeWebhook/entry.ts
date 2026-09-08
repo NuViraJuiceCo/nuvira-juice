@@ -1,11 +1,12 @@
 // @ts-nocheck
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
 import Stripe from 'npm:stripe@14.21.0';
 import { sendGooglePurchaseMeasurement } from './googleMeasurement.js';
 import { sendMetaPurchaseConversion } from './metaConversions.js';
+import { settleEmbeddedPaymentBenefits, applyCheckoutCredit } from './paymentBenefits.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-g138-meta-capi-purchase-v2';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260908-benefit-retry-v1';
 const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
@@ -348,6 +349,23 @@ async function postLoyaltyTransaction(base44, payload) {
   const result = response?.data || response;
   if (result?.success !== true) throw new Error(result?.error || 'loyalty_transaction_failed');
   return result;
+}
+
+async function settleEmbeddedBenefits(base44, event, paymentIntent, order, checkoutData, stagingSafeMode) {
+  return settleEmbeddedPaymentBenefits({
+    entities: base44.asServiceRole.entities,
+    postLoyalty: payload => postLoyaltyTransaction(base44, payload),
+    settleReservation: async payload => {
+      const result = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+        ...payload, action: 'settle_reward_checkout',
+        internal_secret: Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '',
+      });
+      const data = result?.data || result;
+      if (data?.success !== true || data?.reservation_status !== 'consumed') throw new Error('reward_payment_settlement_unconfirmed');
+      return data;
+    },
+    event, paymentIntent, order, checkoutData, skipLoyalty: skipLoyaltyWrite(stagingSafeMode),
+  });
 }
 
 async function linkPendingBagReturn(base44, bagReturnId, customerEmail, orderId) {
@@ -973,23 +991,9 @@ Deno.serve(async (req) => {
           });
         }
 
-        if (customerEmail && orderData.credits_discount > 0) {
-          const creditRecs = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: customerEmail });
-          if (creditRecs[0]) {
-            const rec = creditRecs[0];
-            const entry = {
-              amount: orderData.credits_discount,
-              type: 'used',
-              description: `Applied to order ${orderNumber}`,
-              order_id: order.id,
-              timestamp: new Date().toISOString(),
-            };
-            await base44.asServiceRole.entities.NuViraCredit.update(rec.id, {
-              balance: Math.max(0, (rec.balance || 0) - orderData.credits_discount),
-              lifetime_used: (rec.lifetime_used || 0) + orderData.credits_discount,
-              history: [...(rec.history || []), entry],
-            });
-          }
+        if (!skipLoyaltyWrite(stagingSafeMode) && customerEmail && orderData.credits_discount > 0) {
+          await applyCheckoutCredit(base44.asServiceRole.entities, { email: customerEmail, orderId: order.id,
+            orderNumber, paymentId: String(session.payment_intent || session.id), amount: orderData.credits_discount });
         }
 
         // Push this order into Shopify
@@ -1179,6 +1183,13 @@ Deno.serve(async (req) => {
     if (event.type === 'payment_intent.canceled') {
       const pi = event.data.object;
       const meta = pi.metadata || {};
+      if (meta.reward_reservation_id && !skipLoyaltyWrite(stagingSafeMode)) {
+        const settlement = await postLoyaltyTransaction(base44, {
+          action: 'settle_reward_checkout', customer_email: meta.customer_email,
+          stripe_payment_intent_id: pi.id,
+        });
+        if (settlement.reservation_status !== 'released') throw new Error('reward_cancellation_release_unconfirmed');
+      }
       if (meta.flow_type === 'zone3_route_review' && meta.dar_id) {
         const dars = await base44.asServiceRole.entities.DeliveryApprovalRequest.filter({ id: meta.dar_id });
         const dar = dars[0];
@@ -1267,6 +1278,9 @@ Deno.serve(async (req) => {
         // Idempotency: already finalized
         if (order.payment_captured === true) {
           console.log(`[PI succeeded] Order ${orderNumber} already finalized, skipping`);
+          // Paid is not a receipt for completed benefit accounting. Repair an
+          // interrupted debit/award/mirror without charging or notifying again.
+          await settleEmbeddedBenefits(base44, event, pi, order, checkoutData, stagingSafeMode);
           await boundedMetaPurchaseAttempt({
             base44,
             event,
@@ -1348,6 +1362,10 @@ Deno.serve(async (req) => {
           finalOrderUpdate.cutoff_window_label      = finalSchedule.cutoff_window_label || 'unknown';
         }
 
+        // Finish retry-safe benefit accounting before marking the order paid.
+        // If storage fails, Stripe can retry this event without losing a debit
+        // or skipping the award merely because payment_captured was set early.
+        await settleEmbeddedBenefits(base44, event, pi, order, checkoutData, stagingSafeMode);
         await base44.asServiceRole.entities.Order.update(order.id, finalOrderUpdate);
         console.log(`[PI succeeded] Order ${orderNumber} finalized`);
 
@@ -1381,58 +1399,6 @@ Deno.serve(async (req) => {
           customerEmail,
           order.id,
         ).catch(error => console.warn(`[PI succeeded] Bag return link failed: ${error.message}`));
-
-        if (skipLoyaltyWrite(stagingSafeMode)) {
-          // Loyalty redemption is intentionally suppressed in isolated staging smoke tests.
-        } else if (customerEmail && (checkoutData.points_used || checkoutData.active_reward?.points_required)) {
-          const deductPoints = Number(checkoutData.points_used || 0) + Number(checkoutData.active_reward?.points_required || 0);
-          await postLoyaltyTransaction(base44, {
-            customer_email: customerEmail,
-            amount: -Math.trunc(deductPoints),
-            transaction_type: 'redeemed',
-            idempotency_key: `stripe_payment:${pi.id}:redeemed`,
-            description: checkoutData.active_reward?.title
-              ? `Redeemed at checkout: ${checkoutData.active_reward.title}`
-              : `Redeemed at checkout for order ${orderNumber}`,
-            source_type: 'stripe_redemption',
-            source_id: pi.id,
-            provider_event_id: event.id,
-            order_id: order.id,
-            order_number: orderNumber,
-          });
-        }
-
-        if (customerEmail && checkoutData.credits_discount > 0) {
-          const creditRecs = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: customerEmail });
-          if (creditRecs[0]) {
-            const rec = creditRecs[0];
-            await base44.asServiceRole.entities.NuViraCredit.update(rec.id, {
-              balance:       Math.max(0, (rec.balance || 0) - checkoutData.credits_discount),
-              lifetime_used: (rec.lifetime_used || 0) + checkoutData.credits_discount,
-              history: [...(rec.history || []), { amount: checkoutData.credits_discount, type: 'used', description: `Applied to order ${orderNumber}`, order_id: order.id, timestamp: new Date().toISOString() }],
-            });
-          }
-        }
-
-        // Award loyalty points
-        if (skipLoyaltyWrite(stagingSafeMode)) {
-          // Loyalty is intentionally suppressed in isolated staging smoke tests.
-        } else if (customerEmail) {
-          const pointsToAward = Math.floor(amountPaid * 10);
-          await postLoyaltyTransaction(base44, {
-            customer_email: customerEmail,
-            amount: pointsToAward,
-            transaction_type: 'earned',
-            idempotency_key: `stripe_payment:${pi.id}:earned`,
-            description: `Order payment of $${amountPaid.toFixed(2)} (${orderNumber})`,
-            source_type: 'stripe_payment',
-            source_id: pi.id,
-            provider_event_id: event.id,
-            order_id: order.id,
-            order_number: orderNumber,
-            occurred_at: new Date(event.created * 1000).toISOString(),
-          });
-        }
 
         // Push to Shopify
         base44.asServiceRole.functions.invoke('pushOrderToShopify', { order_id: order.id })
@@ -1627,28 +1593,16 @@ Deno.serve(async (req) => {
       return Response.json({ received: true });
     }
 
-    // Embedded checkout: payment failed — mark pending order as cancelled/abandoned
+    // A decline is an attempt failure, not cancellation of the PaymentIntent.
+    // Stripe permits retrying the same intent. Do not set terminal Order flags,
+    // release reward holds, or let a delayed failure overwrite a paid order.
     if (event.type === 'payment_intent.payment_failed') {
       const pi = event.data.object;
       const orderNumber = pi.metadata?.order_number;
       if (orderNumber && pi.metadata?.checkout_version === '3.0_embedded') {
-        console.log(`[PI payment_failed] PI ${pi.id} failed for order ${orderNumber}`);
-        const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: pi.id });
-        if (orders.length > 0 && !orders[0].payment_captured) {
-          await base44.asServiceRole.entities.Order.update(orders[0].id, {
-            status: 'cancelled',
-            is_abandoned_checkout: true,
-            do_not_recover: true,
-            canceled_at: new Date().toISOString(),
-            status_history: [
-              ...(orders[0].status_history || []),
-              { status: 'cancelled', timestamp: new Date().toISOString(), message: 'Payment failed — checkout abandoned.' },
-            ],
-          });
-          console.log(`[PI payment_failed] Marked order ${orderNumber} as abandoned`);
-        }
+        console.log(`[PI payment_failed] PI ${pi.id} declined for order ${orderNumber}; checkout remains retryable`);
       }
-      return Response.json({ received: true });
+      return Response.json({ received: true, action: 'payment_attempt_failed_retry_allowed' });
     }
 
     // Pre-order cancellation: customer canceled before payment was captured
@@ -1662,6 +1616,11 @@ Deno.serve(async (req) => {
       const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId });
       if (orders.length > 0) {
         const order = orders[0];
+        if (order.payment_captured === true || ['paid', 'refunded'].includes(order.payment_status)
+          || ['cancelled', 'refunded'].includes(order.status) || order.do_not_recover === true
+          || Number(order.amount_refunded || 0) > 0) {
+          return Response.json({ received: true, action: 'skipped_terminal_state' });
+        }
         const statusHistory = order.status_history || [];
         statusHistory.push({
           status: 'cancelled',

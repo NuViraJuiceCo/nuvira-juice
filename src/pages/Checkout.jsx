@@ -379,7 +379,8 @@ function CheckoutFlow() {
   const subDiscountPct = activeSubscription?.plan?.discount_percent || 0;
   const subFreeDelivery = subDiscountPct > 0; // any discounted plan also gets free delivery
 
-  const availablePoints = userPointsData?.[0]?.total_points || 0;
+  const availablePoints = Math.max(0, Number(userPointsData?.[0]?.total_points || 0)
+    - Number(userPointsData?.[0]?.reserved_points || 0));
   // 100 pts = $1
   const maxDiscount = Math.floor(availablePoints / 100);
   const pointsDiscount = usePoints ? Math.min(maxDiscount, subtotal) : 0;

@@ -26,6 +26,7 @@
       "default": 0,
       "description": "Total credits ever redeemed"
     },
+    "credit_ledger_revision": { "type": "integer", "minimum": 0, "default": 0 },
     "history": {
       "type": "array",
       "default": [],
@@ -50,6 +51,8 @@
           "order_id": {
             "type": "string"
           },
+          "payment_intent_id": { "type": "string" },
+          "idempotency_key": { "type": "string" },
           "timestamp": {
             "type": "string"
           }

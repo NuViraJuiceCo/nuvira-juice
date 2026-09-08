@@ -355,7 +355,7 @@ export default function Rewards() {
     staleTime: 10 * 60 * 1000, // reward tiers rarely change
   });
 
-  const totalPoints    = pointsData?.total_points    || 0;
+  const totalPoints = Math.max(0, Number(pointsData?.total_points || 0) - Number(pointsData?.reserved_points || 0));
   const lifetimePoints = pointsData?.lifetime_points || 0;
   const redeemedPoints = pointsData?.redeemed_points || 0;
   const birthday       = userProfile?.birthday || user?.birthday;

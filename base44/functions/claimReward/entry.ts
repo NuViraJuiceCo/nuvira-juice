@@ -55,15 +55,18 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Loyalty points account not found' }, { status: 404 });
     }
 
-    if (existing.length !== 1 || !Number.isFinite(Number(userPointsRecord.total_points))
-      || Number(userPointsRecord.total_points) < 0) {
+    const reservedPoints = Number(userPointsRecord.reserved_points ?? 0);
+    if (existing.length !== 1 || !Number.isSafeInteger(Number(userPointsRecord.total_points))
+      || Number(userPointsRecord.total_points) < 0 || !Number.isSafeInteger(reservedPoints)
+      || reservedPoints < 0 || reservedPoints > Number(userPointsRecord.total_points)) {
       return Response.json({ error: 'Your points balance needs review before a reward can be selected' }, { status: 409 });
     }
-    if (Number(userPointsRecord.total_points || 0) < requiredPoints) {
+    const availablePoints = Number(userPointsRecord.total_points) - reservedPoints;
+    if (availablePoints < requiredPoints) {
       return Response.json({
         error: 'Not enough points for this reward',
         required_points: requiredPoints,
-        available_points: Number(userPointsRecord.total_points || 0),
+        available_points: availablePoints,
       }, { status: 409 });
     }
 

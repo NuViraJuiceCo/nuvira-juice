@@ -22,6 +22,35 @@
       "type": "number",
       "default": 0
     },
+    "points_ledger_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Monotonic conditional-write revision for balances, receipts and reservations."
+    },
+    "reserved_points": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Points held for uncompleted payments; available points equal total minus reserved."
+    },
+    "reward_reservations": {
+      "type": "array",
+      "default": [],
+      "description": "Server-managed payment holds. Declines and local timeouts do not release a retryable payment hold.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reservation_id": { "type": "string" },
+          "context_hash": { "type": "string" },
+          "points": { "type": "integer", "minimum": 1 },
+          "status": { "type": "string", "enum": ["held", "consumed", "released"] },
+          "payment_intent_id": { "type": "string" },
+          "created_at": { "type": "string" },
+          "settled_at": { "type": "string" }
+        }
+      }
+    },
     "points_history": {
       "type": "array",
       "items": {
@@ -49,6 +78,14 @@
             "type": "string",
             "description": "Optional idempotency key used to prevent duplicate point awards"
           },
+          "transaction_id": { "type": "string" },
+          "transaction_type": { "type": "string" },
+          "balanceBefore": { "type": "integer" },
+          "balanceAfter": { "type": "integer" },
+          "lifetimeBefore": { "type": "integer" },
+          "lifetimeAfter": { "type": "integer" },
+          "redeemedBefore": { "type": "integer" },
+          "redeemedAfter": { "type": "integer" },
           "timestamp": {
             "type": "string"
           }
