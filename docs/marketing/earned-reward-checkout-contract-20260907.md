@@ -1,5 +1,31 @@
 # Customer-selected rewards and order minimums
 
+## Latest checkpoint: September 8 reward selection and payment wiring
+
+**Local, unreleased work. The ad is not cleared for publication.** Earlier sections below are historical checkpoints, not a claim that all of their remaining-work lists are current.
+
+- Added a separate earned-reward picker for one shot/bottle, three half-price upgrade bottles, and six included VIP bottles. Customers choose actual flavors and quantities. Paid and birthday items remain separate, and an incomplete selection cannot partially replace the cart. The legacy birthday picker is unchanged.
+- The standard signed-in `createPaymentIntent` path now charges the catalog-backed reward quote, not submitted reward prices or costs. The tier cost and any direct points discount use one reservation before the client secret is exposed. A retry can reuse its own held points only with the same provider intent and checkout hash. Failure cancels only an unconfirmed intent and releases points only after confirmed cancellation; uncertain outcomes remain blocked.
+- Applied integer-cent reward/points/credit arithmetic and prevented account discounts from exceeding the merchandise balance. Added explicit Order item schema fields for earned identity, pre-reward price, line discount and catalog identifiers, retaining the actual Product ID and quantity. Validated program-shot lineage is preserved through the reward quote into both Order and CheckoutSession.
+- A product disappearing during picker confirmation now removes only its unavailable quantity, keeps other choices and lets the customer select a replacement. It no longer traps the customer at an invisible selection limit. Failed saves retain the selection; double taps cannot start a second save.
+- A configured Deno check exposed type inference problems in the existing Meta context object and the new optional program-addon result. Added a context type and a property-existence guard without changing tracking behavior. The first-order and BRCLUB test harnesses now transpile the real TypeScript helper fragment before executing it; no eligibility assertion was removed.
+
+Focused synthetic evidence: selection **63/63**, actual payment creation/persistence **32/32**, canonical quote **57/57**, central points/reservations **38/38**, payment-benefit retry **18/18**. These execute local source with in-memory entities and simulated Stripe/Maps; they are **not** a provider sandbox or production test.
+
+Combined local checks: **128/128 critical harnesses**, configured frontend typecheck, lint, build with the explicit NuVira public app ID/base URL, configured Deno checks for both changed TypeScript handlers, and diff check pass. The repository's Deno configuration is not strict mode; no strict-typing claim is made. An initial Deno dependency auto-install disturbed local `node_modules` during a concurrent build; dependencies were restored with the unchanged npm lock and the existing postinstall patch, then the build passed. No package/lock changes or deployment resulted. Secret scan covered 1,266 tracked text files with zero findings.
+
+An isolated browser fixture at `scripts/fixtures/reward-picker` uses the real picker and local images, with no production SDK, credentials or entity writes. At an observed CSS viewport of 390x843, the modal stayed within the viewport, all three juice images loaded and quantity buttons measured 44x44. Tested mixed six-bottle selection, three-flavor half-price upgrade, 2oz shot-only choices, failed-save retention, and availability loss followed by successful replacement. Browser viewport overrides were reset. This is browser evidence, not physical-device verification.
+
+Fresh Meta C01 readback (ad `120246231181900138`): In draft, off, manual carousel, catalog disconnected, same evergreen WELCOME10/rewards copy, Shop Now, pixel `719023677458304`, and approved UTM. Meta's preview compatibility message says the ad can deliver to all selected placements. Feed, Story and Instagram Reels previews were visually inspected; no ad settings or spend were changed. The wording in that compatibility message does not mean the draft is live.
+
+### Release blockers that remain
+
+1. **A zero-total reward order is not implemented.** The new reward path stops before creating a fabricated fifty-cent payment. Stripe documents no-cost Checkout Sessions and completion through `checkout.session.completed`, with no PaymentIntent. A real no-payment finalizer, loyalty reservation binding, cancellation/expiration and normal fulfillment/communication handoff must be integrated and verified first. [Stripe no-cost orders](https://docs.stripe.com/payments/checkout/no-cost-orders)
+2. **Route-review payments do not yet use this reward quote/reservation contract.** All routes, approval/capture/cancellation paths and the UI must agree. Existing delivery-zone dollar thresholds and their pre-/post-discount basis remain a separate unresolved policy/implementation check; this checkpoint does not waive them.
+3. **Direct points without a selected tier and credits still need upfront holds.** Credits are checked before payment and debited with conditional replay protection after payment, but this does not prevent two separate prepared payments from using the same available credit. Ordinary non-reward member pricing still needs full authoritative parity, including legacy birthday and program behavior.
+4. **Abandoned-attempt and refund reconciliation, database concurrency guarantees and durable fulfillment/communication recovery remain acceptance gates.** Local conditional-write fixtures are not proof of Base44 production compare-and-set or unique account creation.
+5. **WELCOME10 activation and live release are held.** No DiscountCode activation, schema/function/site/Appflow/native release or provider traffic occurred. Base44's app-level promotion/support restriction was not bypassed. Do not deploy this branch piecemeal or enable the ad from local test results.
+
 ## Owner clarification
 
 The customer chooses an available reward using their spendable points. Unlocking a tier does not automatically add a product, spend points, or create an order.

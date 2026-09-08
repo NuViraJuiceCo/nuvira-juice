@@ -38,6 +38,27 @@
           "size": {
             "type": "string"
           },
+          "cart_line_key": {
+            "type": "string",
+            "description": "Line identity distinct from the real Product ID, so paid and earned units can coexist"
+          },
+          "reward_id": {
+            "type": "string",
+            "description": "Server-verified RewardTier ID for this earned line"
+          },
+          "reward_type": { "type": "string" },
+          "isFreeReward": { "type": "boolean" },
+          "catalog_unit_price": {
+            "type": "number",
+            "description": "Verified pre-reward unit price in USD at checkout"
+          },
+          "reward_discount_amount": {
+            "type": "number",
+            "description": "Server-calculated earned discount for this complete line, in USD"
+          },
+          "shopify_product_id": { "type": "string" },
+          "shopify_variant_id": { "type": "string" },
+          "meta_catalog_content_id": { "type": "string" },
           "is_program": {
             "type": "boolean"
           },

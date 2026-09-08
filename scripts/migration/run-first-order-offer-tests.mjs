@@ -195,7 +195,8 @@ for (const [path, normalizer, resolver] of [
   await test(resolver + ' honors an optional explicit deadline, exclusively', async () => {
     const source = read(path);
     const context = { firstOrderOfferIsConfigured: policy.firstOrderOfferIsConfigured };
-    vm.runInNewContext(source.slice(source.indexOf('function ' + normalizer), source.indexOf('function normalizeNamePart')) +
+    const helpers = source.slice(source.indexOf('function ' + normalizer), source.indexOf('function normalizeNamePart'));
+    vm.runInNewContext(transformSync(helpers, { loader: 'ts', target: 'es2022' }).code +
       '\nthis.resolve = ' + resolver + ';', context);
     const cutoff = '2026-10-01T05:00:00.000Z';
     const seasonal = { ...offer, ends_at: cutoff };
@@ -209,7 +210,8 @@ for (const [path, normalizer, resolver] of [
   await test(resolver + ' keeps an ongoing first-order offer available across month and year boundaries', async () => {
     const source = read(path);
     const context = { firstOrderOfferIsConfigured: policy.firstOrderOfferIsConfigured };
-    vm.runInNewContext(source.slice(source.indexOf('function ' + normalizer), source.indexOf('function normalizeNamePart')) +
+    const helpers = source.slice(source.indexOf('function ' + normalizer), source.indexOf('function normalizeNamePart'));
+    vm.runInNewContext(transformSync(helpers, { loader: 'ts', target: 'es2022' }).code +
       '\nthis.resolve = ' + resolver + ';', context);
     for (const instant of ['2026-09-30T23:59:59.000Z', '2026-10-01T05:00:00.000Z', '2027-01-01T06:00:00.000Z', '2099-01-01T00:00:00.000Z']) {
       const db = backend({ DiscountCode: [offer] });

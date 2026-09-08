@@ -9,10 +9,10 @@ import { motion } from 'framer-motion';
 import { Star, Gift, ShoppingBag, Users, Cake, Flame, Sparkles, ArrowRight, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
 import { isBirthdayRewardActive } from '@/lib/birthdayReward';
 import { validateActiveReward, getStoredActiveReward, selectActiveReward } from '@/lib/rewardManager';
-import { rewardProductEligible } from '@/lib/rewardSelection';
+import { earnedRewardCartItems, rewardSelectionCount } from '@/lib/rewardSelection';
 
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import FreeProductPicker from '@/components/FreeProductPicker';
+import RewardProductPicker from '@/components/RewardProductPicker';
 import MobileCarousel from '@/components/carousel/MobileCarousel';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
@@ -44,7 +44,7 @@ const DEFAULT_REWARDS = [
   { title: 'Double Points Order',     description: 'Earn 2x loyalty points on your next purchase',                                                     points_required: 1500, icon: '✨', reward_type: 'double_points' },
   { title: '10% Off Your Order',      description: '10% discount applied to your next order',                                                          points_required: 2500, icon: '💸', reward_type: 'discount_10pct' },
   { title: 'Wellness Bundle Upgrade', description: 'Upgrade any 3-bottle order to a 6-bottle bundle — 50% off the additional 3 bottles',              points_required: 4000, icon: '🎁', reward_type: 'bundle_upgrade' },
-  { title: 'VIP Wellness Box',        description: 'Exclusive curated box of 6 bottles — our best flavors, hand-selected for you',                    points_required: 6000, icon: '👑', reward_type: 'vip_box' },
+  { title: 'VIP Wellness Box',        description: 'Choose 6 included 12oz bottles. No extra merchandise required; delivery charges still apply.',       points_required: 6000, icon: '👑', reward_type: 'vip_box' },
 ];
 
 const HOW_TO_EARN = [
@@ -210,7 +210,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       {/* Content */}
       <div className="p-3 pointer-events-none">
         <p className="text-xs font-bold mb-1 leading-tight line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--foreground))' }}>{reward.title}</p>
-        <p className="text-[10px] font-medium mb-2 line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--muted-foreground))' }}>{reward.description}</p>
+        <p className="text-[10px] font-medium mb-2 line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--muted-foreground))' }}>{reward.reward_type === 'vip_box' ? 'Choose 6 included 12oz bottles. No extra merchandise required; delivery charges still apply.' : reward.description}</p>
 
         {/* Points required */}
         <div className="flex items-center justify-between gap-1 pointer-events-none">
@@ -319,7 +319,7 @@ function GuestView() {
 // ── Main authenticated view ─────────────────────────────────────────────────
 export default function Rewards() {
   const { user, isLoadingAuth } = useAuth();
-  const { setEarnedRewardItem, clearEarnedRewardItems } = useCart();
+  const { setEarnedRewardSelection, clearEarnedRewardItems } = useCart();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -424,7 +424,7 @@ export default function Rewards() {
     try {
       const selected = await selectActiveReward(reward, user?.email);
       if (currentEmailRef.current !== user?.email) return;
-      if (selected.reward_type === 'free_shot' || selected.reward_type === 'free_bottle') {
+      if (rewardSelectionCount(selected) > 0) {
         setPendingReward(selected);
         setPickerOpen(true);
         return;
@@ -442,18 +442,18 @@ export default function Rewards() {
     }
   };
 
-  const handleFreeProductSelect = async (product) => {
+  const handleFreeProductSelect = async (choices) => {
     // Re-check after the picker has been open: balance/catalog may have changed.
     const selected = await selectActiveReward(pendingReward, user?.email, { validateOnly: true });
     if (currentEmailRef.current !== user?.email) throw new Error('Your sign-in changed. Please reopen Rewards.');
-    if (!rewardProductEligible(selected, product)) throw new Error('This item is not eligible for the selected reward.');
+    earnedRewardCartItems(selected, choices);
     localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(selected));
-    setEarnedRewardItem(selected, product);
+    setEarnedRewardSelection(selected, choices);
     setActiveReward(selected);
     setPickerOpen(false);
     setPendingReward(null);
     trackGoogleRetentionEvent('reward_apply', { reward_type: selected.reward_type });
-    toast.success(`${product.title} added as your selected reward. Order minimums still apply.`);
+    toast.success(`${selected.title} added. Review your selection and any delivery charges at checkout.`);
     navigate('/cart');
   };
 
@@ -737,13 +737,11 @@ export default function Rewards() {
       {/* Extra bottom padding for safe scrolling above nav */}
       <div className="h-12" />
 
-      <FreeProductPicker
+      <RewardProductPicker
         open={pickerOpen}
         onClose={() => { setPickerOpen(false); setPendingReward(null); }}
         onSelect={handleFreeProductSelect}
-        title={pendingReward ? `Choose Your ${pendingReward.title}` : 'Choose Your Free Item'}
-        category={pendingReward?.reward_type === 'free_shot' ? 'shot' : 'juice'}
-        isEligible={(product) => rewardProductEligible(pendingReward, product)}
+        reward={pendingReward}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from './firstOrderEligibility.js';
-import { loadRewardCheckoutQuote, RewardCheckoutError, REWARD_CHECKOUT_REVISION } from './rewardCheckout.js';
+import { loadRewardCheckoutQuote, priceRewardPayment, reservePaymentReward, RewardCheckoutError, REWARD_CHECKOUT_REVISION } from './rewardCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const CHECKOUT_RECORD_REVISION = '2026-09-08.persist-before-payment-v1';
@@ -202,7 +202,7 @@ function clientIpFromRequest(req) {
 function normalizeMetaCapiContext(value, req, marketingConsent) {
   if (marketingConsent !== 'granted') return null;
   const source = value && typeof value === 'object' ? value : {};
-  const context = {
+  const context: Record<string, string> = {
     event_source_url: normalizeMetaEventSourceUrl(source.event_source_url),
     captured_at: Number.isFinite(Date.parse(source.captured_at))
       ? new Date(source.captured_at).toISOString()
@@ -1124,7 +1124,42 @@ Deno.serve(async (req) => {
         error_code: 'INVALID_ORDER_ITEMS',
       }, { status: 400 });
     }
-    const normalizedItems = isGuestCheckout
+    const checkoutAttemptDigest = checkout_idempotency_key
+      ? await sha256Hex(`${normalizedCustomerEmail}:${checkout_idempotency_key}`)
+      : null;
+    const rewardReservationId = !isGuestCheckout && active_reward && checkoutAttemptDigest
+      ? `reward:${checkoutAttemptDigest}` : null;
+    const rewardInternalSecret = Deno.env.get('LOYALTY_LEDGER_SECRET')
+      || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '';
+    let rewardQuote = null;
+    let rewardPricing = null;
+    if (!isGuestCheckout && active_reward) {
+      if (!isValidGuestSecret(checkout_idempotency_key) || !rewardInternalSecret) {
+        return Response.json({ ok: false, error_code: 'REWARD_CHECKOUT_NOT_READY',
+          error: 'We could not secure your reward checkout. Please try again later.',
+          writes_performed: false, payment_intent_created: false }, { status: 503 });
+      }
+      rewardQuote = await loadRewardCheckoutQuote(base44, authenticatedUser, requestBody, (item) => {
+        const key = programKeyForCheckoutItem(item);
+        const days = key ? programDaysForCheckoutItem(item, key) : null;
+        const option = days ? PROGRAM_ORDER_OPTIONS[key]?.[days] : null;
+        return option ? normalizeCheckoutItem({ ...item, price: option.price }) : null;
+      }, { retryReservationId: rewardReservationId });
+    }
+    if (rewardQuote) {
+      // Keep the existing validated program-shot lineage without restoring any
+      // caller-supplied price, reward flag, product identity or bundle count.
+      rewardQuote.items = rewardQuote.items.map((item, index) => {
+        const addon = normalizeCheckoutItem({ ...item,
+          program_addon_for: items[index]?.program_addon_for,
+          program_addon_days: items[index]?.program_addon_days });
+        return 'program_addon_for' in addon ? { ...item,
+          program_addon_for: addon.program_addon_for,
+          program_addon_days: addon.program_addon_days,
+          program_addon_schedule_version: addon.program_addon_schedule_version } : item;
+      });
+    }
+    const normalizedItems = rewardQuote ? rewardQuote.items : isGuestCheckout
       ? await authoritativeGuestCheckoutItems(base44, items)
       : items.map(normalizeCheckoutItem);
     if (!normalizedItems) {
@@ -1136,7 +1171,7 @@ Deno.serve(async (req) => {
         order_created: false,
       }, { status: 409 });
     }
-    const authoritativeSubtotal = isGuestCheckout
+    const authoritativeSubtotal = rewardQuote ? rewardQuote.subtotal : isGuestCheckout
       ? Math.round(normalizedItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0) * 100) / 100
       : Number(subtotal);
     if (normalizedPhone.replace(/\D/g, '').length < 10) {
@@ -1237,13 +1272,15 @@ Deno.serve(async (req) => {
     const authoritativeDeliveryFee = validatedEligibility
       ? Number(validatedEligibility.delivery_fee || 0)
       : Number(delivery_fee || 0);
-    const effectiveDeliveryFee = subFreeDelivery ? 0 : authoritativeDeliveryFee;
-    const subDiscountAmt       = subDiscountPct > 0 ? Math.round(authoritativeSubtotal * subDiscountPct) / 100 : 0;
+    const effectiveDeliveryFee = subFreeDelivery || rewardQuote?.free_delivery ? 0 : authoritativeDeliveryFee;
+    if (rewardQuote) rewardPricing = await priceRewardPayment(base44, normalizedCustomerEmail, rewardQuote, requestBody, subDiscountPct);
+    const subDiscountAmt       = rewardPricing ? rewardPricing.subscription_discount
+      : subDiscountPct > 0 ? Math.round(authoritativeSubtotal * subDiscountPct) / 100 : 0;
     const usesServerManagedDiscountContract = Number(discount_contract_version || 0) >= 2;
     const legacyReferralAdjustment = !usesServerManagedDiscountContract && !discount_code && referral_code
       ? Number(referral_discount || 0)
       : 0;
-    const merchandiseTotalBeforePromotion = isGuestCheckout
+    const merchandiseTotalBeforePromotion = rewardPricing ? rewardPricing.merchandise_total : isGuestCheckout
       ? authoritativeSubtotal
       : Math.max(0, Number(total) - Number(delivery_fee || 0) + legacyReferralAdjustment);
     const submittedDiscountCode = discount_code || promotion_code || referral_code;
@@ -1274,9 +1311,9 @@ Deno.serve(async (req) => {
     const appliedPromotionCode = promotion.type === 'promotion' ? promotion.code : null;
     const appliedReferralCode = promotion.type === 'referral' ? promotion.code : null;
     const totalDiscountAmount  = Math.min(authoritativeSubtotal, Math.round((
-      Number(isGuestCheckout ? 0 : points_discount || 0) +
-      Number(isGuestCheckout ? 0 : reward_discount || 0) +
-      Number(isGuestCheckout ? 0 : credits_discount || 0) +
+      Number(isGuestCheckout ? 0 : rewardPricing?.points_discount ?? points_discount ?? 0) +
+      Number(isGuestCheckout ? 0 : rewardPricing?.reward_discount ?? reward_discount ?? 0) +
+      Number(isGuestCheckout ? 0 : rewardPricing?.credits_discount ?? credits_discount ?? 0) +
       subDiscountAmt +
       appliedCheckoutCodeDiscount
     ) * 100) / 100);
@@ -1291,9 +1328,6 @@ Deno.serve(async (req) => {
     // The provider requires identical parameters for an idempotent retry. A
     // fresh timestamp-based order number made every later retry incompatible.
     // Hash the account + opaque attempt key; never expose that key in a receipt.
-    const checkoutAttemptDigest = checkout_idempotency_key
-      ? await sha256Hex(`${normalizedCustomerEmail}:${checkout_idempotency_key}`)
-      : null;
     const orderSuffix = checkoutAttemptDigest
       ? checkoutAttemptDigest.slice(0, 24).toUpperCase()
       : Date.now().toString(36).toUpperCase();
@@ -1389,11 +1423,11 @@ Deno.serve(async (req) => {
       address: normalizedAddress, fulfillment_type: fulfillment_type || 'delivery',
       delivery_date: deliveryDate, production_date: resolvedProdDate,
       delivery_window_start: resolvedWindowStart, delivery_window_end: resolvedWindowEnd,
-      points_used: isGuestCheckout ? 0 : points_used || 0,
-      points_discount: isGuestCheckout ? 0 : points_discount || 0,
-      active_reward: isGuestCheckout ? null : active_reward || null,
-      reward_discount: isGuestCheckout ? 0 : reward_discount || 0,
-      credits_discount: isGuestCheckout ? 0 : credits_discount || 0,
+      points_used: isGuestCheckout ? 0 : rewardPricing?.points_used ?? points_used ?? 0,
+      points_discount: isGuestCheckout ? 0 : rewardPricing?.points_discount ?? points_discount ?? 0,
+      active_reward: isGuestCheckout ? null : rewardQuote?.active_reward || active_reward || null,
+      reward_discount: isGuestCheckout ? 0 : rewardPricing?.reward_discount ?? reward_discount ?? 0,
+      credits_discount: isGuestCheckout ? 0 : rewardPricing?.credits_discount ?? credits_discount ?? 0,
       discount_code: promotion.code || null, discount_amount: appliedCheckoutCodeDiscount,
       bag_return_request_id: isGuestCheckout ? null : bag_return_request_id || null,
       guest_order_token_hash: isGuestCheckout ? await sha256Hex(guest_order_token) : null,
@@ -1456,6 +1490,7 @@ Deno.serve(async (req) => {
       sandbox_test_id:            internalSandboxCheckout ? sandboxTestId : '',
       marketing_measurement_consent: marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
       meta_capi_test_enabled:      internalSandboxCheckout && meta_capi_test_enabled === true ? 'true' : 'false',
+      ...(rewardQuote ? { reward_reservation_id: rewardReservationId } : {}),
     };
 
     if (Object.keys(intentMetadata).length > 50) {
@@ -1464,6 +1499,14 @@ Deno.serve(async (req) => {
 
     // Account discounts are represented in the pre-code total. The checkout
     // code is resolved and subtracted exactly once on the server above.
+    // Never silently turn a fully covered reward order into a 50-cent charge.
+    // A separate no-payment order finalization path must be verified before
+    // this zero-charge case can be released with the reward integration.
+    if (rewardQuote && Math.round(effectiveTotal * 100) < 50) {
+      return Response.json({ ok: false, error_code: 'REWARD_NO_PAYMENT_FINALIZATION_REQUIRED',
+        error: 'Your reward covers this order. We could not finalize the no-payment order yet; please contact NuVira. Do not add merchandise just to redeem it.',
+        writes_performed: false, payment_intent_created: false }, { status: 409 });
+    }
     const amountCents = Math.max(50, Math.round(effectiveTotal * 100));
 
     // Build Stripe idempotency key from the client-supplied checkout key (if present).
@@ -1507,6 +1550,34 @@ Deno.serve(async (req) => {
 
     if (internalSandboxCheckout && paymentIntent.metadata?.order_number) {
       orderNumber = paymentIntent.metadata.order_number;
+    }
+
+    if (rewardQuote) {
+      try {
+        await reservePaymentReward(base44, paymentIntent, rewardQuote, rewardPricing, normalizedCustomerEmail, rewardInternalSecret);
+      } catch {
+        // A lost reserve response may mean a hold exists. Never release it until
+        // the provider has confirmed cancellation of this exact unconfirmed PI.
+        let canceled = false;
+        let released = false;
+        try {
+          if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(paymentIntent.status)) {
+            const result = await checkoutStripe.paymentIntents.cancel(paymentIntent.id);
+            canceled = result.status === 'canceled';
+          }
+          if (canceled) {
+            const result = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+              action: 'settle_reward_checkout', customer_email: normalizedCustomerEmail,
+              stripe_payment_intent_id: paymentIntent.id, internal_secret: rewardInternalSecret,
+            });
+            released = (result?.data || result)?.reservation_status === 'released';
+          }
+        } catch { /* Cancellation or hold status is uncertain: withhold secret. */ }
+        return Response.json({ ok: false, error_code: 'REWARD_PAYMENT_NOT_READY',
+          error: 'We could not confirm your reward reservation. Do not submit another payment while its status is uncertain. Please contact NuVira support.',
+          payment_confirmation_attempted: false, payment_attempt_canceled: canceled,
+          reward_reservation_released: released }, { status: 503 });
+      }
     }
 
     console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: payment_method_types=card; express_wallets=apple_pay,google_pay. amount=${amountCents}¢, checkout_mode=${isGuestCheckout ? 'guest' : 'account'}`);
@@ -1693,11 +1764,13 @@ Deno.serve(async (req) => {
           promotion_discount_amount: appliedPromotionDiscountAmt,
           total_discounts:           totalDiscountAmount,
           discount_codes:            discountCodes,
-          points_used:               isGuestCheckout ? 0 : points_used || 0,
-          points_discount:           isGuestCheckout ? 0 : points_discount || 0,
-          active_reward:             isGuestCheckout ? null : active_reward || null,
-          reward_discount:           isGuestCheckout ? 0 : reward_discount || 0,
-          credits_discount:          isGuestCheckout ? 0 : credits_discount || 0,
+          points_used:               isGuestCheckout ? 0 : rewardPricing?.points_used ?? points_used ?? 0,
+          points_discount:           isGuestCheckout ? 0 : rewardPricing?.points_discount ?? points_discount ?? 0,
+          active_reward:             isGuestCheckout ? null : rewardQuote?.active_reward || active_reward || null,
+          reward_discount:           isGuestCheckout ? 0 : rewardPricing?.reward_discount ?? reward_discount ?? 0,
+          credits_discount:          isGuestCheckout ? 0 : rewardPricing?.credits_discount ?? credits_discount ?? 0,
+          ...(rewardQuote ? { reward_checkout: rewardQuote, reward_reservation_id: rewardReservationId,
+            reward_reservation_points: rewardPricing.reservation_points, checkout_context_hash: checkoutContextHash } : {}),
           guest_checkout:            isGuestCheckout,
           guest_order_token_hash:    isGuestCheckout ? await sha256Hex(guest_order_token) : null,
           internal_sandbox_checkout: internalSandboxCheckout,
@@ -1729,6 +1802,13 @@ Deno.serve(async (req) => {
         if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(paymentIntent.status)) {
           const canceled = await checkoutStripe.paymentIntents.cancel(paymentIntent.id);
           paymentAttemptCanceled = canceled.status === 'canceled';
+          if (paymentAttemptCanceled && rewardQuote) {
+            const result = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+              action: 'settle_reward_checkout', customer_email: normalizedCustomerEmail,
+              stripe_payment_intent_id: paymentIntent.id, internal_secret: rewardInternalSecret,
+            });
+            if ((result?.data || result)?.reservation_status !== 'released') throw new Error('reward_release_unconfirmed');
+          }
         }
       } catch {
         // Cancellation uncertainty is not a reason to expose the client secret.
@@ -1817,6 +1897,7 @@ Deno.serve(async (req) => {
       discountCodes,
       idempotent_replay: idempotentReplay,
       checkout_record_revision: CHECKOUT_RECORD_REVISION,
+      ...(rewardQuote ? { rewardQuote, rewardPricing } : {}),
       confirmedDeliverySchedule: {
         delivery_date: deliveryDate,
         production_date: resolvedProdDate,
@@ -1828,6 +1909,10 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
+    if (error instanceof RewardCheckoutError) {
+      return Response.json({ ok: false, error_code: error.code, error: error.message,
+        payment_confirmation_attempted: false }, { status: 409 });
+    }
     if (error?.type === 'StripeIdempotencyError') {
       return Response.json({ ok: false, error_code: 'CHECKOUT_ATTEMPT_CHANGED',
         error: 'This checkout changed after payment was prepared. Return to your cart and start checkout again. If you already submitted payment, check your order status first.',

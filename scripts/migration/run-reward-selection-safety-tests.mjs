@@ -110,7 +110,7 @@ await test('actual Rewards apply handler does not show success or mutate cart on
   const body = source.slice(source.indexOf('  const handleApplyReward ='), source.indexOf('  const handleFreeProductSelect ='));
   const effects = []; const refs = { current: false };
   const ctx = { rewardSelectionRef: refs, currentEmailRef: { current: email }, user: { email },
-    setIsSelectingReward: () => {}, selectActiveReward: async () => { throw new Error('Insufficient points'); },
+    setIsSelectingReward: () => {}, rewardSelectionCount: selection.rewardSelectionCount, selectActiveReward: async () => { throw new Error('Insufficient points'); },
     localStorage: { setItem: () => effects.push('stored') }, clearEarnedRewardItems: () => effects.push('cart'),
     setActiveReward: () => effects.push('active'), setPendingReward: () => effects.push('pending'), setPickerOpen: () => effects.push('picker'),
     trackGoogleRetentionEvent: () => effects.push('event'), toast: { success: () => effects.push('success'), error: () => effects.push('error') },
@@ -122,7 +122,7 @@ await test('actual Rewards handler suppresses a late claim after sign-in changes
   const source = read('src/pages/Rewards.jsx');
   const body = source.slice(source.indexOf('  const handleApplyReward ='), source.indexOf('  const handleFreeProductSelect ='));
   const effects = []; const ctx = { rewardSelectionRef: { current: false }, currentEmailRef: { current: 'other@example.test' }, user: { email },
-    setIsSelectingReward: () => {}, selectActiveReward: async () => reward,
+    setIsSelectingReward: () => {}, rewardSelectionCount: selection.rewardSelectionCount, selectActiveReward: async () => reward,
     localStorage: { setItem: () => effects.push('stored') }, clearEarnedRewardItems: () => effects.push('cart'),
     setActiveReward: () => effects.push('active'), setPendingReward: () => effects.push('pending'), setPickerOpen: () => effects.push('picker'),
     trackGoogleRetentionEvent: () => effects.push('event'), toast: { success: () => effects.push('success'), error: () => effects.push('error') },
@@ -157,7 +157,7 @@ await test('actual cart removal clears only the earned selection and defeats a l
   context.remove({ product_id: product.id, cart_line_key: 'paid-line', price: 13 });
   assert.deepEqual(effects, [['remove', 'paid-line']]);
   assert.match(source, /cancelled \|\| mutationVersion !== rewardMutationRef.current/);
-  assert.match(source, /isEarnedRewardItem\(item\) \? \([\s\S]*?1 earned item[\s\S]*?\) : <div/);
+  assert.match(source, /isEarnedRewardItem\(item\) \? \([\s\S]*?\{item.quantity\} earned[\s\S]*?\) : <div/);
 });
 await test('actual reward manager refuses stale runtime responses without read-only evidence', async () => {
   let response = { success: true, reward_id: reward.id, reward_title: reward.title, reward_type: reward.reward_type, points_required: 1000 };
@@ -202,5 +202,89 @@ for (const [page, start, end] of [
   context.user = { email }; context.isLoadingAuth = false;
   vm.runInContext(body, context); await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(effects, ['validating', 'read', 'network', 'stored', 'active', 'validating']);
+});
+await test('VIP selection supports six bottles of one flavor or an exact mixed selection', () => {
+  const vip = { ...reward, reward_type: 'vip_box', points_required: 6000 };
+  assert.equal(selection.rewardSelectionCount(vip), 6);
+  const oneFlavor = selection.earnedRewardCartItems(vip, [{ product, quantity: 6 }]);
+  assert.equal(oneFlavor.length, 1); assert.equal(oneFlavor[0].quantity, 6); assert.equal(oneFlavor[0].price, 0);
+  const mixed = selection.earnedRewardCartItems(vip, [
+    { product, quantity: 2 }, { product: { ...product, id: 'aura' }, quantity: 2 },
+    { product: { ...product, id: 'renu' }, quantity: 2 },
+  ]);
+  assert.equal(mixed.length, 3); assert.equal(mixed.reduce((sum, item) => sum + item.quantity, 0), 6);
+  assert.equal(mixed.every(item => item.reward_id === vip.id && item.isFreeReward && item.price === 0), true);
+});
+await test('upgrade selection prices exactly three bottles at half price without marking them free', () => {
+  const upgrade = { ...reward, reward_type: 'bundle_upgrade', points_required: 4000 };
+  const lines = selection.earnedRewardCartItems(upgrade, [{ product, quantity: 3 }]);
+  assert.equal(selection.rewardSelectionCount(upgrade), 3); assert.equal(lines[0].price, 6.5);
+  assert.equal(lines[0].isFreeReward, false); assert.equal(selection.isEarnedRewardItem(lines[0]), true);
+  assert.equal(lines[0].reward_discount_amount, 19.5);
+});
+await test('multi-bottle replacement preserves paid and birthday items and replaces all old earned lines', () => {
+  const vip = { ...reward, reward_type: 'vip_box', points_required: 6000 };
+  const paid = { product_id: product.id, quantity: 2, price: 13 };
+  const birthday = { product_id: '__birthday_reward__', isBirthdayReward: true };
+  const earned = selection.earnedRewardCartItems(vip, [{ product, quantity: 6 }]);
+  const cart = selection.replaceEarnedRewardItems([paid, birthday, { isFreeReward: true }], earned);
+  assert.deepEqual(cart, [paid, birthday, ...earned]);
+  assert.deepEqual(selection.replaceEarnedRewardItems(cart, earned), cart);
+  assert.deepEqual(selection.replaceEarnedRewardItems(cart), [paid, birthday]);
+});
+await test('invalid quantities, duplicate flavors, wrong sizes and unavailable items never partially apply', () => {
+  const vip = { ...reward, reward_type: 'vip_box', points_required: 6000 };
+  for (const choices of [[], [{ product, quantity: 5 }], [{ product, quantity: 7 }], [{ product, quantity: 1.5 }],
+    [{ product, quantity: -1 }], [{ product, quantity: 3 }, { product, quantity: 3 }],
+    [{ product: { ...product, size: '32oz' }, quantity: 6 }], [{ product: { ...product, is_available: false }, quantity: 6 }]]) {
+    assert.throws(() => selection.earnedRewardCartItems(vip, choices));
+  }
+});
+await test('picker never silently accepts an unknown or invalid catalog price', () => {
+  for (const price of [null, '', false, undefined, -1, 13.001]) assert.throws(() => selection.earnedRewardCartItem(reward, { ...product, price }));
+});
+await test('actual picker refetches availability, awaits save, limits quantity, and uses scroll-safe accessible dialog', () => {
+  const source = read('src/components/RewardProductPicker.jsx');
+  assert.match(source, /const fresh = await refetch\(\)/);
+  assert.match(source, /earnedRewardCartItems\(reward, choices\)/);
+  assert.match(source, /await onSelect\(choices\)/);
+  assert.match(source, /if \(savingRef.current\) return/);
+  assert.match(source, /selectedCount !== required/);
+  assert.match(source, /DialogTitle/); assert.match(source, /DialogDescription/);
+  assert.match(source, /DialogContent className="block/);
+  assert.match(source, /onError=\{\(\) => setFailed\(true\)\}/);
+  assert.doesNotMatch(source, /functions\.invoke|entities\.\w+\.(create|update|delete)/);
+});
+await test('actual Rewards picker save validates the full selection and leaves prior cart intact on failed validation', async () => {
+  const source = read('src/pages/Rewards.jsx');
+  const handler = source.slice(source.indexOf('  const handleFreeProductSelect ='), source.indexOf('  const handleRemoveReward ='));
+  const effects = []; const vip = { ...reward, reward_type: 'vip_box', points_required: 6000 };
+  const context = { pendingReward: vip, user: { email }, currentEmailRef: { current: email },
+    selectActiveReward: async () => vip, earnedRewardCartItems: selection.earnedRewardCartItems,
+    localStorage: { setItem: () => effects.push('stored') }, setEarnedRewardSelection: () => effects.push('cart'),
+    setActiveReward: () => effects.push('active'), setPickerOpen: () => effects.push('closed'), setPendingReward: () => {},
+    trackGoogleRetentionEvent: () => effects.push('event'), toast: { success: () => effects.push('success') }, navigate: () => effects.push('navigate'),
+  };
+  vm.createContext(context); vm.runInContext(handler + '\nthis.select = handleFreeProductSelect;', context);
+  await assert.rejects(() => context.select([{ product, quantity: 5 }])); assert.deepEqual(effects, []);
+  await context.select([{ product, quantity: 6 }]);
+  assert.deepEqual(effects, ['stored', 'cart', 'active', 'closed', 'event', 'success', 'navigate']);
+});
+await test('a product disappearing during confirmation frees its quantity slot instead of trapping the picker', async () => {
+  const source = read('src/components/RewardProductPicker.jsx');
+  const handler = source.slice(source.indexOf('  const confirm ='), source.indexOf('  return <Dialog'));
+  const vip = { ...reward, reward_type: 'vip_box', points_required: 6000 };
+  let quantities = { [product.id]: 4, aura: 2 }; let error = ''; let saves = 0; let saving;
+  const context = { reward: vip, quantities, savingRef: { current: false },
+    setSaving: value => { saving = value; }, setError: value => { error = value; },
+    setQuantities: update => { quantities = update(quantities); },
+    refetch: async () => ({ data: [{ ...product, is_available: false }, { ...product, id: 'aura' }] }),
+    rewardProductEligible: selection.rewardProductEligible, earnedRewardCartItems: selection.earnedRewardCartItems,
+    onSelect: async () => { saves++; } };
+  vm.createContext(context); vm.runInContext(handler + '\nthis.confirmSelection = confirm;', context);
+  await context.confirmSelection();
+  assert.deepEqual(JSON.parse(JSON.stringify(quantities)), { aura: 2 });
+  assert.match(error, /no longer available/); assert.equal(saves, 0);
+  assert.equal(saving, false); assert.equal(context.savingRef.current, false);
 });
 console.log(`Reward selection safety: ${passed}/${passed} passed; synthetic-only, no network/provider writes.`);

@@ -382,9 +382,8 @@ function CheckoutFlow() {
   const availablePoints = Math.max(0, Number(userPointsData?.[0]?.total_points || 0)
     - Number(userPointsData?.[0]?.reserved_points || 0));
   // 100 pts = $1
-  const maxDiscount = Math.floor(availablePoints / 100);
-  const pointsDiscount = usePoints ? Math.min(maxDiscount, subtotal) : 0;
-  const pointsUsed = pointsDiscount * 100;
+  // Selected tier points and a cash-value points discount share one balance.
+  const maxDiscount = Math.floor(Math.max(0, availablePoints - Number(activeReward?.points_required || 0)) / 100);
 
   const deliveryOptions = scheduleOptionsOverride || scheduleOptionsPayload?.options || [];
   React.useEffect(() => {
@@ -407,9 +406,14 @@ function CheckoutFlow() {
   const rewardDiscountAmt = rewardDiscountPct > 0 ? subtotal * rewardDiscountPct / 100 : 0;
   const baseFee = zoneEligibility?.delivery_fee ?? deliveryZone?.fee ?? 0;
   const deliveryFee = (fulfillmentType === 'delivery' && !rewardFreeDelivery && !subFreeDelivery) ? baseFee : 0;
-  const subDiscountAmt = subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0;
+  const subDiscountAmt = Math.min(subtotal - rewardDiscountAmt,
+    subDiscountPct > 0 ? Math.round(subtotal * subDiscountPct) / 100 : 0);
+  const afterAccountDiscounts = Math.max(0, Math.round((subtotal - rewardDiscountAmt - subDiscountAmt) * 100) / 100);
+  const pointsDiscount = usePoints ? Math.min(maxDiscount, afterAccountDiscounts) : 0;
+  const pointsUsed = Math.round(pointsDiscount * 100);
   const availableCredits = userCreditsData?.balance || 0;
-  const creditsDiscount = useCredits ? Math.min(availableCredits, subtotal) : 0;
+  const creditsDiscount = useCredits ? Math.min(availableCredits,
+    Math.max(0, Math.round((afterAccountDiscounts - pointsDiscount) * 100) / 100)) : 0;
   const merchandiseTotalBeforePromotion = Math.max(
     0,
     subtotal - pointsDiscount - rewardDiscountAmt - subDiscountAmt - creditsDiscount

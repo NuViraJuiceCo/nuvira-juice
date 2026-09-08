@@ -138,7 +138,7 @@ export function quoteRewardCheckout({ items, products, reward, requestedReward, 
   };
 }
 
-export async function loadRewardCheckoutQuote(base44, user, body, resolveProgram) {
+export async function loadRewardCheckoutQuote(base44, user, body, resolveProgram, { retryReservationId = null } = {}) {
   const email = String(user?.email || '').trim().toLowerCase();
   if (!email || (body.customer_email && String(body.customer_email).trim().toLowerCase() !== email)) {
     fail('REWARD_AUTH_REQUIRED', 'Sign in to your own account to use an earned reward.');
@@ -157,6 +157,65 @@ export async function loadRewardCheckoutQuote(base44, user, body, resolveProgram
   }
   const total = integer(balances[0].total_points, 'INVALID_REWARD_BALANCE');
   const reserved = integer(balances[0].reserved_points ?? 0, 'INVALID_REWARD_BALANCE');
-  return quoteRewardCheckout({ items: body.items, products, reward: rewards[0],
-    requestedReward: body.active_reward, availablePoints: total - reserved, resolveProgram });
+  if (reserved > total) fail('INVALID_REWARD_BALANCE', 'Your points balance could not be confirmed.');
+  const reservations = balances[0].reward_reservations ?? [];
+  if (!Array.isArray(reservations) || reservations.some(hold => !hold || typeof hold !== 'object')) {
+    fail('INVALID_REWARD_BALANCE', 'Your reward reservation needs review.');
+  }
+  // Only the payment handler may supply this ID, derived from the authenticated
+  // email and the opaque checkout attempt. Never read it from the request body.
+  // Stripe's same-parameter idempotency and the ledger's PI/context binding must
+  // still pass before any secret is returned or held points can be reused.
+  const matching = retryReservationId ? reservations
+    .filter(hold => hold.reservation_id === retryReservationId) : [];
+  if (matching.length > 1) fail('INVALID_REWARD_BALANCE', 'Your reward reservation needs review.');
+  const own = matching[0];
+  const restored = own && ['held', 'consumed'].includes(own.status)
+    ? integer(own.points, 'INVALID_REWARD_BALANCE', 1) : 0;
+  const availablePoints = total - reserved + restored;
+  const quote = quoteRewardCheckout({ items: body.items, products, reward: rewards[0],
+    requestedReward: body.active_reward, availablePoints, resolveProgram });
+  return { ...quote, available_points_after_reward: availablePoints - quote.points_required };
+}
+
+// Canonical reward checkout arithmetic. Customer input selects how many points
+// or credits to spend, never the value of the reward or the product prices.
+export async function priceRewardPayment(base44, email, quote, body, subscriptionPercent = 0) {
+  const subtotal = cents(quote.subtotal);
+  const rewardDiscount = cents(quote.reward_discount);
+  const percent = Number(subscriptionPercent);
+  if (!Number.isFinite(percent) || percent < 0 || percent > 100) fail('INVALID_SUBSCRIPTION_DISCOUNT', 'Your account discount could not be confirmed.');
+  const subDiscount = Math.min(subtotal - rewardDiscount, Math.round(subtotal * percent / 100));
+  const requestedPoints = integer(body.points_used ?? 0, 'INVALID_POINTS_SELECTION');
+  if (requestedPoints !== cents(body.points_discount ?? 0)) fail('INVALID_POINTS_SELECTION', 'Please review your selected points discount.');
+  if (requestedPoints > quote.available_points_after_reward) fail('INSUFFICIENT_REWARD_POINTS', 'The selected reward and points discount exceed your available points.');
+  const afterSubscription = subtotal - rewardDiscount - subDiscount;
+  if (requestedPoints > afterSubscription) fail('POINTS_EXCEED_ORDER_VALUE', 'Reduce the points discount to match the remaining merchandise total.');
+  const requestedCredits = cents(body.credits_discount ?? 0);
+  if (requestedCredits > afterSubscription - requestedPoints) fail('CREDITS_EXCEED_ORDER_VALUE', 'Reduce the credits to match the remaining merchandise total.');
+  if (requestedCredits) {
+    const rows = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: email }, undefined, 2);
+    if (!Array.isArray(rows) || rows.length !== 1) fail('CREDIT_BALANCE_UNAVAILABLE', 'Your credit balance could not be confirmed.');
+    if (requestedCredits > cents(rows[0].balance)) fail('INSUFFICIENT_CHECKOUT_CREDITS', 'Your available credits changed. Please review checkout.');
+  }
+  return { merchandise_total: dollars(afterSubscription - requestedPoints - requestedCredits),
+    points_used: requestedPoints, points_discount: dollars(requestedPoints),
+    credits_discount: dollars(requestedCredits), reward_discount: dollars(rewardDiscount),
+    subscription_discount: dollars(subDiscount), reservation_points: quote.points_required + requestedPoints };
+}
+
+export async function reservePaymentReward(base44, payment, quote, pricing, email, secret) {
+  if (!secret || !payment?.id || !payment.metadata?.reward_reservation_id) {
+    fail('REWARD_RESERVATION_UNAVAILABLE', 'We could not secure your reward for this payment.');
+  }
+  const response = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+    action: 'reserve_reward_checkout', customer_email: email,
+    stripe_payment_intent_id: payment.id, reward_id: quote.active_reward.id,
+    points: pricing.reservation_points, direct_points: pricing.points_used, internal_secret: secret,
+  });
+  const data = response?.data || response;
+  if (data?.success !== true || !['held', 'consumed'].includes(data.reservation_status)) {
+    fail('REWARD_RESERVATION_UNCONFIRMED', 'Your reward could not be secured. Payment was not started.');
+  }
+  return data;
 }

@@ -192,6 +192,8 @@ for (const [name, config, bodyPatch, expected, code] of [
   ['duplicate balance', { balances: [{ total_points: 2500 }, { total_points: 2500 }] }, {}, 409, 'REWARD_DATA_UNAVAILABLE'],
   ['missing balance', { balances: [] }, {}, 409, 'REWARD_DATA_UNAVAILABLE'],
   ['reserved elsewhere', { balances: [{ total_points: 3000, reserved_points: 1000 }] }, {}, 409, 'INSUFFICIENT_REWARD_POINTS'],
+  ['malformed reservation list', { balances: [{ total_points: 3000, reward_reservations: {} }] }, {}, 409, 'INVALID_REWARD_BALANCE'],
+  ['malformed reservation row', { balances: [{ total_points: 3000, reward_reservations: [null] }] }, {}, 409, 'INVALID_REWARD_BALANCE'],
   ['truncated catalog', { catalog: Array.from({ length: 250 }, (_, i) => product(String(i))) }, {}, 409, 'REWARD_DATA_UNAVAILABLE'],
 ]) await test(`actual handler: ${name} fails safely before any effects`, async () => {
   const result = await handler(fakeDb(config))(request({ ...defaultBody, ...bodyPatch })); const body = await result.json();

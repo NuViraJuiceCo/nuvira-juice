@@ -327,6 +327,45 @@ test('Actual endpoint rejects guest, test and mismatched provider payments', asy
   }
 });
 
+test('Actual checkout reserves the tier and direct-points discount as one indivisible hold', async () => {
+  const f = fixture(); const invoke = serve(f);
+  const body = { action: 'reserve_reward_checkout', customer_email: customer,
+    stripe_payment_intent_id: f.payment.id, reward_id: 'reward-test', points: 1500, direct_points: 500 };
+  assert.equal((await invoke(body)).body.reservation_status, 'held');
+  assert.equal(f.account().reserved_points, 1500);
+  f.payment.status = 'succeeded';
+  assert.equal((await invoke(body)).body.idempotent, true, 'success retry only reuses its existing hold');
+  assert.equal((await invoke({ action: 'settle_reward_checkout', customer_email: customer,
+    stripe_payment_intent_id: f.payment.id })).body.reservation_status, 'consumed');
+  assert.equal(f.account().total_points, 500); assert.equal(f.account().redeemed_points, 1500);
+  assert.equal((await invoke(body)).body.reservation_status, 'consumed');
+});
+test('Actual reserve rejects malformed combined cost and cannot bootstrap a hold after payment', async () => {
+  for (const patch of [{ direct_points: -1, points: 999 }, { direct_points: 0.5, points: 1000.5 },
+    { direct_points: 500, points: 1000 }, { direct_points: '500', points: 1500 }]) {
+    const f = fixture(); const result = await serve(f)({ action: 'reserve_reward_checkout', customer_email: customer,
+      stripe_payment_intent_id: f.payment.id, reward_id: 'reward-test', ...patch });
+    assert.equal(result.body.error, 'reward_cost_changed'); assert.equal(f.writes.length, 0);
+  }
+  const f = fixture(); f.payment.status = 'succeeded';
+  const result = await serve(f)({ action: 'reserve_reward_checkout', customer_email: customer,
+    stripe_payment_intent_id: f.payment.id, reward_id: 'reward-test', points: 1000 });
+  assert.equal(result.body.error, 'reward_payment_not_reservable'); assert.equal(f.writes.length, 0);
+});
+test('Actual reward settlement recovers identical pending transactions left by a crashed retry', async () => {
+  const f = fixture(); const invoke = serve(f);
+  await invoke({ action: 'reserve_reward_checkout', customer_email: customer,
+    stripe_payment_intent_id: f.payment.id, reward_id: 'reward-test', points: 1000 });
+  const pending = { idempotency_key: `stripe_payment:${f.payment.id}:redeemed`,
+    customer_email: customer, amount: -1000, transaction_type: 'redeemed', status: 'pending' };
+  f.rows.LoyaltyTransaction.push({ id: 'pending-a', ...pending }, { id: 'pending-b', ...pending });
+  f.payment.status = 'succeeded';
+  const result = await invoke({ action: 'settle_reward_checkout', customer_email: customer, stripe_payment_intent_id: f.payment.id });
+  assert.equal(result.body.reservation_status, 'consumed'); assert.equal(f.account().total_points, 1000);
+  assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+  assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'voided').length, 1);
+});
+
 let passed = 0;
 for (const [name, fn] of tests) {
   try { await fn(); passed++; console.log(`PASS ${name}`); }

@@ -3,7 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { trackGoogleAddToCart, trackGoogleBeginCheckout, trackGoogleRemoveFromCart } from '@/lib/googleAnalytics';
 import { trackMetaAddToCart, trackMetaInitiateCheckout } from '@/lib/metaPixel';
 import { trackSnapAddToCart, trackSnapStartCheckout } from '@/lib/snapPixel';
-import { earnedRewardCartItem, isEarnedRewardItem, replaceEarnedRewardItem } from '@/lib/rewardSelection';
+import { earnedRewardCartItem, earnedRewardCartItems, isEarnedRewardItem, replaceEarnedRewardItem, replaceEarnedRewardItems } from '@/lib/rewardSelection';
 
 const CartContext = createContext();
 const JOURNEY_SESSION_KEY = 'nuvira_customer_journey_session';
@@ -154,6 +154,10 @@ export function CartProvider({ children }) {
     const item = earnedRewardCartItem(reward, product);
     setItems(prev => replaceEarnedRewardItem(prev, item));
   }, []);
+  const setEarnedRewardSelection = useCallback((reward, choices) => {
+    const selection = earnedRewardCartItems(reward, choices);
+    setItems(prev => replaceEarnedRewardItems(prev, selection));
+  }, []);
   const clearEarnedRewardItems = useCallback(() => setItems(prev => (
     prev.some(isEarnedRewardItem) ? replaceEarnedRewardItem(prev) : prev
   )), []);
@@ -170,7 +174,7 @@ export function CartProvider({ children }) {
   return (
     <CartContext.Provider value={{
       items, addItem, removeItem, updateQuantity, updateBundleComposition, clearCart,
-      setEarnedRewardItem, clearEarnedRewardItems, trackCheckoutStarted, subtotal, itemCount
+      setEarnedRewardItem, setEarnedRewardSelection, clearEarnedRewardItems, trackCheckoutStarted, subtotal, itemCount
     }}>
       {children}
     </CartContext.Provider>

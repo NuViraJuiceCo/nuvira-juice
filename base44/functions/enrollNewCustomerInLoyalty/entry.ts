@@ -27,16 +27,30 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
   }
   const entities = base44.asServiceRole.entities;
   if (action === 'reserve_reward_checkout') {
-    if (!['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(payment.status)) {
-      return Response.json({ error: 'reward_payment_not_reservable' }, { status: 409 });
-    }
     const rewards = await entities.RewardTier.filter({ id: body.reward_id, is_active: true }, undefined, 2);
+    const directPoints = body.direct_points ?? 0;
     if (!body.reward_id || !Array.isArray(rewards) || rewards.length !== 1
       || !Number.isSafeInteger(rewards[0].points_required) || rewards[0].points_required <= 0
-      || rewards[0].points_required !== body.points) return Response.json({ error: 'reward_cost_changed' }, { status: 409 });
+      || !Number.isSafeInteger(directPoints) || directPoints < 0
+      || !Number.isSafeInteger(body.points)
+      || rewards[0].points_required + directPoints !== body.points) return Response.json({ error: 'reward_cost_changed' }, { status: 409 });
+    if (!['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(payment.status)) {
+      // A response retry after success may reuse only the already-bound hold.
+      // It must never create a fresh reservation for a captured/canceled PI.
+      if (payment.status === 'succeeded') {
+        const existingAccount = await readPointsAccount(entities, customerEmail);
+        const existing = existingAccount.reward_reservations?.find((row: AnyRecord) => row.reservation_id === metadata.reward_reservation_id);
+        if (existing && existing.payment_intent_id === payment.id && existing.context_hash === metadata.checkout_context_hash
+          && existing.points === body.points && ['held', 'consumed'].includes(existing.status)) {
+          return Response.json({ success: true, idempotent: true, reservation_status: existing.status,
+            revision: POINTS_ACCOUNT_REVISION, writes_performed: false });
+        }
+      }
+      return Response.json({ error: 'reward_payment_not_reservable' }, { status: 409 });
+    }
     const result = await reserveRewardPoints(entities, customerEmail, {
       reservation_id: metadata.reward_reservation_id, context_hash: metadata.checkout_context_hash,
-      payment_intent_id: payment.id, points: rewards[0].points_required,
+      payment_intent_id: payment.id, points: body.points,
     });
     await syncPointsMemberProjection(entities, customerEmail);
     return Response.json({ success: true, idempotent: result.idempotent,
@@ -53,12 +67,22 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
       reason: 'payment_still_retryable', writes_performed: false });
   }
   let transaction = null;
+  let matchingTransactions: AnyRecord[] = [];
   if (payment.status === 'succeeded') {
     const idempotencyKey = `stripe_payment:${payment.id}:redeemed`;
-    const existing = await entities.LoyaltyTransaction.filter({ idempotency_key: idempotencyKey }, '-created_date', 3);
+    const existing = await entities.LoyaltyTransaction.filter({ idempotency_key: idempotencyKey }, '-created_date', 20);
+    if (!Array.isArray(existing) || existing.length >= 20) return Response.json({ error: 'loyalty_transaction_read_incomplete' }, { status: 409 });
     const active = existing.filter((row: AnyRecord) => row.status !== 'voided');
-    if (active.length > 1) return Response.json({ error: 'duplicate_loyalty_transactions' }, { status: 409 });
-    transaction = active[0] || await entities.LoyaltyTransaction.create({
+    if (active.some((row: AnyRecord) => email(row.customer_email) !== customerEmail || row.amount !== -hold.points
+      || row.transaction_type !== 'redeemed') || active.filter((row: AnyRecord) => row.status === 'posted').length > 1) {
+      return Response.json({ error: 'idempotency_key_conflict' }, { status: 409 });
+    }
+    matchingTransactions = active;
+    const recorded = account.points_history?.find((row: AnyRecord) => row.idempotency_key === idempotencyKey)?.transaction_id;
+    transaction = active.find((row: AnyRecord) => row.id === recorded)
+      || active.find((row: AnyRecord) => row.status === 'posted')
+      || active.sort((a: AnyRecord, b: AnyRecord) => String(a.id).localeCompare(String(b.id)))[0]
+      || await entities.LoyaltyTransaction.create({
       idempotency_key: idempotencyKey, customer_email: customerEmail,
       amount: -hold.points, transaction_type: 'redeemed', status: 'pending',
       source_type: 'stripe_redemption', source_id: payment.id,
@@ -77,6 +101,9 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
     const receipt = result.receipt;
     if (!receipt?.transaction_id) throw new PointsAccountError('reward_redemption_receipt_missing');
     if (receipt.transaction_id !== transaction.id) await entities.LoyaltyTransaction.update(transaction.id, { status: 'voided' });
+    for (const duplicate of matchingTransactions) {
+      if (duplicate.id !== receipt.transaction_id) await entities.LoyaltyTransaction.update(duplicate.id, { status: 'voided' });
+    }
     await entities.LoyaltyTransaction.update(receipt.transaction_id, {
       status: 'posted', posted_at: new Date().toISOString(),
       balance_before: receipt.balanceBefore, balance_after: receipt.balanceAfter,

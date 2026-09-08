@@ -303,7 +303,7 @@ export default function Cart() {
                         <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                       </button>
                       {isEarnedRewardItem(item) ? (
-                        <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-1.5 rounded-lg">1 earned item</span>
+                        <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-1.5 rounded-lg">{item.quantity} earned {item.quantity === 1 ? 'item' : 'items'}{item.reward_type === 'bundle_upgrade' ? ' · half price' : ''}</span>
                       ) : <div className="flex items-center gap-1.5 bg-secondary rounded-lg px-2 py-1.5">
                         <button type="button" onClick={() => updateQuantity(item.cart_line_key || item.product_id, item.quantity - 1)} aria-label={`Decrease ${item.title} quantity`} className="hover:opacity-60">
                           <Minus className="w-3 h-3" />

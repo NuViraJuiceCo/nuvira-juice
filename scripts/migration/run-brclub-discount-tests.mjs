@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { transformSync } from 'esbuild';
 import { firstOrderOfferIsConfigured } from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
 
 const checkoutSource = fs.readFileSync('src/pages/Checkout.jsx', 'utf8');
@@ -32,7 +33,7 @@ const resolverSource = paymentIntentSource
   )
   .concat('\nresult = { resolvePromotion, customerHasConsumedDiscount };');
 const resolverContext = { result: null, firstOrderOfferIsConfigured };
-vm.runInNewContext(resolverSource, resolverContext);
+vm.runInNewContext(transformSync(resolverSource, { loader: 'ts', target: 'es2022' }).code, resolverContext);
 
 function discountBackend(rows) {
   return {
