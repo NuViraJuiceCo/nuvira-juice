@@ -1,4 +1,23 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+// Bundle-local copy: tested byte-for-byte against stripeWebhook/rewardSettlement.js.
+function isVerifiedNoPaymentOrder(order) {
+  const receipt = order?.reward_settlement;
+  return Boolean(order?.id && order?.customer_email && order?.order_number
+    && order.total === 0 && order.payment_captured === false
+    && order.payment_status === 'paid' && order.financial_status === 'paid'
+    && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
+    && !['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+    && !order.stripe_payment_intent_id && !(Number(order.amount_refunded || 0) > 0)
+    && receipt?.revision === '2026-09-08.reward-settlement-v1'
+    && /^cs_[A-Za-z0-9_]+$/.test(order.stripe_checkout_session_id || '')
+    && receipt.checkout_session_id === order.stripe_checkout_session_id
+    && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
+    && typeof receipt.reservation_id === 'string' && receipt.reservation_id.length > 0
+    && Number.isSafeInteger(receipt.points_redeemed) && receipt.points_redeemed > 0
+    && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
+    && typeof receipt.settled_at === 'string' && Number.isFinite(Date.parse(receipt.settled_at)));
+}
+
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
 import productionMaterializationHandler from './productionMaterializer/handler.ts';
 
@@ -795,7 +814,7 @@ Deno.serve(async (req) => {
   const customerAppSyncSecret = getCustomerAppSyncSecret();
 
   // HARD GATE: Never sync unpaid, pending, or abandoned checkout orders to Hub.
-  // Only payment_captured=true + payment_status='paid' orders may enter Hub operational flow.
+  // A captured payment OR an independently settled no-cash reward is required.
   // EXCEPT: Refunded orders (payment_status='refunded') — these MUST sync to Hub to cancel production/fulfillment
   if (order.status === 'pending_payment' || order.is_abandoned_checkout || order.do_not_recover) {
     console.log(`syncOrderToHub: BLOCKED — order ${order.order_number} is pending/abandoned (status=${order.status}, payment_captured=${order.payment_captured}). No Hub push.`);
@@ -805,7 +824,8 @@ Deno.serve(async (req) => {
   // Allow refunded orders to sync (critical for operational cancellation)
   const isRefundedOrder = order.payment_status === 'refunded' || order.status === 'refunded';
   
-  if (!isRefundedOrder && (!order.payment_captured || (order.payment_status !== 'paid' && order.financial_status !== 'paid'))) {
+  if (!isRefundedOrder && !isVerifiedNoPaymentOrder(order)
+    && (!order.payment_captured || (order.payment_status !== 'paid' && order.financial_status !== 'paid'))) {
     console.log(`syncOrderToHub: BLOCKED — order ${order.order_number} not paid (payment_captured=${order.payment_captured}, payment_status=${order.payment_status}). No Hub push.`);
     return Response.json({ success: true, skipped: true, reason: 'payment_not_captured' });
   }
@@ -836,7 +856,10 @@ Deno.serve(async (req) => {
 
   // Resolve payment_status from Stripe session (source of truth)
   let payment_status = 'pending';
-  if (stripeSession?.payment_status === 'paid') {
+  if (isVerifiedNoPaymentOrder(order)) {
+    // Operationally settled, but never report a card capture that did not occur.
+    payment_status = 'paid';
+  } else if (stripeSession?.payment_status === 'paid') {
     payment_status = 'paid';
   } else if (stripeSession?.payment_status === 'refunded') {
     payment_status = 'refunded';

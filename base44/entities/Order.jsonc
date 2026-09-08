@@ -299,6 +299,24 @@
       "type": "boolean",
       "default": false
     },
+    "reward_settlement": {
+      "type": "object",
+      "description": "Server-only verified zero-cash reward settlement. Never implies that a card payment was captured.",
+      "properties": {
+        "revision": { "type": "string" },
+        "checkout_session_id": { "type": "string" },
+        "context_hash": { "type": "string" },
+        "reservation_id": { "type": "string" },
+        "points_redeemed": { "type": "number" },
+        "provider_event_id": { "type": "string" },
+        "settled_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "reward_handoff_status": {
+      "type": "string",
+      "enum": ["pending", "complete", "review_required"],
+      "description": "Durable downstream handoff state for a verified no-payment reward checkout. Not a payment-capture flag."
+    },
     "production_date": {
       "type": "string",
       "format": "date",
@@ -509,16 +527,7 @@
   ],
   "rls": {
     "create": {
-      "$or": [
-        {
-          "data.customer_email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": { "role": "admin" }
     },
     "read": {
       "$or": [

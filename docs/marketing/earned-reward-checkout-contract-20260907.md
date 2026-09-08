@@ -1,6 +1,21 @@
 # Customer-selected rewards and order minimums
 
-## Latest checkpoint: September 8 no-payment accounting and safe abandonment
+## Latest checkpoint: September 8 verified non-cash settlement and confirmation truth
+
+**Local and unreleased. The no-cost customer checkout is still incomplete and the ad is not cleared for publication.**
+
+- Added `stripeWebhook/rewardSettlement.js`, which independently verifies a completed live no-cost Stripe Session against one persisted Order, one CheckoutSession, exact owner/cart/context/reservation/schedule, and the central points ledger. It records a versioned non-cash receipt with `payment_captured=false`, schedules the order, and persists `reward_handoff_status=pending`. It does not claim a captured payment, earn cash-based points, send notifications, create Shopify records, or emit an advertising Purchase. This module is **not yet dispatched by the webhook entrypoint**.
+- The production, delivery synchronization, customer/admin read models and payment-chain monitor recognize that verified receipt separately from cash capture. Exact predicate parity is tested across each affected function bundle and the customer confirmation helper. Existing internal-test isolation and the retired Hub-bridge gate remain unchanged.
+- Restricted direct Order creation to administrators in the **local** schema. Normal checkout already creates Orders with the backend service role; a runtime frontend scan found no direct Order creation. Customer read and existing update permissions were not changed. This schema has not been deployed.
+- Corrected the actual confirmation page: a pending or unverifiable lookup no longer displays success or invents a paid guest confirmation. Paid sanitized guest responses remain supported. Polling cannot overlap, and timeout/unmount suppresses late results. Verified non-cash orders say `Reward redeemed` / `No payment required`.
+- Synthetic verification exercises actual settlement and central-ledger code, interrupted writes, consumed-hold replay, ownership/context mismatches, conditional-write races, customer/admin projections and production-to-delivery transitions. No food-safety facts, live records, provider requests, email or push were created. These simulations do not prove Base44 production atomicity or provider delivery.
+- The full critical regression set passes **131/131**. Focused settlement tests pass **69/69** and actual-component confirmation tests pass **19/19**. Configured frontend typecheck, lint, Vite production build, scoped Deno checks for the changed leaf handlers/admin gateway, and diff check pass. A broader customer gateway Deno check still reports six existing Stripe union-type errors in the unchanged legacy `createSubscriptionPaymentElementIntent` handler (SHA-256 `21c5d1937e5ec22cfd1149ff7967f64a691ca0bd1187d08f59bed9c1d7910ced`, identical to checkpoint HEAD). That broader check is **not passing** and the retired subscription code was not altered to mask it.
+
+**Next required work:** no-cost Session creation and embedded customer confirmation; completion/expiration dispatch; durable, idempotent operational and communication handoff; reconciliation for a completed redemption whose Order concurrently becomes terminal; upfront credits/direct-points-only holds; route-review and refund parity; ordinary member authoritative pricing. `createPaymentIntent` still returns `REWARD_NO_PAYMENT_FINALIZATION_REQUIRED` for the covered-reward case. The receipt groundwork must not be presented as a working zero-dollar checkout.
+
+No push, PR, merge, deployment, provider/customer write, WELCOME10 activation, ad publication, Appflow/native action or Base44 support mutation occurred. The app-level promotion restriction is unchanged. Published iOS build 43 does not contain these local unfinished changes.
+
+## Previous checkpoint: September 8 no-payment accounting and safe abandonment
 
 **Local and unreleased. This is not a completed zero-dollar checkout or permission to publish the ad.**
 

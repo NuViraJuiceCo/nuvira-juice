@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: reward-settlement-20260908 (no-cash eligibility; unreleased).
 // Bundle revision: first-order-offer-20260907 (opt-in policy; no offer activation).
 // Bundle revision: g165-production-yield-surplus-20260828.
 // Bundle revision: g127-product-date-batching-multi-event-pos-allocation-20260824.

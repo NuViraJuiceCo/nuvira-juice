@@ -1,4 +1,23 @@
 // @ts-nocheck
+// Bundle-local copy: tested byte-for-byte against stripeWebhook/rewardSettlement.js.
+function isVerifiedNoPaymentOrder(order) {
+  const receipt = order?.reward_settlement;
+  return Boolean(order?.id && order?.customer_email && order?.order_number
+    && order.total === 0 && order.payment_captured === false
+    && order.payment_status === 'paid' && order.financial_status === 'paid'
+    && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
+    && !['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+    && !order.stripe_payment_intent_id && !(Number(order.amount_refunded || 0) > 0)
+    && receipt?.revision === '2026-09-08.reward-settlement-v1'
+    && /^cs_[A-Za-z0-9_]+$/.test(order.stripe_checkout_session_id || '')
+    && receipt.checkout_session_id === order.stripe_checkout_session_id
+    && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
+    && typeof receipt.reservation_id === 'string' && receipt.reservation_id.length > 0
+    && Number.isSafeInteger(receipt.points_redeemed) && receipt.points_redeemed > 0
+    && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
+    && typeof receipt.settled_at === 'string' && Number.isFinite(Date.parse(receipt.settled_at)));
+}
+
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { eventPosInventoryEligibility, syncVerifiedEventBatchToShopifyPos } from './eventPosInventory.ts';
 
@@ -756,7 +775,8 @@ async function projectLinkedCustomerOrdersInProduction({ base44, batch, requestI
       result.skips.push('terminal_or_refunded_order');
       continue;
     }
-    if (normalizeLower(order?.payment_status) !== 'paid' || order?.payment_captured !== true) {
+    if (!isVerifiedNoPaymentOrder(order)
+      && (normalizeLower(order?.payment_status) !== 'paid' || order?.payment_captured !== true)) {
       result.skipped_count += 1;
       result.skips.push('order_not_paid');
       continue;

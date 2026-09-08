@@ -16,11 +16,11 @@ import {
   trackGooglePurchase,
 } from '@/lib/googleAnalytics';
 import { MARKETING_CONSENT_EVENT } from '@/lib/metaPixel';
+import { classifyOrderConfirmation, isVerifiedNoPaymentOrder } from '@/lib/orderConfirmationState';
 import { trackSnapPurchase } from '@/lib/snapPixel';
 import {
   GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE,
   purchasePointsForTotal,
-  readGuestLoyaltyActivationContext,
   saveGuestLoyaltyActivationContext,
 } from '@/lib/guestLoyaltyActivation';
 
@@ -56,18 +56,27 @@ export default function OrderConfirmation() {
   const [loading, setLoading]     = useState(lookupMode !== 'none');
   const [timedOut, setTimedOut]   = useState(false);
   const [paymentOk, setPaymentOk] = useState(false);
+  const [confirmationUnavailable, setConfirmationUnavailable] = useState(false);
   const [resolvedOrderNumber, setResolvedOrderNumber] = useState(orderNumber || null);
 
   const pollRef    = useRef(null);
   const timeoutRef = useRef(null);
   const startTime  = useRef(Date.now());
   const snapPurchaseTrackedRef = useRef('');
-  const guestActivationContext = isGuestCheckout ? readGuestLoyaltyActivationContext() : null;
 
   useEffect(() => {
     if (lookupMode === 'none') return;
 
+    let finished = false;
+    let requestInFlight = false;
+    const stopPolling = () => {
+      finished = true;
+      clearInterval(pollRef.current);
+      clearTimeout(timeoutRef.current);
+    };
     const poll = async () => {
+      if (finished || requestInFlight) return;
+      requestInFlight = true;
       try {
         if (lookupMode === 'guest_order') {
           let guestConfirmation = null;
@@ -78,10 +87,9 @@ export default function OrderConfirmation() {
           }
           const tokenIsFresh = guestConfirmation?.timestamp && Date.now() - Number(guestConfirmation.timestamp) < 24 * 60 * 60 * 1000;
           if (!tokenIsFresh || guestConfirmation?.order_number !== orderNumber || !guestConfirmation?.token) {
-            setPaymentOk(true);
+            setConfirmationUnavailable(true);
             setLoading(false);
-            clearInterval(pollRef.current);
-            clearTimeout(timeoutRef.current);
+            stopPolling();
             return;
           }
           const res = await base44.functions.invoke('createPaymentIntent', {
@@ -89,9 +97,15 @@ export default function OrderConfirmation() {
             order_number: orderNumber,
             guest_order_token: guestConfirmation.token,
           });
+          if (finished) return;
           const data = res?.data || res;
-          setPaymentOk(true);
           if (data?.found && data?.order) {
+            const state = classifyOrderConfirmation(data.order);
+            if (state === 'pending') return;
+            if (state === 'not_completed') {
+              setConfirmationUnavailable(true); setLoading(false);
+              stopPolling(); return;
+            }
             setOrder(data.order);
             setLoading(false);
             saveGuestLoyaltyActivationContext({
@@ -99,12 +113,12 @@ export default function OrderConfirmation() {
               guest_order_token: guestConfirmation.token,
             });
             sessionStorage.removeItem('nuvira_guest_order_confirmation');
-            clearInterval(pollRef.current);
-            clearTimeout(timeoutRef.current);
+            stopPolling();
             return;
           }
         } else if (lookupMode === 'session_id') {
           const res = await base44.functions.invoke('getOrderBySession', { session_id: sessionId });
+          if (finished) return;
           const data = res.data;
 
           // If Stripe confirms payment but order not created yet, keep polling
@@ -117,66 +131,77 @@ export default function OrderConfirmation() {
           }
 
           if (data.found && data.order) {
+            const state = classifyOrderConfirmation(data.order);
+            if (state === 'pending') return;
+            if (state === 'not_completed') {
+              setConfirmationUnavailable(true); setLoading(false);
+              stopPolling(); return;
+            }
             setOrder(data.order);
             setLoading(false);
-            clearInterval(pollRef.current);
-            clearTimeout(timeoutRef.current);
+            stopPolling();
             return;
           }
 
         } else if (lookupMode === 'order_number') {
           const orders = await base44.entities.Order.filter({ order_number: orderNumber });
+          if (finished) return;
           if (orders && orders.length > 0) {
             const o = orders[0];
-            // For embedded flow: if order exists but payment still pending, keep polling briefly
-            if (o.payment_status === 'pending' && !o.payment_captured) {
-              setPaymentOk(true); // show "finalizing" message
-              return; // keep polling
+            const state = classifyOrderConfirmation(o);
+            if (state === 'pending') return;
+            if (state === 'not_completed') {
+              setConfirmationUnavailable(true); setLoading(false);
+              stopPolling(); return;
             }
             setOrder(o);
             setLoading(false);
-            clearInterval(pollRef.current);
-            clearTimeout(timeoutRef.current);
+            stopPolling();
             return;
           }
 
         } else if (lookupMode === 'path_id') {
           const orders = await base44.entities.Order.filter({ id: pathId });
+          if (finished) return;
           if (orders && orders.length > 0) {
+            const state = classifyOrderConfirmation(orders[0]);
+            if (state === 'pending') return;
+            if (state === 'not_completed') {
+              setConfirmationUnavailable(true); setLoading(false);
+              stopPolling(); return;
+            }
             setOrder(orders[0]);
             setLoading(false);
-            clearInterval(pollRef.current);
-            clearTimeout(timeoutRef.current);
+            stopPolling();
             return;
           }
         }
       } catch (e) {
+        if (finished) return;
         if (lookupMode === 'guest_order' && [400, 403].includes(Number(e?.status))) {
-          setPaymentOk(true);
+          setConfirmationUnavailable(true);
           setLoading(false);
-          clearInterval(pollRef.current);
-          clearTimeout(timeoutRef.current);
+          stopPolling();
           return;
         }
         console.warn('[OrderConfirmation] Poll error:', e.message);
+      } finally {
+        requestInFlight = false;
       }
     };
 
     // Start polling immediately then every POLL_INTERVAL_MS
     poll();
-    pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
+    if (!finished) pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
 
     // Timeout after POLLING_TIMEOUT_MS
-    timeoutRef.current = setTimeout(() => {
-      clearInterval(pollRef.current);
+    if (!finished) timeoutRef.current = setTimeout(() => {
+      stopPolling();
       setTimedOut(true);
       setLoading(false);
     }, POLLING_TIMEOUT_MS);
 
-    return () => {
-      clearInterval(pollRef.current);
-      clearTimeout(timeoutRef.current);
-    };
+    return stopPolling;
   }, []);
 
   useEffect(() => {
@@ -244,12 +269,10 @@ export default function OrderConfirmation() {
           className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full mb-6"
         />
         <h2 className="font-heading text-xl font-bold mb-2">
-          {paymentOk ? 'Payment confirmed — finalizing your order…' : 'Processing your order…'}
+          {paymentOk ? 'Finalizing your order…' : 'Confirming your order…'}
         </h2>
         <p className="text-sm text-muted-foreground max-w-xs">
-          {paymentOk
-            ? 'Your payment was received. We\'re creating your order — this usually takes a few seconds.'
-            : 'Your payment was received. Confirming your order details — this usually takes a few seconds.'}
+          We're checking your checkout status and delivery details. This usually takes a few seconds.
         </p>
         {elapsed > 10 && (
           <p className="text-xs text-muted-foreground mt-3 opacity-60">Still working… ({elapsed}s)</p>
@@ -260,22 +283,22 @@ export default function OrderConfirmation() {
   }
 
   // ── Case 3: Timed out ──────────────────────────────────────────────────────
-  if (timedOut && !order) {
+  if ((timedOut || confirmationUnavailable) && !order) {
     return (
       <div
         className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center"
         style={{ paddingTop: SAFE_TOP_PADDING }}
       >
-        <SEO title="Order Received" noindex={true} />
+        <SEO title="Check Your Order Status" noindex={true} />
         <div className="nuvira-icon-badge w-20 h-20 rounded-full flex items-center justify-center mb-5">
           <Clock className="w-10 h-10" />
         </div>
-        <h1 className="font-heading text-2xl font-bold mb-2">Order Received!</h1>
+        <h1 className="font-heading text-2xl font-bold mb-2">Let's Check Your Order</h1>
         {(resolvedOrderNumber) && (
           <p className="text-sm text-muted-foreground mb-1">Order #{resolvedOrderNumber}</p>
         )}
         <p className="text-sm text-muted-foreground max-w-xs mb-6 leading-relaxed">
-          Your payment was confirmed. We're finalizing your order — you'll receive a confirmation email shortly.
+          We couldn't confirm the final order status here. Check your orders or your confirmation email. If you're unsure, contact NuVira before trying again.
           <strong className="block mt-2 text-foreground">Please do not place another order.</strong>
         </p>
         <div className="space-y-2.5 w-full max-w-sm">
@@ -288,44 +311,6 @@ export default function OrderConfirmation() {
             <Button variant="outline" className="w-full h-11 rounded-xl font-semibold text-sm">
               <Home className="w-4 h-4 mr-2" /> Back to Home
             </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (!order && lookupMode === 'guest_order' && paymentOk) {
-    const pendingPurchasePoints = Number(guestActivationContext?.purchase_points || 0);
-    return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center px-4 pb-8 text-center" style={{ paddingTop: SAFE_TOP_PADDING }}>
-        <SEO title="Order Confirmed" noindex={true} />
-        <div className="nuvira-icon-badge w-20 h-20 rounded-full flex items-center justify-center mb-5">
-          <CheckCircle className="w-10 h-10" />
-        </div>
-        <h1 className="font-heading text-2xl font-bold mb-2">Your Order is Confirmed!</h1>
-        {resolvedOrderNumber && <p className="text-sm text-muted-foreground mb-2">Order #{resolvedOrderNumber}</p>}
-        <p className="text-sm text-muted-foreground max-w-sm mb-4 leading-relaxed">
-          Your receipt and delivery updates are being sent to the email you provided.
-        </p>
-        <div className="mb-6 w-full max-w-sm rounded-2xl border border-primary/25 bg-primary/5 p-4 text-left">
-          <div className="flex items-start gap-3">
-            <Gift className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-            <div>
-              <p className="text-sm font-bold text-foreground">
-                {pendingPurchasePoints > 0 ? `${pendingPurchasePoints.toLocaleString()} points earned` : 'Your purchase points are saved'}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Activate with the same checkout email to access rewards and this order in NuVira.
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="space-y-2.5 w-full max-w-sm">
-          <Button onClick={() => redirectToLogin(GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE)} className="nuvira-gradient-button w-full h-11 rounded-xl font-semibold text-sm">
-            Activate My Points <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-          <Link to="/" className="block">
-            <Button variant="outline" className="w-full h-11 rounded-xl font-semibold text-sm"><Home className="w-4 h-4 mr-2" /> Back to Home</Button>
           </Link>
         </div>
       </div>
@@ -410,6 +395,9 @@ export default function OrderConfirmation() {
             <span>Total</span>
             <span>${order.total?.toFixed(2)}</span>
           </div>
+          {isVerifiedNoPaymentOrder(order) && (
+            <p className="mt-2 text-xs font-medium text-primary">Reward redeemed · No payment required</p>
+          )}
         </div>
 
         {isGuestCheckout && (
