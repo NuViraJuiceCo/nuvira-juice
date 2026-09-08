@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
+import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from '../../firstOrderEligibility.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
@@ -92,10 +93,11 @@ async function resolveDiscount(base44, code, eligibleSubtotal, now = new Date())
   if (activeCandidates.length !== 1) return null;
 
   const discount = activeCandidates[0];
+  if (!firstOrderOfferIsConfigured(discount)) return null;
   const startsAt = discount.starts_at ? new Date(discount.starts_at) : null;
   const endsAt = discount.ends_at ? new Date(discount.ends_at) : null;
   if ((startsAt && (!Number.isFinite(startsAt.getTime()) || now < startsAt)) ||
-      (endsAt && (!Number.isFinite(endsAt.getTime()) || now > endsAt))) {
+      (endsAt && (!Number.isFinite(endsAt.getTime()) || (discount.first_order_only === true ? now >= endsAt : now > endsAt)))) {
     return null;
   }
 
@@ -120,6 +122,7 @@ async function resolveDiscount(base44, code, eligibleSubtotal, now = new Date())
     percent: discount.discount_type === 'fixed_amount' ? 0 : value,
     amount: Math.min(subtotal, Math.round(amount * 100) / 100),
     once_per_customer: discount.once_per_customer === true,
+    ...(discount.first_order_only === true ? { first_order_only: true } : {}),
   };
 }
 
@@ -341,6 +344,10 @@ export default async function handler(req: Request) {
     }
     const redemptionBlock = await oneTimeRedemptionBlock(base44, discount, customer_email || authenticatedUser?.email);
     if (redemptionBlock) return redemptionBlock;
+    const firstOrderBlock = await firstOrderEligibilityBlock(base44, discount, customer_email || authenticatedUser?.email, authenticatedUser?.email);
+    if (firstOrderBlock) return firstOrderBlock;
+    const stackingBlock = firstOrderStackingBlock(discount, [body.points_discount, body.reward_discount, body.credits_discount], body);
+    if (stackingBlock) return stackingBlock;
 
     let customerProfile = null;
     if (customer_email) {
@@ -427,6 +434,7 @@ export default async function handler(req: Request) {
       discount_eligible_subtotal: discountEligibleSubtotal,
       discount_amount: discount.amount,
       discount_percent: discount.percent,
+      discount_first_order_only: discount.first_order_only === true,
       ...(discount.code ? {
         discount_code: discount.code,
         discount_kind: discount.type,
@@ -484,6 +492,8 @@ export default async function handler(req: Request) {
         cart_subtotal: String(subtotal || 0),
         discount_eligible_subtotal: String(discountEligibleSubtotal),
         discount_code: discount.code || '',
+        discount_first_order_only: discount.first_order_only === true ? 'true' : 'false',
+        discount_account_email: discount.first_order_only === true ? normalizeCustomerEmail(authenticatedUser?.email) : '',
         discount_kind: discount.code ? discount.type : '',
         discount_amount: discount.amount.toFixed(2),
         effective_total: String(effectiveTotal),

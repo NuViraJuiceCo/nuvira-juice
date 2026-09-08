@@ -44,6 +44,11 @@
       "default": false,
       "description": "When true, the code is rejected after the customer has a paid, captured, or refunded order using it"
     },
+    "first_order_only": {
+      "type": "boolean",
+      "default": false,
+      "description": "Opt-in first-purchase restriction for guests and members. Requires one use per customer and a finite end timestamp; existing next-purchase offers remain unchanged."
+    },
     "starts_at": {
       "type": "string",
       "description": "Optional ISO activation timestamp"

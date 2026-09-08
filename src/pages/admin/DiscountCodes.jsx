@@ -21,6 +21,7 @@ const EMPTY_FORM = {
   minimum_subtotal: '0',
   maximum_discount: '',
   once_per_customer: false,
+  first_order_only: false,
   starts_at: '',
   ends_at: '',
   active: true,
@@ -112,6 +113,7 @@ export default function DiscountCodes() {
       minimum_subtotal: String(code.minimum_subtotal ?? 0),
       maximum_discount: Number(code.maximum_discount || 0) > 0 ? String(code.maximum_discount) : '',
       once_per_customer: code.once_per_customer === true,
+      first_order_only: code.first_order_only === true,
       starts_at: toLocalInput(code.starts_at),
       ends_at: toLocalInput(code.ends_at),
       active: code.active === true,
@@ -148,6 +150,10 @@ export default function DiscountCodes() {
       toast.error('The end time must be after the start time.');
       return;
     }
+    if (form.first_order_only && (!form.once_per_customer || !endsAt)) {
+      toast.error('First-order offers require one use per customer and an end date.');
+      return;
+    }
     if (codes.some((item) => item.id !== editingId && normalizeCode(item.code) === code)) {
       toast.error('That discount code already exists.');
       return;
@@ -162,6 +168,7 @@ export default function DiscountCodes() {
       minimum_subtotal: minimum,
       maximum_discount: maximum,
       once_per_customer: form.once_per_customer,
+      first_order_only: form.first_order_only,
       starts_at: startsAt,
       ends_at: endsAt,
       active: form.active,
@@ -304,7 +311,15 @@ export default function DiscountCodes() {
                 <p className="text-sm font-medium text-foreground">One use per customer</p>
                 <p className="text-xs text-muted-foreground">Blocks the code after a successful purchase on that account.</p>
               </div>
-              <Switch checked={form.once_per_customer} onCheckedChange={(once_per_customer) => setForm((prev) => ({ ...prev, once_per_customer }))} />
+              <Switch aria-label="One use per customer" checked={form.once_per_customer} disabled={form.first_order_only} onCheckedChange={(once_per_customer) => setForm((prev) => ({ ...prev, once_per_customer }))} />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium text-foreground">First order only</p>
+                <p className="text-xs text-muted-foreground">Guests and members without a previous paid purchase. Requires an end date. Cannot combine with other discounts or rewards.</p>
+              </div>
+              <Switch aria-label="First order only" checked={form.first_order_only} onCheckedChange={(first_order_only) => setForm((prev) => ({ ...prev, first_order_only, once_per_customer: first_order_only || prev.once_per_customer }))} />
             </div>
 
             <Button type="button" onClick={saveCode} disabled={saving} className="w-full">
@@ -344,6 +359,7 @@ export default function DiscountCodes() {
                           {discountValueLabel(code)} · {code.discount_kind === 'referral' ? 'Referral' : 'Promotion'}
                           {Number(code.minimum_subtotal || 0) > 0 ? ` · $${Number(code.minimum_subtotal).toFixed(2)} minimum` : ''}
                           {code.once_per_customer ? ' · One use per customer' : ''}
+                          {code.first_order_only ? ' · First order only' : ''}
                         </p>
                       </div>
                       {code.active ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" /> : <XCircle className="h-5 w-5 shrink-0 text-slate-500" />}

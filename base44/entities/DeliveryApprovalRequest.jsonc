@@ -2,6 +2,11 @@
   "name": "DeliveryApprovalRequest",
   "type": "object",
   "properties": {
+    "discount_first_order_only": {
+      "type": "boolean",
+      "default": false,
+      "description": "Server-resolved first-order policy snapshot; rechecked before payment capture."
+    },
     "request_number": {
       "type": "string",
       "description": "Unique request identifier, e.g. DAR-XXXXXXXX or SUBR-XXXXXXXX"

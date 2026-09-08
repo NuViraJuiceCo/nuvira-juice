@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
+import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from './firstOrderEligibility.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
@@ -537,10 +538,11 @@ async function resolvePromotion(base44, code, eligibleSubtotal, now = new Date()
   }
 
   const discount = activeCandidates[0];
+  if (!firstOrderOfferIsConfigured(discount)) return null;
   const startsAt = discount.starts_at ? new Date(discount.starts_at) : null;
   const endsAt = discount.ends_at ? new Date(discount.ends_at) : null;
   if ((startsAt && (!Number.isFinite(startsAt.getTime()) || now < startsAt)) ||
-      (endsAt && (!Number.isFinite(endsAt.getTime()) || now > endsAt))) {
+      (endsAt && (!Number.isFinite(endsAt.getTime()) || (discount.first_order_only === true ? now >= endsAt : now > endsAt)))) {
     return null;
   }
 
@@ -575,6 +577,7 @@ async function resolvePromotion(base44, code, eligibleSubtotal, now = new Date()
     percent: isFixed ? 0 : discountValue,
     amount: Math.min(merchandiseSubtotal, Math.round(cappedAmount * 100) / 100),
     once_per_customer: discount.once_per_customer === true,
+    ...(discount.first_order_only === true ? { first_order_only: true } : {}),
   };
 }
 
@@ -1015,6 +1018,10 @@ Deno.serve(async (req) => {
       }
       const redemptionBlock = await oneTimeRedemptionBlock(base44, discount, discountCustomerEmail);
       if (redemptionBlock) return redemptionBlock;
+      const firstOrderBlock = await firstOrderEligibilityBlock(base44, discount, discountCustomerEmail, authenticatedUser?.email);
+      if (firstOrderBlock) return firstOrderBlock;
+      const stackingBlock = firstOrderStackingBlock(discount, [requestBody.points_discount, requestBody.reward_discount, requestBody.credits_discount], requestBody);
+      if (stackingBlock) return stackingBlock;
       return Response.json({
         ok: true,
         discount: {
@@ -1225,6 +1232,10 @@ Deno.serve(async (req) => {
       normalizedCustomerEmail,
     );
     if (redemptionBlock) return redemptionBlock;
+    const firstOrderBlock = await firstOrderEligibilityBlock(base44, promotion, normalizedCustomerEmail, authenticatedUser?.email);
+    if (firstOrderBlock) return firstOrderBlock;
+    const stackingBlock = firstOrderStackingBlock(promotion, [points_discount, reward_discount, credits_discount, subDiscountAmt], requestBody);
+    if (stackingBlock) return stackingBlock;
     const promotionDiscountAmt = promotion.type === 'promotion' ? promotion.amount : 0;
     const appliedPromotionDiscountAmt = Math.min(promotionDiscountAmt, merchandiseTotalBeforePromotion);
     const appliedReferralDiscountAmt = promotion.type === 'referral'

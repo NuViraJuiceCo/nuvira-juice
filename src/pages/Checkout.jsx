@@ -1004,6 +1004,12 @@ function CheckoutFlow() {
                   eligible_subtotal: merchandiseTotalBeforePromotion,
                   customer_email: normalizedCustomerEmail || null,
                   guest_checkout: isGuestCheckout,
+                  points_discount: isGuestCheckout ? 0 : pointsDiscount,
+                  reward_discount: isGuestCheckout ? 0 : rewardDiscountAmt,
+                  credits_discount: isGuestCheckout ? 0 : creditsDiscount,
+                  active_reward: isGuestCheckout ? null : activeReward || null,
+                  points_used: isGuestCheckout ? 0 : pointsUsed,
+                  items: items.map(item => ({ product_id: item.product_id, isFreeReward: item.isFreeReward === true })),
                 });
                 const payload = response?.data || response;
                 const resolvedCode = normalizeValidatedCheckoutCode(payload?.discount);

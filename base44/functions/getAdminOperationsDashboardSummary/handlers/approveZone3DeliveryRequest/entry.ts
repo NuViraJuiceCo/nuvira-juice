@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
+import { firstOrderEligibilityBlock } from '../../firstOrderEligibility.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
@@ -120,6 +121,15 @@ export default async (req: Request) => {
     if (pi.status !== 'requires_capture') {
       return Response.json({ error: `PaymentIntent status is ${pi.status}, expected requires_capture. Cannot capture.`, stripe_status: pi.status }, { status: 400 });
     }
+
+    // Honor the authorized price, but do not capture a first-order offer after
+    // another purchase has consumed eligibility during route review. Never
+    // silently increase the price; leave the hold for explicit resolution.
+    const firstOrderBlock = await firstOrderEligibilityBlock(base44, {
+      code: dar.discount_code,
+      first_order_only: dar.discount_first_order_only === true || pi.metadata?.discount_first_order_only === 'true',
+    }, dar.customer_email, pi.metadata?.discount_account_email);
+    if (firstOrderBlock) return firstOrderBlock;
 
     // Determine capture amount
     const captureDeliveryFee = approved_delivery_fee != null ? approved_delivery_fee : (dar.estimated_delivery_fee || 0);
