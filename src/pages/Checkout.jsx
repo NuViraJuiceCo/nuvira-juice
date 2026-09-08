@@ -26,6 +26,7 @@ import OutOfAreaModal from '@/components/checkout/OutOfAreaModal';
 import Zone3RouteReviewPanel from '@/components/checkout/Zone3RouteReviewPanel';
 import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 import { normalizeValidatedCheckoutCode } from '@/lib/checkoutPromotions';
+import { orderMinimumStatus } from '@/lib/orderMinimums';
 import { buildCustomerName, normalizeNamePart, resolveCustomerIdentity } from '@/lib/customerIdentity';
 import {
   getAnalyticsConsent,
@@ -526,6 +527,14 @@ function CheckoutFlow() {
 
   const handlePlaceOrder = async () => {
     if (checkoutAttemptInFlightRef.current || checkoutStartLockedRef.current) return;
+
+    // Visiting /checkout directly must not bypass the cart's item minimum.
+    // A fully earned bundle may qualify without adding any paid merchandise.
+    const minimumStatus = orderMinimumStatus(items);
+    if (!minimumStatus.meetsMinimum) {
+      toast.error(minimumStatus.error);
+      return;
+    }
 
     // Block checkout if running inside an iframe (preview mode)
     if (window.self !== window.top) {

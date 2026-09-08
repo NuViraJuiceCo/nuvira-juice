@@ -17,6 +17,7 @@ import { isBirthdayRewardActive, useBirthdayReward } from '@/lib/birthdayReward'
 import FreeProductPicker from '@/components/FreeProductPicker';
 import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewCart } from '@/lib/googleAnalytics';
+import { orderMinimumStatus } from '@/lib/orderMinimums';
 
 export default function Cart() {
   const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem } = useCart();
@@ -130,18 +131,8 @@ export default function Cart() {
   const deliveryText = earliestOption
     ? `Delivered ${earliestOption.delivery_day_name}, ${new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Chicago' }).format(new Date(earliestOption.delivery_date + 'T12:00:00'))}`
     : 'Next available batch';
-  const juiceOrderCategories = new Set(['juice', 'shot', 'bundle']);
-  const containsJuiceOrderItems = items.some(item => juiceOrderCategories.has(item.category));
-  // Shots are 2oz so require 6 minimum; juices/bundles require 3 minimum.
-  // Normalize: each shot counts as 0.5 toward the minimum (so 6 shots = 3 units).
-  const juiceCount = items.reduce((sum, item) => {
-    if (item.category === 'bundle') return sum + (item.bottles_per_unit || 3) * item.quantity;
-    if (item.category === 'juice') return sum + item.quantity;
-    if (item.category === 'shot') return sum + item.quantity * 0.5;
-    return sum;
-  }, 0);
-  const meetsMinimum = !containsJuiceOrderItems || juiceCount >= 3;
-  const juiceMinimumRemaining = Math.max(0, Math.ceil(3 - juiceCount));
+  const minimumStatus = orderMinimumStatus(items);
+  const meetsMinimum = minimumStatus.meetsMinimum;
 
   if (items.length === 0) {
     return (
@@ -225,10 +216,10 @@ export default function Cart() {
         <CartDeliveryCheckPrompt />
 
         {/* Minimum Order Notice */}
-        {containsJuiceOrderItems && !meetsMinimum && (
+        {!meetsMinimum && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3.5 flex items-center gap-3">
             <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-            <p className="text-xs font-semibold text-foreground">Add {juiceMinimumRemaining} more bottle{juiceMinimumRemaining === 1 ? '' : 's'} to checkout</p>
+            <p className="text-xs font-semibold text-foreground">{minimumStatus.error}</p>
           </motion.div>
         )}
 
