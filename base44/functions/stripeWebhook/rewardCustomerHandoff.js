@@ -1,6 +1,6 @@
 import { isVerifiedNoPaymentOrder } from './rewardSettlement.js';
 
-export const REWARD_CUSTOMER_HANDOFF_REVISION = '2026-09-08.reward-customer-handoff-v1';
+export const REWARD_CUSTOMER_HANDOFF_REVISION = '2026-09-08.reward-customer-handoff-v2';
 const email = value => String(value || '').trim().toLowerCase();
 const opaque = value => typeof value === 'string' && /^[A-Za-z0-9._:-]{1,120}$/.test(value);
 const requireProof = (condition, code) => { if (!condition) throw new Error(code); };
@@ -9,12 +9,10 @@ const clean = value => String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 
 const escaped = value => clean(value).replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 
-// These are two real adapters, not a complete handoff factory. The webhook must
+// These are customer-channel adapters, not a complete handoff factory. The webhook must
 // remain unactivated until every required stage has an independently tested
 // adapter. Ordinary paid-order delivery behavior is intentionally untouched.
-export function createRewardCustomerHandoffAdapters({ base44, fetchEmail, resendApiKey }) {
-  const entities = base44.asServiceRole.entities;
-  async function currentOrder(snapshot, stage, idempotencyKey, requireClaim = false) {
+export async function readCurrentRewardHandoffOrder(entities, snapshot, stage, idempotencyKey, requireClaim = false) {
     requireProof(opaque(snapshot?.id) && idempotencyKey === `reward_handoff:${snapshot.id}:${stage}`,
       'reward_customer_handoff_identity_invalid');
     const rows = await entities.Order.filter({ id: snapshot.id }, undefined, 2);
@@ -25,7 +23,7 @@ export function createRewardCustomerHandoffAdapters({ base44, fetchEmail, resend
       && order.reward_settlement.context_hash === snapshot.reward_settlement.context_hash
       && email(order.customer_email) === email(snapshot.customer_email)
       && order.order_number === snapshot.order_number
-      && ['items', 'customer_name', 'delivery_address', 'assigned_delivery_date',
+      && ['items', 'customer_name', 'contact_phone', 'delivery_address', 'assigned_delivery_date',
         'delivery_window_label', 'bag_return_request_id'].every(key =>
         JSON.stringify(order[key]) === JSON.stringify(snapshot[key])), 'reward_customer_order_changed');
     if (requireClaim) {
@@ -36,7 +34,11 @@ export function createRewardCustomerHandoffAdapters({ base44, fetchEmail, resend
       'reward_customer_dispatch_claim_required');
     }
     return order;
-  }
+}
+
+export function createRewardCustomerHandoffAdapters({ base44, fetchEmail, resendApiKey }) {
+  const entities = base44.asServiceRole.entities;
+  const currentOrder = (...args) => readCurrentRewardHandoffOrder(entities, ...args);
 
   async function bagProof(order) {
     if (!order.bag_return_request_id) return {
@@ -197,5 +199,126 @@ export function createRewardCustomerHandoffAdapters({ base44, fetchEmail, resend
       return proof;
     },
   };
-  return { bag_return, confirmation_email };
+  function notificationPayload(order) {
+    emailPayload(order); // Same authoritative identity, schedule and item validation.
+    return { customer_email: email(order.customer_email), type: 'order_update',
+      notification_subtype: 'order_confirmation', order_id: order.id,
+      title: 'Your NuVira reward order is confirmed',
+      message: `Order #${order.order_number} is confirmed. Your earned reward is applied, with no payment required. View your delivery details and follow its progress.`,
+      deep_link: `/order-tracker/${encodeURIComponent(order.order_number)}`,
+      idempotency_key: `order_confirmation_${order.id}`,
+      source: 'stripe_webhook', suppress_push: true };
+  }
+  async function notificationProof(order) {
+    const payload = notificationPayload(order);
+    const rows = await entities.Notification.filter({ idempotency_key: payload.idempotency_key }, undefined, 2);
+    requireProof(Array.isArray(rows) && rows.length < 2, 'reward_notification_not_unique');
+    if (!rows.length) return null;
+    const row = rows[0];
+    requireProof(opaque(row.id) && email(row.customer_email) === payload.customer_email
+      && ['title', 'message', 'type', 'notification_subtype', 'order_id', 'deep_link']
+        .every(key => row[key] === payload[key]), 'reward_notification_content_mismatch');
+    return row;
+  }
+  const customer_in_app = {
+    reconcile: async ({ order: snapshot, idempotencyKey }) => {
+      const order = await currentOrder(snapshot, 'customer_in_app', idempotencyKey);
+      const row = await notificationProof(order);
+      await currentOrder(snapshot, 'customer_in_app', idempotencyKey);
+      return row ? completed(`notification:${row.id}`) : null;
+    },
+    perform: async ({ order: snapshot, idempotencyKey }) => {
+      const order = await currentOrder(snapshot, 'customer_in_app', idempotencyKey, true);
+      let row = await notificationProof(order);
+      if (!row) {
+        await currentOrder(snapshot, 'customer_in_app', idempotencyKey, true);
+        await base44.asServiceRole.functions.invoke('sendCustomerNotification', notificationPayload(order));
+        await currentOrder(snapshot, 'customer_in_app', idempotencyKey, true);
+        row = await notificationProof(order);
+      }
+      requireProof(row, 'reward_notification_creation_unconfirmed');
+      await currentOrder(snapshot, 'customer_in_app', idempotencyKey, true);
+      return completed(`notification:${row.id}`);
+    },
+  };
+
+  // APNs/FCM/Web Push acceptance is not device delivery. Retain only the actual
+  // sender's complete acceptance summary in an admin-only durable receipt. A
+  // lost sender response without that receipt stays uncertain, never resent.
+  const pushRevision = '2026-09-08.reward-push-acceptance-v1';
+  async function pushProof(order, notification, idempotencyKey) {
+    const rows = await entities.CustomerMessageDeliveryLog.filter({ idempotency_key: idempotencyKey }, undefined, 2);
+    requireProof(Array.isArray(rows) && rows.length < 2, 'reward_push_receipt_not_unique');
+    if (!rows.length) return null;
+    const row = rows[0]; const proof = row.metadata;
+    requireProof(opaque(row.id) && row.channel === 'push' && row.provider === 'internal'
+      && row.message_type === 'order_confirmation' && row.order_id === order.id
+      && row.order_number === order.order_number && email(row.customer_email) === email(order.customer_email)
+      && proof?.revision === pushRevision && proof.notification_id === notification.id
+      && proof.checkout_session_id === order.stripe_checkout_session_id
+      && proof.context_hash === order.reward_settlement.context_hash, 'reward_push_receipt_identity_mismatch');
+    if (row.status === 'sent') {
+      requireProof(proof.outcome === 'provider_accepted' && Number.isSafeInteger(proof.token_count)
+        && proof.token_count > 0 && proof.sent_count === proof.token_count && proof.failed_count === 0
+        && proof.revoked_count === 0, 'reward_push_acceptance_incomplete');
+      return completed(`push_acceptance:${row.id}`);
+    }
+    requireProof(row.status === 'skipped' && proof.outcome === 'skipped'
+      && ['no_eligible_device', 'channel_disabled'].includes(proof.reason)
+      && proof.token_count === 0 && proof.sent_count === 0 && proof.failed_count === 0
+      && proof.revoked_count === 0, 'reward_push_skip_unconfirmed');
+    return { outcome: 'skipped', reason: proof.reason, evidence_id: `push_skip:${row.id}` };
+  }
+  const customer_push = {
+    reconcile: async ({ order: snapshot, idempotencyKey }) => {
+      const order = await currentOrder(snapshot, 'customer_push', idempotencyKey);
+      const notification = await notificationProof(order);
+      requireProof(notification, 'reward_push_notification_required');
+      const proof = await pushProof(order, notification, idempotencyKey);
+      await currentOrder(snapshot, 'customer_push', idempotencyKey);
+      return proof;
+    },
+    perform: async ({ order: snapshot, idempotencyKey }) => {
+      const order = await currentOrder(snapshot, 'customer_push', idempotencyKey, true);
+      const notification = await notificationProof(order);
+      requireProof(notification, 'reward_push_notification_required');
+      const existing = await pushProof(order, notification, idempotencyKey);
+      if (existing) {
+        await currentOrder(snapshot, 'customer_push', idempotencyKey, true);
+        return existing;
+      }
+      await currentOrder(snapshot, 'customer_push', idempotencyKey, true);
+      const result = await base44.asServiceRole.functions.invoke('sendCustomerPushNotification', {
+        ...notificationPayload(order), notification_id: notification.id,
+        idempotency_key: idempotencyKey, require_complete_readback: true,
+      });
+      const data = result?.data || result;
+      requireProof(data?.success === true && data.complete_readback === true, 'reward_push_runtime_unconfirmed');
+      let reason;
+      if (data.push_attempted === false && data.push_sent === false && data.token_count === 0) {
+        if (data.push_skipped_reason === 'no_active_push_subscription') reason = 'no_eligible_device';
+        if (['customer_push_disabled', 'order_confirmation_push_disabled'].includes(data.push_skipped_reason)) reason = 'channel_disabled';
+      }
+      if (!reason) requireProof(data.push_attempted === true && data.push_sent === true
+        && Number.isSafeInteger(data.token_count) && data.token_count > 0
+        && data.sent_count === data.token_count && data.failed_count === 0 && data.revoked_count === 0
+        && !data.push_skipped_reason, 'reward_push_acceptance_incomplete');
+      await currentOrder(snapshot, 'customer_push', idempotencyKey, true);
+      await entities.CustomerMessageDeliveryLog.create({ idempotency_key: idempotencyKey,
+        channel: 'push', message_type: 'order_confirmation', provider: 'internal',
+        order_id: order.id, order_number: order.order_number, customer_email: email(order.customer_email),
+        status: reason ? 'skipped' : 'sent', sent_at: new Date().toISOString(), metadata: {
+          revision: pushRevision, notification_id: notification.id,
+          checkout_session_id: order.stripe_checkout_session_id, context_hash: order.reward_settlement.context_hash,
+          outcome: reason ? 'skipped' : 'provider_accepted', ...(reason ? { reason } : {}),
+          token_count: reason ? 0 : data.token_count, sent_count: reason ? 0 : data.sent_count,
+          failed_count: 0, revoked_count: 0,
+        } });
+      const proof = await pushProof(order, notification, idempotencyKey);
+      requireProof(proof, 'reward_push_receipt_not_persisted');
+      await currentOrder(snapshot, 'customer_push', idempotencyKey, true);
+      return proof;
+    },
+  };
+  return { bag_return, confirmation_email, customer_in_app, customer_push };
 }

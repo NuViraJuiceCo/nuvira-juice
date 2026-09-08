@@ -282,12 +282,15 @@ function fallbackLogToSubscription(row: Record<string, any>): PushSubscriptionRe
   };
 }
 
-async function findFallbackPushSubscriptions(base44: Base44Client, identityEmails: string[]): Promise<PushSubscriptionRecord[]> {
+async function findFallbackPushSubscriptions(base44: Base44Client, identityEmails: string[], strict = false): Promise<PushSubscriptionRecord[]> {
   const subscriptions: PushSubscriptionRecord[] = [];
   const seenRows = new Set<string>();
 
   for (const email of identityEmails) {
-    const rows = await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({ customer_email: email });
+    const rows = strict
+      ? await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({ customer_email: email }, undefined, 501)
+      : await base44.asServiceRole.entities.CustomerMessageDeliveryLog.filter({ customer_email: email });
+    if (strict && (!Array.isArray(rows) || rows.length >= 501)) throw new Error('push_fallback_read_incomplete');
     for (const row of rows) {
       if (!row.id || seenRows.has(row.id)) continue;
       const subscription = fallbackLogToSubscription(row);
@@ -301,52 +304,67 @@ async function findFallbackPushSubscriptions(base44: Base44Client, identityEmail
   return subscriptions;
 }
 
-async function findPushSubscriptionRows(base44: Base44Client, email: string): Promise<PushSubscriptionRecord[]> {
+async function findPushSubscriptionRows(base44: Base44Client, email: string, strict = false): Promise<PushSubscriptionRecord[]> {
   const rows: PushSubscriptionRecord[] = [];
 
   try {
-    rows.push(...await base44.asServiceRole.entities.PushSubscription.filter({ customer_email: email }));
+    const subscriptions = strict
+      ? await base44.asServiceRole.entities.PushSubscription.filter({ customer_email: email }, undefined, 501)
+      : await base44.asServiceRole.entities.PushSubscription.filter({ customer_email: email });
+    if (strict && (!Array.isArray(subscriptions) || subscriptions.length >= 501)) throw new Error('push_subscription_read_incomplete');
+    rows.push(...subscriptions);
   } catch (error) {
     if (!isMissingSchemaError(error)) throw error;
     console.warn('[sendCustomerPushNotification] PushSubscription schema unavailable; checking fallback storage');
   }
 
   try {
-    rows.push(...await findFallbackPushSubscriptions(base44, [email]));
+    rows.push(...await findFallbackPushSubscriptions(base44, [email], strict));
   } catch (error) {
-    if (rows.length === 0) throw error;
+    if (strict || rows.length === 0) throw error;
     console.warn(`[sendCustomerPushNotification] Fallback subscription lookup skipped: ${errorMessage(error)}`);
   }
 
   return rows;
 }
 
-async function resolveIdentityEmails(base44: Base44Client, customerEmail: string): Promise<string[]> {
+async function resolveIdentityEmails(base44: Base44Client, customerEmail: string, strict = false): Promise<string[]> {
   const identities = new Set([customerEmail]);
 
   try {
-    const fwdProfiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail });
+    const fwdProfiles = strict
+      ? await base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail }, undefined, 251)
+      : await base44.asServiceRole.entities.UserProfile.filter({ customer_email: customerEmail });
+    if (strict && (!Array.isArray(fwdProfiles) || fwdProfiles.length >= 251)) throw new Error('push_profile_read_incomplete');
+    if (strict) for (const profile of fwdProfiles) {
+      if (profile.customer_email) identities.add(normalizeEmail(profile.customer_email));
+      if (profile.contact_email) identities.add(normalizeEmail(profile.contact_email));
+    }
     if (fwdProfiles[0]?.customer_email) identities.add(normalizeEmail(fwdProfiles[0].customer_email));
     if (fwdProfiles[0]?.contact_email) identities.add(normalizeEmail(fwdProfiles[0].contact_email));
 
-    const revProfiles = await base44.asServiceRole.entities.UserProfile.filter({ contact_email: customerEmail });
+    const revProfiles = strict
+      ? await base44.asServiceRole.entities.UserProfile.filter({ contact_email: customerEmail }, undefined, 251)
+      : await base44.asServiceRole.entities.UserProfile.filter({ contact_email: customerEmail });
+    if (strict && (!Array.isArray(revProfiles) || revProfiles.length >= 251)) throw new Error('push_reverse_profile_read_incomplete');
     for (const profile of revProfiles) {
       if (profile.customer_email) identities.add(normalizeEmail(profile.customer_email));
       if (profile.contact_email) identities.add(normalizeEmail(profile.contact_email));
     }
   } catch (error) {
+    if (strict) throw error;
     console.warn(`[sendCustomerPushNotification] Identity resolution partial failure: ${errorMessage(error)}`);
   }
 
   return [...identities];
 }
 
-async function findPushSubscriptions(base44: Base44Client, identityEmails: string[]) {
+async function findPushSubscriptions(base44: Base44Client, identityEmails: string[], strict = false) {
   const subscriptions: PushSubscriptionRecord[] = [];
   const seenSubscriptions = new Set<string>();
 
   for (const email of identityEmails) {
-    const rows = await findPushSubscriptionRows(base44, email);
+    const rows = await findPushSubscriptionRows(base44, email, strict);
     for (const row of rows) {
       if (row.enabled === false || row.revoked_at) continue;
 
@@ -1118,7 +1136,7 @@ async function refreshDeliveryLiveActivities(base44: Base44Client, body: Record<
         snapshot.activity_state === 'en_route' || snapshot.order_id === orderId
       ))
     : [route.anchor_snapshot];
-  const ordersById = new Map((route.route_orders || []).map((order: Record<string, any>) => [order.id, order]));
+  const ordersById = new Map<string, Record<string, any>>((route.route_orders || []).map((order: Record<string, any>) => [order.id, order]));
   ordersById.set(route.anchor_order.id, route.anchor_order);
 
   let attempted = false;
@@ -1183,6 +1201,10 @@ Deno.serve(async (req) => {
     const type = normalizeSingleLine(body.type || 'general');
     const source = normalizeSingleLine(body.source || body.notification_origin || '');
     const notificationId = normalizeSingleLine(body.notification_id);
+    // Only authenticated admin/system callers can reach this branch. Reward
+    // handoff requires exhaustive reads; ordinary notifications keep their
+    // current compatibility behavior. Missing data is never a no-device skip.
+    const completeReadback = body.require_complete_readback === true;
     const idempotencyKey = normalizeSingleLine(body.idempotency_key || body.delivery_key || notificationId || `${notificationSubtype}:${Date.now()}`);
     const deepLink = normalizeSingleLine(body.deep_link || '/notifications') || '/notifications';
 
@@ -1207,6 +1229,7 @@ Deno.serve(async (req) => {
         push_sent: false,
         push_skipped_reason: allowed.reason,
         token_count: 0,
+        ...(completeReadback ? { complete_readback: true } : {}),
       });
     }
 
@@ -1221,8 +1244,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    const identityEmails = await resolveIdentityEmails(base44, customerEmail);
-    const subscriptions = await findPushSubscriptions(base44, identityEmails);
+    const identityEmails = await resolveIdentityEmails(base44, customerEmail, completeReadback);
+    const subscriptions = await findPushSubscriptions(base44, identityEmails, completeReadback);
     if (subscriptions.length === 0) {
       return Response.json({
         success: true,
@@ -1230,6 +1253,7 @@ Deno.serve(async (req) => {
         push_sent: false,
         push_skipped_reason: 'no_active_push_subscription',
         token_count: 0,
+        ...(completeReadback ? { complete_readback: true } : {}),
       });
     }
 
@@ -1315,6 +1339,7 @@ Deno.serve(async (req) => {
       sent_count: sent,
       failed_count: failed,
       revoked_count: revoked,
+      ...(completeReadback ? { complete_readback: true } : {}),
     });
   } catch (error) {
     console.error(`[sendCustomerPushNotification] Error: ${errorMessage(error)}`);

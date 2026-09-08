@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: reward-communications-20260908 (staff reward email and consented SMS; unreleased).
 // Bundle revision: reward-settlement-20260908 (no-cash eligibility; unreleased).
 // Bundle revision: first-order-offer-20260907 (opt-in policy; no offer activation).
 // Bundle revision: g165-production-yield-surplus-20260828.

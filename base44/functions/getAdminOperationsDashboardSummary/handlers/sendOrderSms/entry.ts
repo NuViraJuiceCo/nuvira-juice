@@ -78,12 +78,36 @@ export default async (req: Request) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { order_id, phone_number, order_number, items, total, estimated_delivery_date, assigned_delivery_date, delivery_window_label } = await req.json();
+    const { order_id, phone_number, order_number, items, total, estimated_delivery_date, assigned_delivery_date,
+      delivery_window_label, reward_checkout_session_id } = await req.json();
     const idempotencyKey = buildOrderConfirmationSmsKey(order_id, order_number);
 
     const recipientNumber = normalizeE164(phone_number);
     const senderNumber = normalizeE164(SENDBLUE_PHONE_NUMBER);
     if (!recipientNumber) return Response.json({ error: 'valid_e164_phone_number_required' }, { status: 400 });
+    if (reward_checkout_session_id) {
+      const orders = await base44.asServiceRole.entities.Order.filter({ id: order_id }, undefined, 2);
+      const order = orders.length === 1 ? orders[0] : null;
+      if (!order || order.stripe_checkout_session_id !== reward_checkout_session_id
+        || order.reward_settlement?.checkout_session_id !== reward_checkout_session_id
+        || order.reward_settlement?.revision !== '2026-09-08.reward-settlement-v1'
+        || order.total !== 0 || total !== 0 || order.payment_captured !== false || order.payment_status !== 'paid'
+        || order.financial_status !== 'paid' || order.stripe_payment_intent_id || order.is_test_order === true
+        || order.is_abandoned_checkout === true || order.do_not_recover === true || Number(order.amount_refunded || 0) > 0
+        || ['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+        || order.order_number !== order_number || normalizeE164(order.contact_phone) !== recipientNumber
+        || order.assigned_delivery_date !== assigned_delivery_date || order.delivery_window_label !== delivery_window_label
+        || JSON.stringify(order.items) !== JSON.stringify(items)) {
+        return Response.json({ error: 'reward_sms_order_unconfirmed' }, { status: 409 });
+      }
+      const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: order.customer_email }, undefined, 2);
+      if (profiles.length > 1) return Response.json({ error: 'reward_sms_profile_not_unique' }, { status: 409 });
+      const profile = profiles[0];
+      if (!profile || profile.sms_consent !== true || normalizeE164(profile.phone) !== recipientNumber
+        || !Number.isFinite(Date.parse(profile.sms_consent_date || '')) || Date.parse(profile.sms_consent_date) > Date.now()) {
+        return Response.json({ success: true, skipped: true, reason: 'preference_opt_out' });
+      }
+    }
 
     if (!SENDBLUE_API_KEY || !SENDBLUE_API_SECRET || !senderNumber) {
       console.error('sendOrderSms: SendBlue credentials not set');
@@ -195,7 +219,7 @@ export default async (req: Request) => {
         order_number: order_number || null,
           customer_phone: recipientNumber,
         provider: 'sendblue',
-        provider_message_id: result?.message_id || null,
+        provider_message_id: result?.message_handle || result?.message_id || null,
         status: 'sent',
         sent_at: new Date().toISOString(),
         metadata: {
@@ -203,6 +227,7 @@ export default async (req: Request) => {
           provider_status: result?.status || null,
           delivery_date: assigned_delivery_date || estimated_delivery_date || null,
           delivery_window_label: delivery_window_label || null,
+          ...(reward_checkout_session_id ? { reward_checkout_session_id } : {}),
         },
       });
     }

@@ -68,7 +68,10 @@ async function resolveOrder(base44: Base44Client, body: Record<string, any>) {
     return { error: 'order_id is required', status: 400, order: null };
   }
 
-  const rows = await base44.asServiceRole.entities.Order.filter({ id: orderId }, null, 1);
+  const rows = await base44.asServiceRole.entities.Order.filter({ id: orderId }, null, body.require_complete_readback === true ? 2 : 1);
+  if (body.require_complete_readback === true && rows.length !== 1) {
+    return { error: 'order_identity_unconfirmed', status: 409, order: null };
+  }
   const order = rows[0];
   if (!order) {
     return { error: 'Order not found', status: 404, order: null };
@@ -89,17 +92,24 @@ async function resolveOrder(base44: Base44Client, body: Record<string, any>) {
   return { error: null, status: 200, order };
 }
 
-async function findAdminRecipients(base44: Base44Client, actorEmail: string, testOnly: boolean): Promise<AdminRecipient[]> {
+async function findAdminRecipients(base44: Base44Client, actorEmail: string, testOnly: boolean, strict = false): Promise<AdminRecipient[]> {
   if (testOnly && actorEmail) return [{ email: actorEmail }];
 
   const envRecipients = parseEmailList(ADMIN_PUSH_RECIPIENT_EMAILS);
+  if (strict && ADMIN_PUSH_RECIPIENT_EMAILS && ADMIN_PUSH_RECIPIENT_EMAILS.split(',').some(value => !normalizeEmail(value))) {
+    throw new Error('admin_push_recipient_configuration_invalid');
+  }
   if (envRecipients.length > 0) return envRecipients.map((email) => ({ email }));
 
-  const adminUsers = await base44.asServiceRole.entities.User.filter({ role: 'admin' }).catch(() => []);
+  const adminUsers = strict
+    ? await base44.asServiceRole.entities.User.filter({ role: 'admin' }, undefined, 251)
+    : await base44.asServiceRole.entities.User.filter({ role: 'admin' }).catch(() => []);
+  if (strict && (!Array.isArray(adminUsers) || adminUsers.length >= 251)) throw new Error('admin_push_recipient_read_incomplete');
   const emails = new Set<string>();
 
   for (const admin of adminUsers) {
     const email = normalizeEmail(admin.email || admin.customer_email || admin.user_email || admin.created_by);
+    if (strict && !email) throw new Error('admin_push_recipient_email_invalid');
     if (email) emails.add(email);
   }
 
@@ -108,8 +118,9 @@ async function findAdminRecipients(base44: Base44Client, actorEmail: string, tes
   return [...emails].map((email) => ({ email }));
 }
 
-async function existingNotification(base44: Base44Client, idempotencyKey: string) {
-  const rows = await base44.asServiceRole.entities.Notification.filter({ idempotency_key: idempotencyKey }, null, 1);
+async function existingNotification(base44: Base44Client, idempotencyKey: string, strict = false) {
+  const rows = await base44.asServiceRole.entities.Notification.filter({ idempotency_key: idempotencyKey }, null, strict ? 2 : 1);
+  if (strict && rows.length > 1) throw new Error('admin_push_notification_not_unique');
   return rows[0] || null;
 }
 
@@ -120,8 +131,12 @@ async function createAdminNotification(
   title: string,
   message: string,
   idempotencyKey: string,
+  strict = false,
 ) {
-  const existing = await existingNotification(base44, idempotencyKey);
+  const existing = await existingNotification(base44, idempotencyKey, strict);
+  if (strict && existing && (existing.customer_email !== recipient.email || existing.order_id !== order.id
+    || existing.title !== title || existing.message !== message || existing.deep_link !== DEEP_LINK
+    || existing.notification_subtype !== NOTIFICATION_SUBTYPE)) throw new Error('admin_push_notification_content_mismatch');
   if (existing) return { notification: existing, created: false };
 
   const notification = await base44.asServiceRole.entities.Notification.create({
@@ -147,6 +162,7 @@ async function sendPushForNotification(
   title: string,
   message: string,
   idempotencyKey: string,
+  strict = false,
 ) {
   if (!envFlag('ENABLE_ADMIN_PUSH_NOTIFICATIONS')) {
     return {
@@ -167,6 +183,7 @@ async function sendPushForNotification(
     order_id: notification.order_id || null,
     deep_link: DEEP_LINK,
     idempotency_key: idempotencyKey,
+    ...(strict ? { require_complete_readback: true } : {}),
   }).catch((error: unknown) => ({
     push_attempted: false,
     push_sent: false,
@@ -211,6 +228,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: auth.error }, { status: auth.status || 403 });
     }
     const actorEmail = 'actor_email' in auth ? normalizeEmail(auth.actor_email) : '';
+    const strict = body.require_complete_readback === true;
 
     if (!envFlag('ENABLE_ADMIN_PUSH_NOTIFICATIONS') || !envFlag('ENABLE_ADMIN_ORDER_PROCESSED_PUSH')) {
       return Response.json({
@@ -221,6 +239,7 @@ Deno.serve(async (req) => {
         push_attempted: false,
         push_sent: false,
         push_token_count: 0,
+        ...(strict ? { complete_readback: true } : {}),
       });
     }
 
@@ -230,11 +249,23 @@ Deno.serve(async (req) => {
     }
 
     const order = resolved.order;
+    if (body.reward_checkout_session_id && (order.stripe_checkout_session_id !== body.reward_checkout_session_id
+      || order.reward_settlement?.checkout_session_id !== body.reward_checkout_session_id
+      || order.reward_settlement?.revision !== '2026-09-08.reward-settlement-v1'
+      || order.total !== 0 || order.payment_captured !== false || order.payment_status !== 'paid'
+      || order.financial_status !== 'paid' || order.stripe_payment_intent_id || order.is_test_order === true
+      || order.is_abandoned_checkout === true || order.do_not_recover === true
+      || ['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+      || Number(order.amount_refunded || 0) > 0)) {
+      return Response.json({ error: 'reward_admin_order_unconfirmed' }, { status: 409 });
+    }
     const orderNumber = normalizeOrderNumber(order.order_number || order.shopify_order_number || order.name || body.order_number)
       || normalizeSingleLine(order.id).slice(0, 12);
     const title = 'New NuVira Order';
-    const message = `Order #${orderNumber} is paid and ready for operations.`;
-    const recipients = await findAdminRecipients(base44, actorEmail, body.test_only === true);
+    const message = body.reward_checkout_session_id
+      ? `Reward order #${orderNumber} is confirmed and ready for operations. No payment required.`
+      : `Order #${orderNumber} is paid and ready for operations.`;
+    const recipients = await findAdminRecipients(base44, actorEmail, body.test_only === true, strict);
 
     if (recipients.length === 0) {
       return Response.json({
@@ -257,20 +288,28 @@ Deno.serve(async (req) => {
     let pushTokenCount = 0;
     let pushSentCount = 0;
     const skippedReasons = new Set<string>();
+    const recipientResults: Record<string, any>[] = [];
 
     for (const recipient of recipients) {
       const idempotencyKey = `admin_order_processed_${order.id}_${recipient.email}`;
-      const created = await createAdminNotification(base44, recipient, order, title, message, idempotencyKey);
+      const created = await createAdminNotification(base44, recipient, order, title, message, idempotencyKey, strict);
 
       if (created.created) {
         notificationCreatedCount += 1;
       } else {
         duplicateCount += 1;
         skippedReasons.add('duplicate_idempotency_key');
+        if (strict) recipientResults.push({ notification_id: created.notification.id,
+          recipient_email: recipient.email, outcome: 'existing_notification_without_push_evidence' });
         continue;
       }
 
-      const push = await sendPushForNotification(base44, recipient, created.notification, title, message, idempotencyKey);
+      const push = await sendPushForNotification(base44, recipient, created.notification, title, message, idempotencyKey, strict);
+      if (strict) recipientResults.push({ notification_id: created.notification.id, recipient_email: recipient.email,
+        complete_readback: push.complete_readback === true, push_attempted: push.push_attempted === true,
+        push_sent: push.push_sent === true, token_count: push.token_count,
+        sent_count: push.sent_count ?? 0, failed_count: push.failed_count ?? 0, revoked_count: push.revoked_count ?? 0,
+        push_skipped_reason: push.push_skipped_reason || null });
       pushAttempted = pushAttempted || Boolean(push.push_attempted);
       pushSent = pushSent || Boolean(push.push_sent);
       pushTokenCount += Number(push.token_count || 0);
@@ -292,6 +331,7 @@ Deno.serve(async (req) => {
       push_sent_count: pushSentCount,
       push_token_count: pushTokenCount,
       push_skipped_reason: pushSent ? null : [...skippedReasons].join('+') || null,
+      ...(strict ? { complete_readback: true, recipient_results: recipientResults } : {}),
     });
   } catch (error) {
     console.error(`[sendAdminOrderProcessedNotification] Error: ${errorMessage(error)}`);

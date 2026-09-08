@@ -1,6 +1,20 @@
 # Customer-selected rewards and order minimums
 
-## Latest checkpoint: September 8 concrete bag-return and email handoff adapters
+## Latest checkpoint: September 8 concrete customer and staff communication chain
+
+**Local and unreleased. Seven of the nine handoff stages now have real adapters and executed handler coverage. Native production/delivery and the Shopify provider mirror remain incomplete; this is not publish-ready or live-provider proof.**
+
+- Extended the existing bag/email adapters with customer in-app and push, staff email/push, and consented SMS adapters. All require a freshly verified no-payment Order, exact Session/context, stage key and durable dispatch claim. Interrupted requests reconcile existing evidence only; an unknown provider send is not blindly retried.
+- Customer and staff push can require complete identity/device readback. Lookup failures, truncated results, missing credentials, partial acceptance and an existing notification without delivery evidence no longer masquerade as an explained no-device skip in this strict path. Durable admin-only acceptance receipts retain bounded opaque IDs and counts, not tokens or contact data. Acceptance means provider acceptance, not physical-device delivery.
+- Staff email now uses the NuVira admin order link rather than the broken Base44-host admin link. Reward messages explicitly say no payment was required and preserve all order items and delivery details. Reward staff email suppresses its coupled push so the separately tracked push stage owns that action. Ordinary cash wording remains unchanged.
+- SMS checks current explicit consent and matching phone both before dispatch and inside the existing sender. It preserves SendBlue's actual `message_handle` and verifies the exact outbound message via the documented status endpoint. Queued, mismatched, ambiguous or error responses do not complete the stage. Missing phone or genuine opt-out are defined skips; read failures are not. No SMS or other provider request was made in testing.
+- The concrete handler harness passes **118/118** cases, including the actual existing customer/staff email, in-app, push and SMS leaf handlers with simulated entity/provider transports. Only native operations and Shopify are synthetic runner stages. The gateway transport itself is simulated, not live-runtime proof. The existing gateway entrypoint has an explicit nested-bundle revision marker for eventual reviewed deployment.
+- The full registered critical suite passes **136/136**; configured typecheck, full lint, build and scoped Deno checks pass on the working source. These working-source results are not an exact committed release artifact. Secret/diagnostic/diff gates and final provenance are recorded separately when run.
+- The owner approved a new Base44 support request. Ticket **#6aa06c49** is open and human-support handoff is confirmed. Historical G162 evidence was supplied without repeating a production call. The request explicitly forbids app publishing, reverts, draft removal or settings changes; a safe backend-promotion path remains unresolved.
+
+Still required: native production/task and Shopify mirror adapters; route-review reward reservation/settlement; direct-points/credit reservation and refund/race handling; ordinary member catalog price authority; durable lost-response/reload recovery; full provider/customer-journey verification; supported exact-canonical backend/schema/web/native release and WELCOME10 activation. `runHandoff: null` and the incomplete-integration guard remain deliberate: no partial factory is wired as a complete one. C01 remains **In draft / Off** after a fresh read-only check.
+
+## Previous checkpoint: September 8 concrete bag-return and email handoff adapters
 
 **Local and unreleased. Two real handoff adapters are implemented and tested, but the full reward fulfillment/communication chain is not activated or publish-ready.**
 
