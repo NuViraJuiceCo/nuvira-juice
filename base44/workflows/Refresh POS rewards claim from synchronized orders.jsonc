@@ -1,0 +1,38 @@
+{
+  "name": "Refresh POS rewards claim from synchronized orders",
+  "description": "Creates or refreshes the matching claimable POS customer record without sending email or notifications.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create",
+        "update"
+      ],
+      "entity_name": "ShopifyOrder"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "refresh_pos_rewards_claim_from_synchronized_orders",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "getAdminPOSOrdersSummary",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "getAdminPOSOrdersSummary"
+  }
+}

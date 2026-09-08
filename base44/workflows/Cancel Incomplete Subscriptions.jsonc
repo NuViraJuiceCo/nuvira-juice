@@ -1,0 +1,44 @@
+{
+  "name": "Cancel Incomplete Subscriptions",
+  "description": "Cancels Stripe subscriptions in 'incomplete' state that were not paid within 2 hours. Keeps Stripe and PendingSubscriptionCheckout clean.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "interval",
+      "cron_expression": null,
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": 4,
+      "interval_unit": "hours",
+      "interval_anchor": "2026-05-08T17:37:12.395000",
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "cancel_incomplete_subscriptions",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "cancelIncompleteSubscriptions",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "cancelIncompleteSubscriptions"
+  }
+}
