@@ -11,6 +11,7 @@ import EmbeddedPayment from './EmbeddedPayment';
  */
 export default function Zone3RouteReviewPanel({
   zoneEligibility,
+  activeReward,
   items,
   subtotal,
   discountEligibleSubtotal,
@@ -40,6 +41,10 @@ export default function Zone3RouteReviewPanel({
   const total = Math.round((Math.max(0, eligibleSubtotal - discountAmount) + estimatedFee) * 100) / 100;
 
   const handleAuthorize = async () => {
+    if (activeReward) {
+      setError('Reward checkout for route-review delivery needs verification before it can be used. No card authorization was created.');
+      return;
+    }
     setError(null);
     setIsSubmitting(true);
     try {
@@ -142,6 +147,11 @@ export default function Zone3RouteReviewPanel({
         </button>
       )}
 
+      {activeReward && !clientSecret && (
+        <p className="text-xs text-destructive font-medium mb-4" role="alert">
+          Reward checkout for route-review delivery is not available yet. No card authorization will be created.
+        </p>
+      )}
       {error && (
         <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 mb-4">
           <p className="text-xs text-destructive font-medium">{error}</p>
@@ -181,7 +191,7 @@ export default function Zone3RouteReviewPanel({
         <div className="flex flex-col gap-3">
           <Button
             onClick={handleAuthorize}
-            disabled={!acknowledged || isSubmitting}
+            disabled={!acknowledged || isSubmitting || Boolean(activeReward)}
             className="w-full h-12 rounded-xl font-semibold text-sm bg-cyan-600 hover:bg-cyan-700 text-white"
           >
             {isSubmitting ? 'Processing...' : `Authorize Route Review · $${total.toFixed(2)}`}

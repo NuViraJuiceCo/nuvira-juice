@@ -21,7 +21,7 @@ const body = {
 const option = { option_id: 'synthetic-saturday', production_date: '2026-09-11', delivery_date: '2026-09-12',
   delivery_window_label: 'Saturday 12 PM - 3 PM', delivery_window_start: '12:00', delivery_window_end: '15:00', is_default: true };
 function fixture({ guest = false, failOrder = false, failSession = false, failCancel = false, failReserve = false,
-  failRelease = false, missingId = '', strictStripe = false, seed = {}, noRewardSecret = false } = {}) {
+  failRelease = false, missingId = '', strictStripe = false, seed = {}, noRewardSecret = false, distanceMiles = 2 } = {}) {
   const rows = { Order: [], CheckoutSession: [], Product: [{ id: 'oasis-test', title: 'OASIS', price: 13,
     category: 'juice', size: '12 oz', is_available: true }], Subscription: [], SubscriptionPlan: [], UserProfile: [],
     RewardTier: [{ id: 'reward-test', title: 'Double Points', reward_type: 'double_points', points_required: 1500, is_active: true }],
@@ -87,7 +87,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
     Deno: { env: { get: name => env[name] }, serve: fn => { served = fn; } },
     fetch: async url => {
       assert.match(url, /^https:\/\/maps.googleapis.com\/maps\/api\/distancematrix\/json\?/);
-      return { json: async () => ({ status: 'OK', rows: [{ elements: [{ status: 'OK', distance: { value: 3218 }, duration: { value: 300 } }] }] }) };
+      return { json: async () => ({ status: 'OK', rows: [{ elements: [{ status: 'OK', distance: { value: distanceMiles * 1609.344 }, duration: { value: 300 } }] }] }) };
     },
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
@@ -237,6 +237,48 @@ await test('a six-bottle VIP reward creates real product lines and charges deliv
   assert.equal(result.effectiveTotal, 3.99); assert.equal(ctx.intent().amount, 399);
   assert.equal(ctx.rows.Order[0].items[0].product_id, 'oasis-test'); assert.equal(ctx.rows.Order[0].items[0].quantity, 6);
   assert.equal(ctx.rows.Order[0].items[0].reward_id, 'vip'); assert.equal(ctx.rows.Order[0].items[0].price, 0);
+});
+await test('earned six-bottle retail value meets the extended-area minimum and charges only the unchanged delivery fee', async () => {
+  const tier = { id: 'vip', title: 'VIP', reward_type: 'vip_box', points_required: 6000, is_active: true };
+  const ctx = fixture({ distanceMiles: 20, seed: { RewardTier: [tier] } });
+  const response = await ctx.handle({ subtotal: 0, active_reward: tier,
+    items: [{ ...body.items[0], quantity: 6, price: 0, reward_id: 'vip', isFreeReward: true }] });
+  const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(result.effectiveTotal, 9.99); assert.equal(ctx.intent().amount, 999);
+  assert.equal(ctx.intent().metadata.delivery_zone_minimum, '49.99');
+  assert.equal(ctx.rows.CheckoutSession[0].checkout_data.reward_checkout.catalog_subtotal, 78);
+  assert.equal(ctx.rows.Order[0].subtotal, 0); assert.equal(ctx.rows.Order[0].delivery_fee, 9.99);
+});
+await test('caller-inflated earned retail value cannot qualify for a delivery minimum', async () => {
+  const tier = { id: 'vip', title: 'VIP', reward_type: 'vip_box', points_required: 6000, is_active: true };
+  const ctx = fixture({ distanceMiles: 20, seed: { RewardTier: [tier], Product: [{ id: 'oasis-test', title: 'OASIS',
+    category: 'juice', size: '12 oz', is_available: true, price: 6 }] } });
+  const response = await ctx.handle({ subtotal: 1000, catalog_subtotal: 1000, active_reward: tier,
+    items: [{ ...body.items[0], quantity: 6, price: 1000, catalog_unit_price: 1000, reward_id: 'vip', isFreeReward: true }] });
+  const result = await response.json(); assert.equal(response.status, 400);
+  assert.equal(result.reason_code, 'MINIMUM_ORDER_NOT_MET'); assert.equal(result.amount_needed, 13.99);
+  assert.equal(ctx.effects.length, 0); assert.equal(ctx.rows.Order.length, 0);
+});
+for (const distanceMiles of [27, 32]) await test(`earned retail value does not bypass ${distanceMiles}-mile route review`, async () => {
+  const tier = { id: 'vip', title: 'VIP', reward_type: 'vip_box', points_required: 6000, is_active: true };
+  const ctx = fixture({ distanceMiles, seed: { RewardTier: [tier] } });
+  const response = await ctx.handle({ subtotal: 0, active_reward: tier,
+    items: [{ ...body.items[0], quantity: 6, price: 0, reward_id: 'vip', isFreeReward: true }] });
+  const result = await response.json(); assert.equal(response.status, 400);
+  assert.equal(result.reason_code, 'ZONE_3_REQUIRES_APPROVAL_FLOW');
+  assert.equal(ctx.effects.length, 0); assert.equal(ctx.rows.Order.length, 0);
+});
+await test('earned retail value never bypasses the 35-mile delivery boundary', async () => {
+  const tier = { id: 'vip', title: 'VIP', reward_type: 'vip_box', points_required: 6000, is_active: true };
+  const ctx = fixture({ distanceMiles: 36, seed: { RewardTier: [tier] } });
+  const response = await ctx.handle({ active_reward: tier,
+    items: [{ ...body.items[0], quantity: 6, price: 0, reward_id: 'vip', isFreeReward: true }] });
+  assert.equal(response.status, 400); assert.equal(ctx.effects.length, 0); assert.equal(ctx.rows.Order.length, 0);
+});
+await test('ordinary extended-area paid minimum is unchanged', async () => {
+  const ctx = fixture({ distanceMiles: 20 }); const response = await ctx.handle(); const result = await response.json();
+  assert.equal(response.status, 400); assert.equal(result.reason_code, 'MINIMUM_ORDER_NOT_MET');
+  assert.equal(result.amount_needed, 10.99); assert.equal(ctx.effects.length, 0);
 });
 await test('reward checkout retains validated wellness-shot program lineage in both checkout and order', async () => {
   const ctx = fixture({ seed: { Product: [{ id: 'shot-test', title: 'Hydration Shot', category: 'shot',

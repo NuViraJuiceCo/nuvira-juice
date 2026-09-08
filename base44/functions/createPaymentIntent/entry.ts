@@ -1190,6 +1190,10 @@ Deno.serve(async (req) => {
     const authoritativeSubtotal = rewardQuote ? rewardQuote.subtotal : isGuestCheckout
       ? Math.round(normalizedItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0) * 100) / 100
       : Number(subtotal);
+    // Owner-approved: earned items count at normal catalog retail value toward
+    // the delivery-area dollar minimum. This never changes what is charged or
+    // waives the zone fee, taxes, bottle minimum, or route-review requirement.
+    const deliveryQualificationSubtotal = rewardQuote ? rewardQuote.catalog_subtotal : authoritativeSubtotal;
     if (normalizedPhone.replace(/\D/g, '').length < 10) {
       return Response.json({
         error: 'A valid phone number is required for fulfillment.',
@@ -1215,7 +1219,7 @@ Deno.serve(async (req) => {
       const addrForCheck = delivery_address ||
         [normalizedAddress.line1, normalizedAddress.city, normalizedAddress.state, normalizedAddress.postalCode].filter(Boolean).join(', ');
       try {
-        validatedEligibility = await getDeliveryEligibility(addrForCheck, authoritativeSubtotal || 0, 'one_time');
+        validatedEligibility = await getDeliveryEligibility(addrForCheck, deliveryQualificationSubtotal || 0, 'one_time');
       } catch (eligErr) {
         console.error(`[PI] Eligibility check failed: ${eligErr.message}`);
         return Response.json({ error: 'Could not verify delivery eligibility. Please try again.' }, { status: 400 });
@@ -1558,7 +1562,7 @@ Deno.serve(async (req) => {
       };
       const prepared = await prepareNoPaymentCheckout({ base44, stripe, data, metadata: intentMetadata,
         quote: rewardQuote, pricing: rewardPricing, secret: rewardInternalSecret });
-      if (prepared.ok === false) return Response.json(prepared, { status: 503 });
+      if ('ok' in prepared && prepared.ok === false) return Response.json(prepared, { status: 503 });
       return Response.json({ ...prepared, publishableKey: Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
         effectiveDeliveryFee, rewardQuote, rewardPricing, checkout_record_revision: CHECKOUT_RECORD_REVISION,
         confirmedDeliverySchedule: { delivery_date: deliveryDate, production_date: resolvedProdDate,

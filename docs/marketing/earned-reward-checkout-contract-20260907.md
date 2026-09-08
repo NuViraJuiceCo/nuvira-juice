@@ -1,6 +1,18 @@
 # Customer-selected rewards and order minimums
 
-## Latest checkpoint: September 8 no-cost customer checkout preparation
+## Latest checkpoint: September 8 approved retail-value delivery minimum
+
+**Local and unreleased. The owner approved counting an earned reward's normal retail value toward delivery-area dollar minimums. This does not waive delivery fees, applicable taxes, distance limits or route approval. The ad remains unpublished.**
+
+- Preserved local preparation commit `7f1a3f37cf5440335378a4732d6dde1fcb33422b`, then merged exact current canonical `606bd11b85524d9296a9605fdbc88feb261aaeca` locally. The critical-runner conflict was resolved by retaining both the reward suites and the canonical startup-performance suite. No auth/startup file was overwritten and no external merge, push or deployment occurred.
+- Automatic checkout now uses the server reward quote's current catalog subtotal for delivery-minimum qualification while retaining the discounted merchandise amount for charging. The address preview independently obtains the same read-only authoritative quote; it does not trust caller-supplied reward values. Stale preview responses cannot replace a newer cart/address decision.
+- Executed real-handler fixtures prove that six earned bottles with $78 catalog value qualify for the $49.99 area minimum and retain the $9.99 delivery fee, that forged values cannot turn $36 into eligibility, and that distance limits and manual route review remain enforced. Ordinary paid-order behavior is covered separately. The minimum harness additionally checks preview validation and both route-entry guards.
+- Source review found that manual route authorization does not yet reserve/settle earned rewards. Both its standalone and gateway handler now reject reward redemption before provider or record writes; the UI explains the restriction. This is an explicit temporary release blocker, not a claim that route-review rewards are implemented.
+- Current synthetic results: checkout persistence **38/38**, reward minimum policy/preview/route-guard tests pass, and the full registered critical set **135/135**. Configured frontend typecheck, full lint and build passed. A subsequent scoped backend Deno check caught a response-union property access in no-cost preparation; property-existence narrowing corrected it, and the three affected checkout/route handlers now pass the scoped Deno check. Secret scan (1,284 tracked text files, zero findings), diagnostic baseline and diff checks also pass.
+
+Remaining work includes actual fulfillment/notification adapters, route-review reward accounting, credit/direct-points reservations, ordinary member authoritative pricing, interrupted-session recovery, terminal/refund races, supported Base44 promotion and provider/customer-journey verification. WELCOME10 was not activated. No live customer/order/provider request, payment, notification, inventory mutation, ad publish or native/Appflow release occurred.
+
+## Previous checkpoint: September 8 no-cost customer checkout preparation
 
 **Local and unreleased. The real customer no-cost Session preparation and embedded UI are implemented, but provider-specific fulfillment/communication handoff remains incomplete. The ad is not cleared to publish.**
 

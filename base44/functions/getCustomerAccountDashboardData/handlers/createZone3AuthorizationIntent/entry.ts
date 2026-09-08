@@ -265,6 +265,15 @@ export default async function handler(req: Request) {
 
     // Normalize input keys — accept both frontend contract and legacy/test variants
     const items = body.items ?? body.cart_items ?? [];
+    // Do not authorize discounted reward lines before route approval/cancel/
+    // expiry can settle their exact points hold. Automatic checkout's separate
+    // reward implementation is not proof that this manual-capture path is safe.
+    if (body.active_reward || (Array.isArray(items) && items.some(item => item?.isFreeReward === true
+      || item?.reward_id || String(item?.product_id || '').startsWith('__free_reward_')))) {
+      return Response.json({ ok: false, error_code: 'REWARD_ROUTE_REVIEW_NOT_READY',
+        error: 'Reward checkout for route-review delivery is not available yet. No card authorization was created.',
+        writes_performed: false, payment_intent_created: false, order_created: false }, { status: 409 });
+    }
     const subtotal = body.subtotal ?? body.cart_subtotal ?? 0;
     const delivery_fee = body.delivery_fee ?? null;
     const total = body.total ?? null;

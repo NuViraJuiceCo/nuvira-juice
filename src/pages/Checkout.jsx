@@ -5,6 +5,7 @@ import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
 import RewardEmbeddedCheckout from '@/components/checkout/RewardEmbeddedCheckout';
 import { readRewardCheckoutRecovery, cancelRewardCheckoutRecovery } from '@/lib/rewardCheckoutRecovery';
+import { rewardDeliveryMinimumSubtotal } from '@/lib/rewardDeliveryMinimum';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ChevronDown, Truck, Gift, LockKeyhole } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
@@ -273,14 +274,19 @@ function CheckoutFlow() {
     setAddressValidated(false);
 
     addressDebounceRef.current = setTimeout(async () => {
+      let rewardValueUnconfirmed = Boolean(activeReward);
       try {
+        const qualifyingSubtotal = await rewardDeliveryMinimumSubtotal({ subtotal, items, activeReward,
+          preview: payload => base44.functions.invoke('createPaymentIntent', payload) });
+        rewardValueUnconfirmed = false;
+        if (addressValidationRequestRef.current !== validationRequestId) return;
         const res = await invokeCustomerGateway('validateDeliveryEligibility', {
           delivery_address: addrString,
           address_line1: address.street || '',
           address_city: address.city || '',
           address_state: address.state || '',
           address_postal_code: address.zip || '',
-          cart_subtotal: subtotal || 0,
+          cart_subtotal: qualifyingSubtotal,
           order_type: 'one_time',
         });
         const eligibility = res?.data || res;
@@ -308,7 +314,9 @@ function CheckoutFlow() {
         setAddressValidated(false);
         setZoneEligibility(null);
         setDeliveryZone(null);
-        setAddressValidationError('We could not verify this delivery address. Re-enter it and select a Google-verified suggestion.');
+        setAddressValidationError(rewardValueUnconfirmed
+          ? 'We could not verify your earned reward. Review your reward selection before continuing.'
+          : 'We could not verify this delivery address. Re-enter it and select a Google-verified suggestion.');
       } finally {
         if (addressValidationRequestRef.current === validationRequestId) {
           setValidatingAddress(false);
@@ -317,7 +325,7 @@ function CheckoutFlow() {
     }, 800);
 
     return () => clearTimeout(addressDebounceRef.current);
-  }, [address, fulfillmentType, subtotal, hasShownOutOfAreaModal]);
+  }, [address, fulfillmentType, subtotal, items, activeReward, hasShownOutOfAreaModal]);
 
   const {
     data: scheduleOptionsPayload,
@@ -1278,6 +1286,7 @@ function CheckoutFlow() {
       {zoneEligibility?.zone_type === 'route_review' && zoneEligibility?.checkout_allowed && !clientSecret && (
         user?.email ? <Zone3RouteReviewPanel
           zoneEligibility={zoneEligibility}
+          activeReward={activeReward}
           items={items}
           subtotal={subtotal}
           discountEligibleSubtotal={subtotal}

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { orderMinimumStatus } from '../../src/lib/orderMinimums.js';
+import { rewardDeliveryMinimumSubtotal } from '../../src/lib/rewardDeliveryMinimum.js';
 
 const juice = (quantity, extra = {}) => ({ category: 'juice', quantity, price: 13, ...extra });
 const shot = (quantity, extra = {}) => ({ category: 'shot', quantity, price: 6, ...extra });
@@ -53,7 +54,49 @@ for (const [name, items, allowed] of cases.filter(([, items]) => items.length)) 
   assert.equal(blocked, !allowed, name + ' checkout feedback');
 }
 assert.match(fs.readFileSync('src/pages/Cart.jsx', 'utf8'), /orderMinimumStatus\(items\)/);
+// Owner-approved dollar minimum: qualified rewards count at catalog retail
+// value, not their zero/discounted cart price. The browser reads a server quote.
+let previewCalls = 0;
+const approvedQuote = { ok: true, preview_only: true, writes_performed: false,
+  quote: { revision: '2026-09-08.reward-checkout-v1', active_reward: { id: 'vip' }, catalog_subtotal: 78 } };
+const previewInput = { subtotal: 0, items: [rewardBundle(6)], activeReward: { id: 'vip' },
+  preview: async payload => { previewCalls++; assert.equal(payload.mode, 'preview_reward_checkout');
+    assert.deepEqual(payload.active_reward, { id: 'vip' }); return { data: approvedQuote }; } };
+assert.equal(await rewardDeliveryMinimumSubtotal(previewInput), 78);
+assert.equal(await rewardDeliveryMinimumSubtotal({ ...previewInput, activeReward: null, subtotal: 39 }), 39);
+assert.equal(previewCalls, 1);
+for (const value of [null, -1, '78', NaN, Infinity]) {
+  await assert.rejects(rewardDeliveryMinimumSubtotal({ ...previewInput,
+    preview: async () => ({ data: { ...approvedQuote, quote: { ...approvedQuote.quote, catalog_subtotal: value } } }) }));
+}
+for (const patch of [{ ok: false }, { preview_only: false }, { writes_performed: true },
+  { quote: { ...approvedQuote.quote, revision: 'old' } }, { quote: { ...approvedQuote.quote, active_reward: { id: 'other' } } }]) {
+  await assert.rejects(rewardDeliveryMinimumSubtotal({ ...previewInput, preview: async () => ({ data: { ...approvedQuote, ...patch } }) }));
+}
+assert.match(checkout, /cart_subtotal: qualifyingSubtotal/);
+assert.match(checkout, /rewardDeliveryMinimumSubtotal\(\{ subtotal, items, activeReward/);
+// Manual authorization still has no reward settlement contract. Test its actual
+// preflight in both bundles: no new eligibility rule may create an unreserved
+// discounted authorization while that integration is unfinished.
+const routeFiles = ['base44/functions/createZone3AuthorizationIntent/entry.ts',
+  'base44/functions/getCustomerAccountDashboardData/handlers/createZone3AuthorizationIntent/entry.ts'];
+let routeGuardCases = 0;
+for (const file of routeFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  const begin = source.indexOf('const items = body.items ?? body.cart_items ?? [];');
+  const end = source.indexOf('const subtotal =', begin); assert.ok(begin > 0 && end > begin);
+  const guard = source.slice(begin, end);
+  for (const body of [{ active_reward: { id: 'vip' } }, { items: [{ isFreeReward: true }] },
+    { items: [{ reward_id: 'vip' }] }, { cart_items: [{ product_id: '__free_reward_old' }] }, { items: [juice(3)] }]) {
+    const run = vm.runInNewContext(`(async () => { ${guard} return 'continue'; })`, { body, Response });
+    const result = await run();
+    if (body.items?.[0]?.price === 13) assert.equal(result, 'continue');
+    else { assert.equal(result.status, 409); assert.equal((await result.json()).error_code, 'REWARD_ROUTE_REVIEW_NOT_READY'); }
+    routeGuardCases++;
+  }
+}
 console.log(JSON.stringify({ ok: true, suite: 'reward-order-minimum', policy_cases: cases.length,
   checkout_preflight_cases: cases.length - 1, price_independence_cases: 4,
+  retail_preview_cases: 12, route_guard_cases: routeGuardCases,
   provider_calls: false, production_writes: false,
-  limitation: 'Client count policy only; authoritative reward entitlement, payment and redemption gates are still pending.' }, null, 2));
+  limitation: 'Synthetic count/retail-preview and fail-closed manual-route guards. Live redemption and route-review integration remain pending.' }, null, 2));
