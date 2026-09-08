@@ -9,12 +9,13 @@ import AppErrorBoundary from '@/components/AppErrorBoundary';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { CartProvider } from '@/lib/cartContext';
 import AppLayout from '@/components/layout/AppLayout';
-import SplashScreen from '@/components/SplashScreen';
+import StartupStatus from '@/components/StartupStatus';
 import ScrollToTop from '@/components/ScrollToTop';
 import LowercaseRedirect from '@/components/LowercaseRedirect';
 import SeoHeadSanitizer from '@/components/SeoHeadSanitizer';
 import AnalyticsConsent from '@/components/AnalyticsConsent';
-import { base44 } from '@/api/base44Client';
+import { onboardingQueryOptions } from '@/lib/onboardingQuery';
+import { preloadStartupPage, startupPageLoaders } from '@/lib/startupPages';
 import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { isAdminUser } from '@/lib/admin-access';
 import {
@@ -25,7 +26,6 @@ import {
   ensureDeliveryLiveActivityRegistration,
   installDeliveryLiveActivityListeners,
 } from '@/lib/deliveryLiveActivity';
-import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 const ProductDetail = React.lazy(() => import('@/pages/ProductDetail'));
 const ColdPressedJuiceDelivery = React.lazy(() => import('@/pages/ColdPressedJuiceDelivery'));
@@ -44,10 +44,10 @@ const ShopifyCartPermalink = React.lazy(() => import('@/pages/ShopifyCartPermali
 const Checkout = React.lazy(() => import('@/pages/Checkout'));
 const OrderConfirmation = React.lazy(() => import('@/pages/OrderConfirmation'));
 const OrderIncomplete = React.lazy(() => import('@/pages/OrderIncomplete'));
-const OrderTracker = React.lazy(() => import('@/pages/OrderTracker'));
+const OrderTracker = React.lazy(startupPageLoaders.orderTracker);
 const OrderOptions = React.lazy(() => import('@/pages/OrderOptions'));
-const Account = React.lazy(() => import('@/pages/Account'));
-const OrderHistory = React.lazy(() => import('@/pages/OrderHistory'));
+const Account = React.lazy(startupPageLoaders.account);
+const OrderHistory = React.lazy(startupPageLoaders.orderHistory);
 const ProgramJourney = React.lazy(() => import('@/pages/ProgramJourney'));
 const Notifications = React.lazy(() => import('@/pages/Notifications'));
 const Support = React.lazy(() => import('@/pages/Support'));
@@ -94,13 +94,13 @@ const Reporting = React.lazy(() => import('@/pages/admin/Reporting'));
 const ReviewQueue = React.lazy(() => import('@/pages/admin/ReviewQueue'));
 const AuditTrail = React.lazy(() => import('@/pages/admin/AuditTrail'));
 const ReturnReward = React.lazy(() => import('@/pages/ReturnReward'));
-const Home = React.lazy(() => import('@/pages/Home'));
+const Home = React.lazy(startupPageLoaders.home);
 const Zone3ReviewSubmitted = React.lazy(() => import('@/pages/Zone3ReviewSubmitted'));
-const Shop = React.lazy(() => import('@/pages/Shop'));
+const Shop = React.lazy(startupPageLoaders.shop);
 const Cart = React.lazy(() => import('@/pages/Cart'));
 const ProgramDetail = React.lazy(() => import('@/pages/ProgramDetail'));
-const AccountSetup = React.lazy(() => import('@/pages/AccountSetup'));
-const NativeLogin = React.lazy(() => import('@/pages/NativeLogin'));
+const AccountSetup = React.lazy(startupPageLoaders.accountSetup);
+const NativeLogin = React.lazy(startupPageLoaders.nativeLogin);
 const Login = React.lazy(() => import('@/pages/Login'));
 const Register = React.lazy(() => import('@/pages/Register'));
 const ForgotPassword = React.lazy(() => import('@/pages/ForgotPassword'));
@@ -156,14 +156,7 @@ const AdminRedirect = ({ to, user }) => (
 );
 
 function AppRouteFallback() {
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-background px-6">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-        <p className="text-sm font-medium text-muted-foreground">Loading NuVira...</p>
-      </div>
-    </div>
-  );
+  return <StartupStatus />;
 }
 
 function BootstrapRecovery({ title, message, onRetry }) {
@@ -184,33 +177,16 @@ function BootstrapRecovery({ title, message, onRetry }) {
   );
 }
 
-function hasSplashBeenShown() {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.sessionStorage?.getItem('splashShown') === '1';
-  } catch {
-    // WKWebView can reject storage access during early native app bootstrap.
-    // Treat the splash as already shown so storage errors cannot crash render.
-    return true;
-  }
-}
-
-function markSplashShown() {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage?.setItem('splashShown', '1');
-  } catch {
-    // Storage is only a convenience for suppressing the splash.
-  }
-}
-
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, checkAppState } = useAuth();
   const navigate = useNavigate();
-  const [showSplash, setShowSplash] = React.useState(() => isNativeAppRuntime() && !hasSplashBeenShown());
   const hasRequestedAuthRedirectRef = React.useRef(false);
 
   const location = useLocation();
+
+  React.useEffect(() => {
+    void preloadStartupPage(location.pathname);
+  }, [location.pathname]);
 
   React.useEffect(() => {
     let active = true;
@@ -296,20 +272,9 @@ const AuthenticatedApp = () => {
     isError: isProfileError,
     refetch: retryProfileForOnboarding,
   } = useQuery({
-    queryKey: ['user-onboarding-check', user?.email],
-    queryFn: async () => {
-      const profiles = await base44.entities.UserProfile.filter({ customer_email: user.email });
-      return profiles[0] || null;
-    },
+    ...onboardingQueryOptions(user?.email),
     enabled: Boolean(user?.email && !isResetSignInRoute),
-    staleTime: 0,
-    gcTime: 0,
   });
-
-  const handleSplashDone = () => {
-    markSplashShown();
-    setShowSplash(false);
-  };
 
   // No auto-redirect to orders on app open — customers should always land on Home.
 
@@ -343,14 +308,7 @@ const AuthenticatedApp = () => {
 
   // Show loading spinner while checking app public settings, auth, or profile
   if (isLoadingPublicSettings || (!isResetSignInRoute && isLoadingAuth) || profileRequestPending) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-background px-6">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-          <p className="text-sm font-medium text-muted-foreground">Loading your NuVira session...</p>
-        </div>
-      </div>
-    );
+    return <StartupStatus phase={profileRequestPending && !isLoadingAuth ? 'profile' : 'auth'} />;
   }
 
   if (isProtectedStartupRoute && !user && !isResetSignInRoute && authError?.type === 'bootstrap_timeout') {
@@ -414,7 +372,6 @@ const AuthenticatedApp = () => {
       <ScrollToTop />
       <LowercaseRedirect />
       <SeoHeadSanitizer />
-      {showSplash && location.pathname !== '/order-options' && <SplashScreen onDone={handleSplashDone} />}
       <Suspense fallback={<AppRouteFallback />}>
       <Routes>
         <Route element={<AppLayout />}>

@@ -122,7 +122,8 @@ const checks = [
     assert.doesNotMatch(heroBanner, /new Image\(\)/);
     assert.match(heroBanner, /current !== 0/);
     assert.match(heroBanner, /srcSet=\{activeBanners\[0\]\.image_url === DEFAULT_HERO_IMAGE\.image_url/);
-    assert.match(app, /isNativeAppRuntime\(\) && !hasSplashBeenShown\(\)/);
+    assert.doesNotMatch(app, /hasSplashBeenShown|showSplash|<SplashScreen/);
+    assert.match(app, /<StartupStatus/);
   }],
   ['homepage LCP heading uses a preloaded local font and renders without a mount delay', () => {
     assert.match(indexHtml, /rel="preload" href="\/fonts\/playfair-display-latin\.woff2" as="font" type="font\/woff2" crossorigin/);
@@ -135,7 +136,8 @@ const checks = [
     assert.match(indexHtml, /!globalThis\.Capacitor\?\.isNativePlatform\?\.\(\)/);
     assert.match(indexHtml, /window\.location\.pathname === '\/'/);
     assert.match(indexHtml, /import\('\/src\/pages\/Home\.jsx'\)/);
-    assert.match(app, /const Home = React\.lazy\(\(\) => import\('@\/pages\/Home'\)\)/);
+    assert.match(app, /const Home = React\.lazy\(startupPageLoaders\.home\)/);
+    assert.match(fs.readFileSync('src/lib/startupPages.js', 'utf8'), /home: \(\) => import\('@\/pages\/Home'\)/);
   }],
 ];
 
