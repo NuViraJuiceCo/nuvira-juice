@@ -1,0 +1,39 @@
+{
+  "name": "Sync Shopify Orders to Hub",
+  "description": "Preserved inactive entity automation under the consolidated admin gateway.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create"
+      ],
+      "entity_name": "ShopifyOrder"
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "sync_shopify_orders_to_hub",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "getAdminOperationsDashboardSummary",
+            "args": {
+              "gateway_action": "syncShopifyOrderToHub"
+            }
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "getAdminOperationsDashboardSummary"
+  }
+}

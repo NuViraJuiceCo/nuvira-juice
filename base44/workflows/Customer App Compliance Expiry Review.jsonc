@@ -1,0 +1,47 @@
+{
+  "name": "Customer App Compliance Expiry Review",
+  "description": "Weekly Customer App compliance review; sends an internal reminder only when a document is expired or within its reminder window.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "30 14 * * 1",
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "customer_app_compliance_expiry_review",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "getAdminOperationsDashboardSummary",
+            "args": {
+              "gateway_action": "monitorComplianceExpiry",
+              "mode": "live"
+            }
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "getAdminOperationsDashboardSummary"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "Auto-Retry Failed Hub Syncs",
+  "description": "Every 10 minutes: finds orders with failed Hub sync logs and retries pushing them to Hub via receiveCustomerAppEvent. Self-healing safety net for any 4xx/5xx Hub errors.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "interval",
+      "cron_expression": null,
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": 10,
+      "interval_unit": "minutes",
+      "interval_anchor": "2026-05-05T22:38:07.252000",
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "auto_retry_failed_hub_syncs",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "retryFailedHubSyncs",
+            "args": {}
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "retryFailedHubSyncs"
+  }
+}

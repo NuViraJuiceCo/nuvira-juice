@@ -1,0 +1,46 @@
+{
+  "name": "Audit loyalty ecosystem health every six hours",
+  "description": "Runs a read-only aggregate health check for identity, balances, synchronization, and cross-app exceptions.",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "interval",
+      "cron_expression": null,
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": 6,
+      "interval_unit": "hours",
+      "interval_anchor": "2026-08-02T16:02:22.605000",
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "audit_loyalty_ecosystem_health_every_six_hours",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_function": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "auditCustomerAppLoyaltyAfterPhase2",
+            "args": {
+              "action": "scheduled_health_check"
+            }
+          },
+          "then": "end"
+        }
+      }
+    ]
+  },
+  "x-base44-migrated-from-automation": {
+    "legacy_payload_function": "auditCustomerAppLoyaltyAfterPhase2"
+  }
+}
