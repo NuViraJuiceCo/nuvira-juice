@@ -44,6 +44,7 @@
     "npm:@stripe/react-stripe-js@3": "3.10.0_@stripe+stripe-js@5.10.0_react@18.3.1_react-dom@18.3.1__react@18.3.1",
     "npm:@stripe/stripe-js@^5.2.0": "5.10.0",
     "npm:@tanstack/react-query@^5.84.1": "5.101.0_react@18.3.1",
+    "npm:@types/node@*": "22.19.21",
     "npm:@types/node@^22.13.5": "22.19.21",
     "npm:@types/react-dom@^18.2.22": "18.3.7_@types+react@18.3.31",
     "npm:@types/react@^18.2.66": "18.3.31",

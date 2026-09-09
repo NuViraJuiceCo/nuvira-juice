@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import vm from 'node:vm';
 
 const read = (file) => fs.readFileSync(file, 'utf8');
 const client = read('src/api/base44Client.js');
@@ -24,6 +25,39 @@ assert.match(checkout, /payment_behavior:\s*'default_incomplete'/, 'subscription
 assert.match(checkout, /PendingSubscriptionCheckout\.create/, 'subscription checkout must persist the authoritative pending checkout before Stripe creation');
 assert.match(checkout, /pending_subscription_checkout_id/, 'Stripe subscription metadata must retain the pending checkout identity');
 assert.doesNotMatch(checkout, /functions\.invoke\('repairMissingCASubscriptionFromStripeAndHub'/, 'customer checkout must not call the retired admin repair endpoint');
+
+// Execute the exact new narrowing blocks with synthetic expanded/unexpanded
+// Stripe shapes. No subscription is created, enabled, canceled, or paid here.
+const reuseBlock = checkout.slice(checkout.indexOf('        const invoiceId ='),
+  checkout.indexOf('        if (existingPi?.client_secret)'));
+assert.ok(reuseBlock.includes('const existingPi ='));
+for (const latest of ['in_synthetic', { id: 'in_synthetic' }, null, undefined]) {
+  const calls = []; const captured = [];
+  await vm.runInNewContext(`(async () => { for (const incompleteSub of inputs) {
+    ${reuseBlock}
+    captured.push({ invoice, existingPi });
+  } })()`, {
+    inputs: [{ latest_invoice: latest }], captured,
+    stripe: { invoices: { retrieve: async (id, options) => {
+      calls.push(id); assert.equal(id, 'in_synthetic');
+      assert.equal(JSON.stringify(options), JSON.stringify({ expand: ['payment_intent'] }));
+      return { id, payment_intent: { id: 'pi_synthetic', client_secret: 'SYNTHETIC_ONLY' } };
+    } } },
+  });
+  assert.equal(calls.length, latest ? 1 : 0); assert.equal(captured.length, latest ? 1 : 0);
+  if (latest) assert.equal(captured[0].existingPi.id, 'pi_synthetic');
+}
+const newInvoiceBlock = checkout.slice(checkout.indexOf('    const invoice = typeof subscription.latest_invoice'),
+  checkout.indexOf('    if (!paymentIntent?.client_secret)'));
+assert.ok(newInvoiceBlock.includes('const paymentIntent ='));
+for (const latest of ['in_synthetic', null, { id: 'in_synthetic', payment_intent: 'pi_synthetic' },
+  { id: 'in_synthetic', payment_intent: null },
+  { id: 'in_synthetic', payment_intent: { id: 'pi_synthetic', client_secret: 'SYNTHETIC_ONLY' } }]) {
+  const result = vm.runInNewContext(`(() => { ${newInvoiceBlock} return paymentIntent; })()`,
+    { subscription: { latest_invoice: latest } });
+  if (latest?.payment_intent?.client_secret) assert.equal(result.client_secret, 'SYNTHETIC_ONLY');
+  else assert.equal(result, null);
+}
 
 assert.match(webhook, /invoice\.payment_succeeded/, 'Stripe webhook must process successful recurring invoices');
 assert.match(webhook, /customer\.subscription\.updated/, 'Stripe webhook must reconcile subscription status updates');

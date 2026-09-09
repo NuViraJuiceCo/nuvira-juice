@@ -223,10 +223,13 @@ export default async function handler(req: Request) {
         if (incompleteSub.metadata?.plan_id !== plan_id) continue;
         if (incompleteSub.metadata?.source_app !== 'customer_app') continue;
         // Found a matching incomplete subscription — retrieve its PaymentIntent and reuse it
-        const invoice = await stripe.invoices.retrieve(incompleteSub.latest_invoice, {
+        const invoiceId = typeof incompleteSub.latest_invoice === 'string'
+          ? incompleteSub.latest_invoice : incompleteSub.latest_invoice?.id;
+        if (!invoiceId) continue;
+        const invoice = await stripe.invoices.retrieve(invoiceId, {
           expand: ['payment_intent'],
         });
-        const existingPi = invoice.payment_intent;
+        const existingPi = typeof invoice.payment_intent === 'object' ? invoice.payment_intent : null;
         if (existingPi?.client_secret) {
           console.log(`[SubPE] Reusing existing incomplete subscription ${incompleteSub.id} / PI ${existingPi.id} for ${customer_email}`);
           // Update the pending checkout record if one exists for this sub
@@ -458,8 +461,8 @@ export default async function handler(req: Request) {
       metadata: metadataWithPendingId,
     });
 
-    const invoice = subscription.latest_invoice;
-    const paymentIntent = invoice?.payment_intent;
+    const invoice = typeof subscription.latest_invoice === 'object' ? subscription.latest_invoice : null;
+    const paymentIntent = typeof invoice?.payment_intent === 'object' ? invoice.payment_intent : null;
 
     if (!paymentIntent?.client_secret) {
       console.error(`[SubPE] No client_secret on PaymentIntent for subscription ${subscription.id}`);
