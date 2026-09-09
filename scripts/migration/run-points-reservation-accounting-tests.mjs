@@ -26,7 +26,7 @@ function fixture({ balance = 2000, duplicate = false, empty = false, history = [
   const points = { id: 'points-test', customer_email: customer, total_points: balance,
     lifetime_points: balance, redeemed_points: 0, points_history: history, claimed_rewards: [] };
   const rows = { UserPoints: empty ? [] : [points, ...(duplicate ? [{ ...points, id: 'duplicate-test' }] : [])],
-    LoyaltyMember: [{ id: 'member-test', email: customer, total_points: balance }], LoyaltyTransaction: [], CheckoutSession: [],
+    LoyaltyMember: [{ id: 'member-test', email: customer, total_points: balance }], LoyaltyTransaction: [], CheckoutSession: [], Order: [],
     RewardTier: [{ id: 'reward-test', points_required: 1000, is_active: true }] };
   const writes = []; const entities = {};
   const faults = { memberFail, rejectCas: false, uncertainWrite: false, badResponse: false };
@@ -45,7 +45,9 @@ function fixture({ balance = 2000, duplicate = false, empty = false, history = [
       if (faults.rejectCas) return { success: true, updated: 0, has_more: false };
       if (faults.badResponse) return { success: true, updated: 2, has_more: true };
       const selected = records.filter(row => matches(row, query)); assert.ok(selected.length <= 1);
-      selected.forEach(row => Object.assign(row, structuredClone(data.$set)));
+      if (!(faults.ignoreAccountWrite && name === 'UserPoints') && !(faults.ignoreMemberWrite && name === 'LoyaltyMember')) {
+        selected.forEach(row => Object.assign(row, structuredClone(data.$set)));
+      }
       writes.push({ name, query: structuredClone(query), data: structuredClone(data) });
       if (faults.uncertainWrite) { faults.uncertainWrite = false; throw new Error('Synthetic lost response after write'); }
       return { success: true, updated: selected.length, has_more: false };
@@ -510,6 +512,88 @@ test('Corrupt double-bound and malformed provider holds are rejected before sett
     await rejects(() => ledger.settleRewardPoints(f.entities, customer, settle(), redemption()), 'invalid_points_reservations');
     assert.equal(f.account().total_points, 2000);
   }
+});
+
+function directFixture() {
+  const f = fixture();
+  f.payment.amount = 2999;
+  f.payment.metadata.order_number = 'NV-SYNTHETIC-POINTS';
+  f.payment.metadata.reward_reservation_id = `points:${'c'.repeat(64)}`;
+  f.rows.Order.push({ id: 'order-points', stripe_payment_intent_id: f.payment.id, customer_email: customer,
+    order_number: f.payment.metadata.order_number, total: 29.99, status: 'pending_payment' });
+  f.rows.CheckoutSession.push({ id: 'context-points', stripe_session_id: f.payment.id, customer_email: customer,
+    order_number: f.payment.metadata.order_number, checkout_data: {
+      customer_email: customer, order_number: f.payment.metadata.order_number, total: 29.99,
+      points_used: 1000, points_discount: 10, reward_discount: 0, active_reward: null,
+      points_reservation_revision: ledger.DIRECT_POINTS_CHECKOUT_REVISION,
+      reward_reservation_points: 1000, reward_reservation_id: f.payment.metadata.reward_reservation_id,
+      checkout_context_hash: hash,
+    } });
+  f.reserve = { action: 'reserve_reward_checkout', customer_email: customer, stripe_payment_intent_id: f.payment.id,
+    reward_id: null, direct_points: 1000, points: 1000 };
+  f.settle = { action: 'settle_reward_checkout', customer_email: customer, stripe_payment_intent_id: f.payment.id };
+  return f;
+}
+test('Direct-point cancellation before reservation persists a tombstone against delayed reserve', async () => {
+  const f = directFixture(); f.payment.status = 'canceled'; const invoke = serve(f);
+  assert.equal((await invoke(f.settle)).body.reservation_status, 'released');
+  assert.equal(f.account().reserved_points ?? 0, 0); assert.equal(f.account().total_points, 2000);
+  const request = { reservation_id: f.payment.metadata.reward_reservation_id, context_hash: hash, points: 1000, payment_intent_id: f.payment.id };
+  await rejects(() => ledger.reserveRewardPoints(f.entities, customer, request), 'reservation_already_released');
+  assert.equal((await invoke(f.settle)).body.reservation_status, 'released'); assert.equal(f.rows.LoyaltyTransaction.length, 0);
+});
+test('Direct-point provider and saved context bind both reserve and successful settlement', async () => {
+  const f = directFixture(); const invoke = serve(f);
+  assert.equal((await invoke(f.reserve)).body.reservation_status, 'held');
+  f.payment.status = 'succeeded'; f.payment.amount_received = f.payment.amount;
+  assert.equal((await invoke(f.settle)).body.reservation_status, 'consumed');
+  assert.equal((await invoke(f.settle)).body.reservation_status, 'consumed');
+  assert.equal(f.account().total_points, 1000); assert.equal(f.rows.LoyaltyMember[0].total_points, 1000);
+  assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+});
+for (const [name, change] of [
+  ['missing order', f => { f.rows.Order.length = 0; }],
+  ['duplicate order', f => f.rows.Order.push({ ...f.rows.Order[0], id: 'other' })],
+  ['missing context', f => { f.rows.CheckoutSession.length = 0; }],
+  ['duplicate context', f => f.rows.CheckoutSession.push({ ...f.rows.CheckoutSession[0], id: 'other' })],
+  ['foreign order', f => { f.rows.Order[0].customer_email = 'other@example.test'; }],
+  ['foreign context', f => { f.rows.CheckoutSession[0].checkout_data.customer_email = 'other@example.test'; }],
+  ['changed context hash', f => { f.rows.CheckoutSession[0].checkout_data.checkout_context_hash = 'd'.repeat(64); }],
+  ['changed point value', f => { f.rows.CheckoutSession[0].checkout_data.points_discount = 1; }],
+  ['changed point cost', f => { f.rows.CheckoutSession[0].checkout_data.reward_reservation_points = 1; }],
+  ['fractional points', f => { f.rows.CheckoutSession[0].checkout_data.points_used = 1000.5; }],
+  ['changed charge', f => { f.payment.amount = 100; }],
+  ['subminimum charge', f => { f.payment.amount = 0; }],
+  ['tier reward mixing', f => { f.rows.CheckoutSession[0].checkout_data.active_reward = { id: 'reward-test' }; }],
+  ['missing revision', f => { delete f.rows.CheckoutSession[0].checkout_data.points_reservation_revision; }],
+  ['refunded order', f => { f.rows.Order[0].payment_status = 'refunded'; }],
+  ['test order', f => { f.rows.Order[0].is_test_order = true; }],
+]) test(`Direct-point ${name} rejects reservation before any balance or projection write`, async () => {
+  const f = directFixture(); change(f); const result = await serve(f)(f.reserve);
+  assert.notEqual(result.status, 200); assert.equal(f.writes.length, 0); assert.equal(f.account().total_points, 2000);
+});
+test('Direct-point cost cannot be changed through an internal caller or a tier selector', async () => {
+  for (const patch of [{ points: 1 }, { direct_points: 1 }, { reward_id: 'reward-test' }]) {
+    const f = directFixture(); const result = await serve(f)({ ...f.reserve, ...patch });
+    assert.equal(result.body.error, 'reward_cost_changed'); assert.equal(f.writes.length, 0);
+  }
+});
+test('Direct-point underpayment and changed snapshot cannot consume a held balance', async () => {
+  const f = directFixture(); const invoke = serve(f);
+  assert.equal((await invoke(f.reserve)).body.reservation_status, 'held');
+  f.payment.status = 'succeeded'; f.payment.amount_received = 1;
+  assert.notEqual((await invoke(f.settle)).status, 200); assert.equal(f.account().reserved_points, 1000);
+  f.payment.amount_received = f.payment.amount; f.rows.CheckoutSession[0].checkout_data.points_used = 999;
+  assert.notEqual((await invoke(f.settle)).status, 200); assert.equal(f.account().total_points, 2000);
+});
+test('False account write acknowledgement is rejected by independent readback', async () => {
+  const f = fixture(); f.faults.ignoreAccountWrite = true;
+  await rejects(() => ledger.reserveRewardPoints(f.entities, customer, hold()), 'conditional_points_readback_unconfirmed');
+  assert.equal(f.account().reserved_points ?? 0, 0);
+});
+test('False member acknowledgement cannot report a current projection', async () => {
+  const f = fixture(); f.faults.ignoreMemberWrite = true;
+  await rejects(() => ledger.syncPointsMemberProjection(f.entities, customer), 'loyalty_projection_busy_retry');
 });
 
 let passed = 0;

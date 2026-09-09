@@ -1,7 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
 import Stripe from 'npm:stripe@14.21.0';
 import { applyPointsTransaction, syncPointsMemberProjection, readPointsAccount, reserveRewardPoints,
-  settleRewardPoints, PointsAccountError, POINTS_ACCOUNT_REVISION } from './pointsAccount.js';
+  settleRewardPoints, recordCanceledPointsReservation, verifyDirectPointsCheckoutContext,
+  PointsAccountError, POINTS_ACCOUNT_REVISION } from './pointsAccount.js';
 
 type AnyRecord = Record<string, any>;
 
@@ -44,14 +45,18 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
   const complete = payment.status === (noPayment ? 'complete' : 'succeeded');
   const expired = payment.status === (noPayment ? 'expired' : 'canceled');
   const entities = base44.asServiceRole.entities;
+  const directOnly = /^points:[a-f0-9]{64}$/.test(metadata.reward_reservation_id);
+  if (directOnly && noPayment) return Response.json({ error: 'direct_points_payment_required' }, { status: 409 });
+  const verifiedDirectPoints = directOnly ? await verifyDirectPointsCheckoutContext(entities, payment, customerEmail) : null;
   if (action === 'reserve_reward_checkout') {
-    const rewards = await entities.RewardTier.filter({ id: body.reward_id, is_active: true }, undefined, 2);
     const directPoints = body.direct_points ?? 0;
-    if (!body.reward_id || !Array.isArray(rewards) || rewards.length !== 1
+    const rewards = directOnly ? [] : await entities.RewardTier.filter({ id: body.reward_id, is_active: true }, undefined, 2);
+    if (directOnly ? (body.reward_id || directPoints !== verifiedDirectPoints || body.points !== verifiedDirectPoints)
+      : (!body.reward_id || !Array.isArray(rewards) || rewards.length !== 1
       || !Number.isSafeInteger(rewards[0].points_required) || rewards[0].points_required <= 0
       || !Number.isSafeInteger(directPoints) || directPoints < 0
       || !Number.isSafeInteger(body.points)
-      || rewards[0].points_required + directPoints !== body.points) return Response.json({ error: 'reward_cost_changed' }, { status: 409 });
+      || rewards[0].points_required + directPoints !== body.points)) return Response.json({ error: 'reward_cost_changed' }, { status: 409 });
     if (!(noPayment ? ['open'] : ['requires_payment_method', 'requires_confirmation', 'requires_action']).includes(payment.status)) {
       // A response retry after success may reuse only the already-bound hold.
       // It must never create a fresh reservation for a captured/canceled PI.
@@ -79,10 +84,18 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
       available_points: result.account.total_points - result.account.reserved_points });
   }
   const account = await readPointsAccount(entities, customerEmail);
-  const hold = account.reward_reservations?.find((row: AnyRecord) => row.reservation_id === metadata.reward_reservation_id);
+  let hold = account.reward_reservations?.find((row: AnyRecord) => row.reservation_id === metadata.reward_reservation_id);
+  if (!hold && directOnly && expired) {
+    const canceled = await recordCanceledPointsReservation(entities, customerEmail, {
+      reservation_id: metadata.reward_reservation_id, context_hash: metadata.checkout_context_hash,
+      payment_intent_id: payment.id, points: verifiedDirectPoints, provider_status: 'canceled',
+    });
+    hold = canceled.reservation;
+  }
   if (!hold || hold.context_hash !== metadata.checkout_context_hash || hold[providerField] !== payment.id) {
     return Response.json({ error: 'reward_reservation_payment_mismatch' }, { status: 409 });
   }
+  if (directOnly && hold.points !== verifiedDirectPoints) return Response.json({ error: 'points_checkout_context_mismatch' }, { status: 409 });
   if (!complete && !expired) {
     return Response.json({ success: true, deferred: true, reservation_status: hold.status,
       reason: 'payment_still_retryable', writes_performed: false });

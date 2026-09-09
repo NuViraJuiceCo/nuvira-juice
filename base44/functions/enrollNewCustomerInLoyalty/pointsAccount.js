@@ -2,7 +2,8 @@
 // query/update operators; never falls back to an unconditional balance write.
 // Release requires an isolated Base44 conditional-write contract test in addition
 // to local fixtures. This module does not claim multi-record transactions.
-export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-no-payment-v3';
+export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-direct-payment-v4';
+export const DIRECT_POINTS_CHECKOUT_REVISION = '2026-09-08.direct-points-v1';
 
 export class PointsAccountError extends Error {
   constructor(code) { super(code); this.code = code; }
@@ -61,6 +62,37 @@ export async function readPointsAccount(entities, customerEmail, { initialize = 
   return rows[0];
 }
 
+export async function verifyDirectPointsCheckoutContext(entities, payment, customerEmail) {
+  const meta = payment.metadata || {};
+  const sessions = await entities.CheckoutSession.filter({ stripe_session_id: payment.id }, undefined, 2);
+  const orders = await entities.Order.filter({ stripe_payment_intent_id: payment.id }, undefined, 2);
+  if (!Array.isArray(sessions) || sessions.length !== 1 || !sessions[0]?.id
+    || !Array.isArray(orders) || orders.length !== 1 || !orders[0]?.id) fail('points_checkout_context_missing');
+  const session = sessions[0]; const order = orders[0]; const data = session.checkout_data;
+  const cents = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
+    && Number.isSafeInteger(Math.round(value * 100)) && Math.abs(value * 100 - Math.round(value * 100)) < 0.00001
+    ? Math.round(value * 100) : NaN;
+  for (const row of [session, order, data]) {
+    if (!row || row.customer_email !== customerEmail || row.order_number !== meta.order_number) fail('points_checkout_context_mismatch');
+  }
+  if (!/^points:[a-f0-9]{64}$/.test(meta.reward_reservation_id || '')
+    || !/^[a-f0-9]{64}$/.test(meta.checkout_context_hash || '')
+    || data.points_reservation_revision !== DIRECT_POINTS_CHECKOUT_REVISION
+    || data.reward_reservation_id !== meta.reward_reservation_id
+    || data.checkout_context_hash !== meta.checkout_context_hash
+    || data.active_reward || data.reward_checkout || data.guest_checkout === true
+    || data.internal_sandbox_checkout === true || order.is_test_order === true
+    || cents(data.reward_discount ?? 0) !== 0
+    || !Number.isSafeInteger(data.points_used) || data.points_used <= 0
+    || data.reward_reservation_points !== data.points_used || cents(data.points_discount) !== data.points_used
+    || !Number.isSafeInteger(payment.amount) || payment.amount < 50
+    || cents(data.total) !== payment.amount || cents(order.total) !== payment.amount
+    || (payment.status === 'succeeded' && (payment.amount_received !== payment.amount
+      || ['canceled', 'cancelled'].includes(order.status)))
+    || order.status === 'refunded' || ['refunded', 'partially_refunded'].includes(order.payment_status)) fail('points_checkout_context_mismatch');
+  return data.points_used;
+}
+
 function revisionQuery(row) {
   return row.points_ledger_revision === undefined
     ? { $or: [{ points_ledger_revision: { $exists: false } }, { points_ledger_revision: 0 }] }
@@ -83,7 +115,12 @@ async function mutate(entities, customerEmail, derive, options = {}) {
     }, { $set: patch });
     if (!result || result.success !== true || result.has_more !== false
       || ![0, 1].includes(result.updated)) fail('conditional_points_update_unconfirmed');
-    if (result.updated === 1) return { ...operation, account: { ...row, ...patch }, idempotent: false };
+    if (result.updated === 1) {
+      const confirmed = await readPointsAccount(entities, customerEmail);
+      const replay = derive(confirmed, balances(confirmed));
+      if (replay.patch) fail('conditional_points_readback_unconfirmed');
+      return { ...replay, account: confirmed, idempotent: false };
+    }
   }
   fail('points_account_busy_retry');
 }
@@ -163,6 +200,31 @@ export async function reserveRewardPoints(entities, customerEmail, request) {
   });
 }
 
+// Direct-point checkout cancellation can arrive before its reservation CAS.
+// The caller must verify a canceled provider payment and its saved checkout
+// context first. Persist that outcome so an older provider read cannot re-hold.
+export async function recordCanceledPointsReservation(entities, customerEmail, request) {
+  const points = integer(request.points);
+  if (request.provider_status !== 'canceled' || !points
+    || !/^points:[a-f0-9]{64}$/.test(request.reservation_id || '')
+    || !/^[a-f0-9]{64}$/.test(request.context_hash || '')
+    || !/^pi_[a-zA-Z0-9_]+$/.test(request.payment_intent_id || '')
+    || request.checkout_session_id) fail('confirmed_points_cancellation_required');
+  return mutate(entities, customerEmail, (row, state) => {
+    const existing = state.holds.find(hold => hold.reservation_id === request.reservation_id);
+    if (existing) {
+      if (existing.points !== points || existing.context_hash !== request.context_hash
+        || existing.payment_intent_id !== request.payment_intent_id || existing.checkout_session_id) fail('reservation_context_conflict');
+      if (existing.status !== 'released') fail('reservation_outcome_conflict');
+      return { reservation: existing };
+    }
+    const reservation = { reservation_id: request.reservation_id, context_hash: request.context_hash,
+      payment_intent_id: request.payment_intent_id, points, status: 'released',
+      settled_at: new Date().toISOString() };
+    return { reservation, patch: { reward_reservations: [...state.holds, reservation] } };
+  });
+}
+
 // Only callers with a verified Stripe outcome may use this operation. A declined
 // payment stays retryable; payment_failed or a local timeout must NOT release it.
 export async function settleRewardPoints(entities, customerEmail, request, transaction = null) {
@@ -224,7 +286,8 @@ export async function syncPointsMemberProjection(entities, customerEmail) {
     if (!response || response.success !== true || response.has_more !== false || ![0, 1].includes(response.updated)) {
       fail('conditional_member_update_unconfirmed');
     }
-    if (response.updated === 1) return;
+    // Independent readback on the next iteration is required before reporting
+    // the mirror current; a positive write acknowledgement alone is not proof.
   }
   fail('loyalty_projection_busy_retry');
 }

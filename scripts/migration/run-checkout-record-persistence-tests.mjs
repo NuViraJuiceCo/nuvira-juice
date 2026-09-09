@@ -6,9 +6,12 @@ import { transformSync } from 'esbuild';
 import * as offers from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
 import * as rewards from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
 import * as noPayment from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
+import * as pointsLedger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 
 const source = fs.readFileSync('base44/functions/createPaymentIntent/entry.ts', 'utf8');
 const compiled = transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
+const compiledLedger = transformSync(fs.readFileSync('base44/functions/enrollNewCustomerInLoyalty/entry.ts', 'utf8'),
+  { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
 const email = 'buyer@example.test';
 const body = {
   items: [{ product_id: 'oasis-test', title: 'OASIS', price: 13, quantity: 3, category: 'juice', size: '12 oz' }],
@@ -23,14 +26,17 @@ const option = { option_id: 'synthetic-saturday', production_date: '2026-09-11',
   delivery_window_label: 'Saturday 12 PM - 3 PM', delivery_window_start: '12:00', delivery_window_end: '15:00', is_default: true };
 function fixture({ guest = false, failOrder = false, failSession = false, failCancel = false, failReserve = false,
   failRelease = false, missingId = '', strictStripe = false, seed = {}, noRewardSecret = false, distanceMiles = 2,
-  failCredit = false, loseCreditAck = false, ignoreCreditWrite = false } = {}) {
+  failCredit = false, loseCreditAck = false, ignoreCreditWrite = false,
+  realLedger = false, ignorePointsWrite = false, losePointsAck = false } = {}) {
   const rows = { Order: [], CheckoutSession: [], Product: [{ id: 'oasis-test', title: 'OASIS', price: 13,
     category: 'juice', size: '12 oz', is_available: true }], Subscription: [], SubscriptionPlan: [], UserProfile: [],
     RewardTier: [{ id: 'reward-test', title: 'Double Points', reward_type: 'double_points', points_required: 1500, is_active: true }],
     UserPoints: [{ id: 'balance-test', customer_email: email, total_points: 7000, reserved_points: 0, reward_reservations: [] }],
-    NuViraCredit: [], ...structuredClone(seed) };
+    NuViraCredit: [], LoyaltyMember: [], LoyaltyTransaction: [], ...structuredClone(seed) };
   const effects = []; const entities = {};
   let lostCreditAck = false;
+  let lostPointsAck = false;
+  let ledgerServed;
   const match = (row, query) => Object.entries(query).every(([key, value]) => key === '$or' ? value.some(q => match(row, q))
     : value && typeof value === 'object' && '$exists' in value ? (row[key] !== undefined) === value.$exists : row[key] === value);
   for (const [name, values] of Object.entries(rows)) entities[name] = {
@@ -42,12 +48,18 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       if (missingId === name) return {};
       const row = { id: `${name}-${values.length}`, ...structuredClone(data) }; values.push(row); return row;
     },
+    update: async (id, patch) => {
+      assert.equal(name, 'LoyaltyTransaction'); const row = values.find(row => row.id === id); assert.ok(row);
+      Object.assign(row, structuredClone(patch)); return structuredClone(row);
+    },
     updateMany: async (query, update) => {
-      assert.equal(name, 'NuViraCredit'); effects.push('credit.CAS');
-      if (failCredit) throw new Error('SYNTHETIC_ONLY credit outage');
+      assert.ok(['NuViraCredit', 'UserPoints', 'LoyaltyMember'].includes(name));
+      effects.push(name === 'NuViraCredit' ? 'credit.CAS' : `${name}.CAS`);
+      if (name === 'NuViraCredit' && failCredit) throw new Error('SYNTHETIC_ONLY credit outage');
       const found = values.filter(row => match(row, query)); assert.ok(found.length <= 1);
-      if (!ignoreCreditWrite) found.forEach(row => Object.assign(row, structuredClone(update.$set)));
-      if (loseCreditAck && !lostCreditAck) { lostCreditAck = true; throw new Error('SYNTHETIC_ONLY lost credit acknowledgement'); }
+      if (!(name === 'NuViraCredit' && ignoreCreditWrite) && !(name === 'UserPoints' && ignorePointsWrite)) found.forEach(row => Object.assign(row, structuredClone(update.$set)));
+      if (name === 'NuViraCredit' && loseCreditAck && !lostCreditAck) { lostCreditAck = true; throw new Error('SYNTHETIC_ONLY lost credit acknowledgement'); }
+      if (name === 'UserPoints' && losePointsAck && !lostPointsAck) { lostPointsAck = true; throw new Error('SYNTHETIC_ONLY lost points acknowledgement'); }
       return { success: true, updated: found.length, has_more: false };
     },
   };
@@ -60,6 +72,11 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
   const db = { auth: { me: async () => guest ? null : { id: 'test-user', email } },
     asServiceRole: { entities, functions: { invoke: async (name, payload) => {
       if (name === 'enrollNewCustomerInLoyalty') {
+        if (realLedger) {
+          effects.push(`ledger.${payload.action}`);
+          const result = await ledgerServed(new Request('https://unit.test/ledger', { method: 'POST', body: JSON.stringify(payload) }));
+          return { data: await result.json() };
+        }
         assert.equal(payload.internal_secret, 'synthetic-ledger-secret');
         assert.equal(payload.customer_email, email);
         const provider = payload.stripe_checkout_session_id ? storedSession : storedIntent;
@@ -70,7 +87,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
         if (payload.action === 'reserve_reward_checkout') {
           effects.push('reward.reserve');
           const tier = rows.RewardTier.find(row => row.id === payload.reward_id);
-          assert.equal(payload.points, tier.points_required + payload.direct_points);
+          assert.equal(payload.points, (tier?.points_required || 0) + payload.direct_points);
           if (failReserve) return { data: { success: false } };
           if (hold) assert.equal(hold.context_hash, provider.metadata.checkout_context_hash);
           else {
@@ -93,8 +110,9 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
     } } } };
   const module = { exports: {} };
   const env = { GOOGLE_MAPS_API_KEY: 'synthetic-maps-key', STRIPE_PUBLISHABLE_KEY: 'pk_test_synthetic',
+    STRIPE_SECRET_KEY: 'synthetic-only-provider-key',
     LOYALTY_LEDGER_SECRET: noRewardSecret ? undefined : 'synthetic-ledger-secret' };
-  vm.runInNewContext(compiled, {
+  const runtime = {
     module, exports: module.exports, Request, Response, URL, URLSearchParams, TextEncoder, TextDecoder, Date: FixtureDate,
     crypto: globalThis.crypto, console: { log() {}, warn() {}, error() {} },
     Deno: { env: { get: name => env[name] }, serve: fn => { served = fn; } },
@@ -108,6 +126,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       if (name.includes('rewardCheckout')) return rewards;
       if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('noPaymentCheckout')) return noPayment;
+      if (name.includes('pointsAccount')) return pointsLedger;
       if (name.includes('stripe')) return class {
         constructor() { this.paymentIntents = {
           create: async (data, options) => {
@@ -141,8 +160,18 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       };
       throw new Error(`Unexpected module ${name}`);
     },
-  });
-  return { rows, effects, intent: () => storedIntent, session: () => storedSession, advance: () => { clock += 12000; }, handle: patch => served(new Request('https://unit.test/checkout', {
+  };
+  vm.runInNewContext(compiled, runtime);
+  const ledgerModule = { exports: {} };
+  vm.runInNewContext(compiledLedger, { ...runtime, module: ledgerModule, exports: ledgerModule.exports,
+    Deno: { ...runtime.Deno, serve: fn => { ledgerServed = fn; } } });
+  return { rows, effects, intent: () => storedIntent, session: () => storedSession,
+    settle: async () => {
+      const response = await ledgerServed(new Request('https://unit.test/ledger', { method: 'POST', body: JSON.stringify({
+        action: 'settle_reward_checkout', customer_email: email, stripe_payment_intent_id: storedIntent.id,
+        internal_secret: env.LOYALTY_LEDGER_SECRET,
+      }) })); return { status: response.status, body: await response.json() };
+    }, advance: () => { clock += 12000; }, handle: patch => served(new Request('https://unit.test/checkout', {
     method: 'POST', body: JSON.stringify({ ...body, guest_checkout: guest, ...patch }),
   })) };
 }
@@ -440,5 +469,95 @@ await test('credits reducing the provider charge below its minimum are not silen
     Subscription: [{ customer_email: email, status: 'active', plan_id: 'plan' }], SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }] } });
   const result = await (await ctx.handle({ credits_discount: 35.1 })).json();
   assert.equal(result.error_code, 'CREDIT_BALANCE_REQUIRES_REVIEW'); assert.equal(ctx.effects.length, 0);
+});
+await test('direct-point checkout connects actual preparation, ledger CAS and mirror before exposing secret', async () => {
+  const ctx = fixture({ realLedger: true });
+  const response = await ctx.handle({ points_used: 1000, points_discount: 10, total: 0 });
+  const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(ctx.intent().amount, 3299); assert.ok(result.clientSecret);
+  assert.match(ctx.intent().metadata.reward_reservation_id, /^points:[a-f0-9]{64}$/);
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 1000); assert.equal(ctx.rows.UserPoints[0].total_points, 7000);
+  assert.equal(ctx.rows.LoyaltyMember[0].reserved_points, 1000);
+  assert.ok(ctx.effects.indexOf('CheckoutSession.create') < ctx.effects.indexOf('UserPoints.CAS'));
+  assert.equal(ctx.rows.CheckoutSession[0].checkout_data.points_reservation_revision, pointsLedger.DIRECT_POINTS_CHECKOUT_REVISION);
+});
+await test('direct points and credits reserve independently and settle both once', async () => {
+  const ctx = fixture({ realLedger: true, seed: creditSeed });
+  const response = await ctx.handle({ points_used: 1000, points_discount: 10, credits_discount: 6 });
+  assert.equal(response.status, 200, JSON.stringify(await response.json()));
+  assert.ok(Object.keys(ctx.intent().metadata).length <= 50);
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 1000); assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 6);
+  ctx.intent().status = 'succeeded'; ctx.intent().amount_received = ctx.intent().amount;
+  for (let i = 0; i < 2; i++) {
+    assert.equal((await ctx.settle()).body.reservation_status, 'consumed');
+    // The shared actual credit settlement uses the same saved payment/context.
+    const entities = {};
+    for (const name of ['Order', 'CheckoutSession', 'NuViraCredit']) entities[name] = {
+      filter: async query => structuredClone(ctx.rows[name].filter(row => Object.entries(query).every(([key, value]) => row[key] === value))),
+      updateMany: async (query, update) => {
+        const rows = ctx.rows[name].filter(row => row.id === query.id && (query.credit_ledger_revision === undefined || row.credit_ledger_revision === query.credit_ledger_revision));
+        rows.forEach(row => Object.assign(row, structuredClone(update.$set)));
+        return { success: true, updated: rows.length, has_more: false };
+      },
+    };
+    assert.equal((await creditReservation.settleCheckoutCredit({ entities, payment: ctx.intent(), email })).reservation_status, 'consumed');
+  }
+  assert.equal(ctx.rows.UserPoints[0].total_points, 6000); assert.equal(ctx.rows.UserPoints[0].reserved_points, 0);
+  assert.equal(ctx.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+  assert.equal(ctx.rows.NuViraCredit[0].balance, 4); assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 0);
+});
+await test('direct-point retry restores only its own hold and keeps exact Stripe parameters', async () => {
+  const ctx = fixture({ realLedger: true, strictStripe: true, seed: { UserPoints: [{
+    id: 'points', customer_email: email, total_points: 1000, reserved_points: 0, reward_reservations: [],
+  }] } });
+  const input = { points_used: 1000, points_discount: 10 };
+  assert.equal((await ctx.handle(input)).status, 200); ctx.advance();
+  assert.equal((await ctx.handle(input)).status, 200); assert.equal(ctx.rows.UserPoints[0].reserved_points, 1000);
+  assert.equal(ctx.rows.UserPoints[0].reward_reservations.length, 1);
+  ctx.intent().status = 'succeeded'; ctx.intent().amount_received = ctx.intent().amount;
+  assert.equal((await ctx.settle()).status, 200);
+  assert.equal((await ctx.handle(input)).status, 200); assert.equal(ctx.rows.UserPoints[0].total_points, 0);
+});
+await test('direct-point cancellation releases the hold and mirror without awarding anything', async () => {
+  const ctx = fixture({ realLedger: true }); assert.equal((await ctx.handle({ points_used: 1000, points_discount: 10 })).status, 200);
+  ctx.intent().status = 'canceled';
+  assert.equal((await ctx.settle()).body.reservation_status, 'released');
+  assert.equal((await ctx.settle()).body.reservation_status, 'released');
+  assert.equal(ctx.rows.UserPoints[0].total_points, 7000); assert.equal(ctx.rows.LoyaltyMember[0].reserved_points, 0);
+  assert.equal(ctx.rows.LoyaltyTransaction.length, 0);
+});
+await test('lost direct-points hold acknowledgement cancels and releases without exposing secret', async () => {
+  const ctx = fixture({ realLedger: true, losePointsAck: true });
+  const response = await ctx.handle({ points_used: 1000, points_discount: 10 }); const result = await response.json();
+  assert.equal(response.status, 503); assert.equal(result.clientSecret, undefined);
+  assert.equal(result.payment_attempt_canceled, true); assert.equal(result.reward_reservation_released, true);
+  assert.equal(ctx.rows.UserPoints[0].total_points, 7000); assert.equal(ctx.rows.UserPoints[0].reserved_points, 0);
+});
+await test('uncertain cancellation preserves direct-points hold for recovery', async () => {
+  const ctx = fixture({ realLedger: true, losePointsAck: true, failCancel: true });
+  const result = await (await ctx.handle({ points_used: 1000, points_discount: 10 })).json();
+  assert.equal(result.clientSecret, undefined); assert.equal(result.payment_attempt_canceled, false);
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 1000);
+});
+await test('false direct-points CAS acknowledgement cannot expose a payment secret', async () => {
+  const ctx = fixture({ realLedger: true, ignorePointsWrite: true });
+  const result = await (await ctx.handle({ points_used: 1000, points_discount: 10 })).json();
+  assert.equal(result.error_code, 'REWARD_PAYMENT_NOT_READY'); assert.equal(result.clientSecret, undefined);
+  assert.equal(result.reward_reservation_released, false);
+});
+await test('unsecured direct-points attempts stop before provider and record writes', async () => {
+  for (const [options, patch] of [[{ noRewardSecret: true }, {}], [{}, { checkout_idempotency_key: null }]]) {
+    const ctx = fixture({ realLedger: true, ...options });
+    const response = await ctx.handle({ points_used: 1000, points_discount: 10, ...patch });
+    assert.equal(response.status, 409); assert.equal((await response.json()).error_code, 'POINTS_CHECKOUT_NOT_READY');
+    assert.equal(ctx.effects.length, 0);
+  }
+});
+await test('points-only zero-cash checkout never becomes a fabricated fifty-cent payment', async () => {
+  const ctx = fixture({ realLedger: true, seed: {
+    Subscription: [{ customer_email: email, status: 'active', plan_id: 'plan' }], SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }],
+  } });
+  const result = await (await ctx.handle({ points_used: 3510, points_discount: 35.1 })).json();
+  assert.equal(result.error_code, 'POINTS_BALANCE_REQUIRES_REVIEW'); assert.equal(ctx.effects.length, 0);
 });
 console.log(`Checkout record persistence: ${passed}/${passed} passed. Real handler, synthetic storage/Maps/Stripe only; no external calls or production writes.`);

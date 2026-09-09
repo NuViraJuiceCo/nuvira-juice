@@ -212,7 +212,7 @@ await test('preview does not claim points reservation or debit, payment, or fulf
 await test('admin runtime marker is read-only and explicitly reports unfinished reward payment integration', async () => {
   const db = fakeDb({ user: { email, role: 'admin' } });
   const response = await handler(db)(request({ mode: 'checkout_runtime_status' })); const body = await response.json();
-  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-08.payment-credit-reservation-v1');
+  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-08.payment-points-reservation-v2');
   assert.equal(body.reward_payment_integration_complete, false); assert.equal(body.writes_performed, false);
   assert.equal(db.reads.length, 0);
 });

@@ -6,6 +6,7 @@ import { transformSync } from 'esbuild';
 import * as benefits from '../../base44/functions/stripeWebhook/paymentBenefits.js';
 import * as rewardWebhook from '../../base44/functions/stripeWebhook/rewardWebhook.js';
 import { applyPointsTransaction, syncPointsMemberProjection } from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
+import * as pointsLedger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 
 // Execute the actual webhook with simulated signed events and in-memory stores.
 // The test Stripe class cannot send requests; no provider credentials are used.
@@ -16,7 +17,7 @@ function match(row, query) {
   return Object.entries(query).every(([key, value]) => key === '$or' ? value.some(q => match(row, q))
     : value && typeof value === 'object' && '$exists' in value ? (row[key] !== undefined) === value.$exists : row[key] === value);
 }
-function fixture({ paid = false, reward = false, credit = 0, terminal = '', balance = 2000 } = {}) {
+function fixture({ paid = false, reward = false, credit = 0, terminal = '', balance = 2000, directPoints = 0 } = {}) {
   const order = { id: 'order_synthetic', order_number: 'SYNTHETIC-RETRY', customer_email: email,
     stripe_payment_intent_id: payment.id, status: terminal || (paid ? 'scheduled_for_juicing' : 'pending_payment'),
     payment_status: paid ? 'paid' : 'pending', payment_captured: paid, total: 42.99,
@@ -30,7 +31,22 @@ function fixture({ paid = false, reward = false, credit = 0, terminal = '', bala
     UserPoints: [{ id: 'points_synthetic', customer_email: email, total_points: balance, lifetime_points: balance, redeemed_points: 0, points_history: [] }],
     LoyaltyMember: [{ id: 'member_synthetic', email, total_points: balance }],
     NuViraCredit: [{ id: 'credit_synthetic', customer_email: email, balance: 10, lifetime_used: 0, lifetime_issued: 10, history: [] }],
-    OperationalAlert: [], OrderSyncLog: [] };
+    OperationalAlert: [], OrderSyncLog: [], LoyaltyTransaction: [] };
+  const provider = { ...structuredClone(payment), amount: 4299, livemode: true,
+    metadata: { ...payment.metadata, checkout_mode: 'account', checkout_context_hash: 'a'.repeat(64),
+      ...(directPoints ? { reward_reservation_id: `points:${'a'.repeat(64)}` } : {}) } };
+  if (directPoints) {
+    Object.assign(checkout, { order_number: order.order_number, total: 42.99, points_used: directPoints,
+      points_discount: directPoints / 100, reward_reservation_id: provider.metadata.reward_reservation_id,
+      reward_reservation_points: directPoints, checkout_context_hash: provider.metadata.checkout_context_hash,
+      points_reservation_revision: pointsLedger.DIRECT_POINTS_CHECKOUT_REVISION });
+    Object.assign(rows.CheckoutSession[0], { customer_email: email, order_number: order.order_number });
+    Object.assign(rows.UserPoints[0], { reserved_points: directPoints, points_ledger_revision: 1,
+      reward_reservations: [{ reservation_id: provider.metadata.reward_reservation_id,
+        context_hash: provider.metadata.checkout_context_hash, payment_intent_id: payment.id,
+        points: directPoints, status: 'held' }] });
+    rows.LoyaltyMember[0].reserved_points = directPoints;
+  }
   const entities = {}; const calls = []; const faults = { award: false, credit: false, member: false };
   for (const [name, list] of Object.entries(rows)) entities[name] = {
     filter: async query => structuredClone(list.filter(row => match(row, query))),
@@ -51,19 +67,48 @@ function fixture({ paid = false, reward = false, credit = 0, terminal = '', bala
     await syncPointsMemberProjection(entities, email);
     return { success: true, idempotent: result.idempotent };
   };
-  const db = { asServiceRole: { entities, functions: { invoke: async (name, data) => {
-    if (name === 'enrollNewCustomerInLoyalty') { assert.equal(data.action, 'post'); return { data: await postLoyalty(data) }; }
+  let ledgerHandler;
+  const db = { auth: { me: async () => null }, asServiceRole: { entities, functions: { invoke: async (name, data) => {
+    if (name === 'enrollNewCustomerInLoyalty') {
+      if (directPoints && data.action === 'settle_reward_checkout') {
+        calls.push('loyalty.settle_reservation');
+        const response = await ledgerHandler(new Request('https://test.invalid/ledger', { method: 'POST', body: JSON.stringify(data) }));
+        const body = await response.json();
+        if (response.status !== 200) throw new Error(JSON.stringify(body));
+        return { data: body };
+      }
+      assert.equal(data.action, 'post'); return { data: await postLoyalty(data) };
+    }
     assert.ok(['pushOrderToShopify', 'syncOrderToHub', 'sendOrderReceivedNotification', 'getAdminOperationsDashboardSummary', 'sendCustomerNotification'].includes(name), name);
     calls.push(name); return { data: { success: true } };
   } } } };
-  return { rows, order, checkout, entities, db, calls, faults, postLoyalty };
+  if (directPoints) {
+    const ledgerModule = { exports: {} };
+    vm.runInNewContext(transformSync(fs.readFileSync('base44/functions/enrollNewCustomerInLoyalty/entry.ts', 'utf8'),
+      { loader: 'ts', format: 'cjs', target: 'es2022' }).code, {
+      module: ledgerModule, exports: ledgerModule.exports, Request, Response, Date,
+      console: { log() {}, warn() {}, error() {} },
+      Deno: { serve: fn => { ledgerHandler = fn; }, env: { get: name =>
+        name === 'STRIPE_SECRET_KEY' ? 'synthetic-stripe-secret' : name === 'LOYALTY_LEDGER_SECRET' ? 'synthetic-ledger-secret' : undefined } },
+      require: name => {
+        if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
+        if (name.includes('pointsAccount')) return pointsLedger;
+        if (name.includes('stripe')) return class { paymentIntents = { retrieve: async id => {
+          assert.equal(id, provider.id); calls.push('ledger.provider.read'); return structuredClone(provider);
+        } }; };
+        throw new Error(`Unexpected import ${name}`);
+      },
+    });
+  }
+  return { rows, order, checkout, entities, db, calls, faults, postLoyalty, provider };
 }
 const source = fs.readFileSync('base44/functions/stripeWebhook/entry.ts', 'utf8');
 const compiled = transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
 function serve(f) {
   let handler; const module = { exports: {} };
   vm.runInNewContext(compiled, { module, exports: module.exports, Request, Response, URL, setTimeout, clearTimeout,
-    console: { log() {}, warn() {}, error() {} }, Deno: { env: { get: () => '' }, serve: fn => { handler = fn; } },
+    console: { log() {}, warn() {}, error() {} }, Deno: { env: { get: name => name === 'LOYALTY_LEDGER_SECRET'
+      ? 'synthetic-ledger-secret' : '' }, serve: fn => { handler = fn; } },
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => f.db };
       if (name.includes('paymentBenefits')) return benefits;
@@ -233,6 +278,44 @@ test('Actual cancellation webhook rereads provider and releases credit before ca
   assert.ok(f.calls.indexOf('NuViraCredit.CAS') < f.calls.indexOf('Order.update'));
   assert.equal((await invoke('payment_intent.canceled', changes)).status, 200);
   assert.equal(f.rows.NuViraCredit[0].checkout_reservations.length, 1);
+});
+test('Connected success webhook consumes direct-point hold once before award and normal handoff', async () => {
+  const f = fixture({ directPoints: 500 }); const invoke = serve(f);
+  assert.equal((await invoke('payment_intent.succeeded', f.provider)).status, 200);
+  assert.equal(f.order.payment_captured, true); assert.equal(f.rows.UserPoints[0].total_points, 1929);
+  assert.equal(f.rows.UserPoints[0].reserved_points, 0); assert.equal(f.rows.UserPoints[0].redeemed_points, 500);
+  assert.equal(f.rows.LoyaltyMember[0].total_points, 1929);
+  assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+  assert.ok(f.calls.indexOf('loyalty.settle_reservation') < f.calls.indexOf('loyalty.earned'));
+  assert.ok(f.calls.indexOf('loyalty.earned') < f.calls.indexOf('sendOrderReceivedNotification'));
+  const notifications = f.calls.filter(call => call === 'sendOrderReceivedNotification').length;
+  assert.equal((await invoke('payment_intent.succeeded', f.provider)).status, 200);
+  assert.equal(f.rows.UserPoints[0].total_points, 1929); assert.equal(f.rows.LoyaltyTransaction.length, 1);
+  assert.equal(f.calls.filter(call => call === 'sendOrderReceivedNotification').length, notifications);
+});
+test('Connected direct-point consumption survives failed award and recovers on webhook retry', async () => {
+  const f = fixture({ directPoints: 500 }); const invoke = serve(f); f.faults.award = true;
+  assert.equal((await invoke('payment_intent.succeeded', f.provider)).status, 500);
+  assert.equal(f.order.payment_captured, false); assert.equal(f.rows.UserPoints[0].total_points, 1500);
+  assert.equal(f.calls.includes('sendOrderReceivedNotification'), false);
+  f.faults.award = false; assert.equal((await invoke('payment_intent.succeeded', f.provider)).status, 200);
+  assert.equal(f.rows.UserPoints[0].total_points, 1929); assert.equal(f.rows.LoyaltyTransaction.length, 1);
+});
+test('Connected direct-point cancellation releases without earning or customer notifications', async () => {
+  const f = fixture({ directPoints: 500 }); f.provider.status = 'canceled'; f.provider.amount_received = 0;
+  const result = await serve(f)('payment_intent.canceled', f.provider);
+  assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(f.order.status, 'cancelled');
+  assert.equal(f.rows.UserPoints[0].total_points, 2000); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+  assert.equal(f.rows.LoyaltyMember[0].reserved_points, 0); assert.equal(f.rows.LoyaltyTransaction.length, 0);
+  assert.ok(f.calls.indexOf('loyalty.settle_reservation') < f.calls.indexOf('Order.update'));
+  assert.equal(f.calls.includes('sendOrderReceivedNotification'), false);
+});
+test('Connected webhook rejects stale success when provider still processing and keeps points held', async () => {
+  const f = fixture({ directPoints: 500 }); f.provider.status = 'processing'; f.provider.amount_received = 0;
+  const result = await serve(f)('payment_intent.succeeded', { ...f.provider, status: 'succeeded', amount_received: 4299 });
+  assert.equal(result.status, 500); assert.equal(f.order.payment_captured, false);
+  assert.equal(f.rows.UserPoints[0].reserved_points, 500); assert.equal(f.rows.UserPoints[0].total_points, 2000);
+  assert.equal(f.rows.LoyaltyTransaction.length, 0); assert.equal(f.calls.includes('sendOrderReceivedNotification'), false);
 });
 test('Actual webhook cannot release credit from an unconfirmed cancellation payload', async () => {
   const f = fixture(); const hash = 'a'.repeat(64); const changes = { status: 'canceled', amount: 4299,

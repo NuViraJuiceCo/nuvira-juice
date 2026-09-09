@@ -211,7 +211,7 @@ export async function reservePaymentReward(base44, payment, quote, pricing, emai
   }
   const response = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
     action: 'reserve_reward_checkout', customer_email: email,
-    stripe_payment_intent_id: payment.id, reward_id: quote.active_reward.id,
+    stripe_payment_intent_id: payment.id, reward_id: quote?.active_reward?.id || null,
     points: pricing.reservation_points, direct_points: pricing.points_used, internal_secret: secret,
   });
   const data = response?.data || response;
@@ -224,7 +224,7 @@ export async function reservePaymentReward(base44, payment, quote, pricing, emai
 // Ordinary member discounts use the same cent arithmetic as tier rewards.
 // Catalog/birthday item normalization is a separate release gate; this helper
 // never turns a caller-supplied final total or unselected reward into a discount.
-export async function priceMemberPayment(base44, email, subtotal, body, subscriptionPercent = 0, creditReservationId = null) {
+export async function priceMemberPayment(base44, email, subtotal, body, subscriptionPercent = 0, creditReservationId = null, pointsReservationId = null) {
   if (body.active_reward || cents(body.reward_discount ?? 0) !== 0) {
     fail('REWARD_SELECTION_REQUIRED', 'Please select your earned reward again.');
   }
@@ -233,7 +233,11 @@ export async function priceMemberPayment(base44, email, subtotal, body, subscrip
   if (points) {
     try {
       const account = await readPointsAccount(base44.asServiceRole.entities, email);
-      available = account.total_points - (account.reserved_points ?? 0);
+      const matching = pointsReservationId ? (account.reward_reservations || []).filter(row => row.reservation_id === pointsReservationId) : [];
+      if (matching.length > 1) throw new Error('duplicate_points_reservations');
+      const own = matching[0];
+      const restored = own && ['held', 'consumed'].includes(own.status) ? own.points : 0;
+      available = account.total_points - (account.reserved_points ?? 0) + restored;
     } catch { fail('POINTS_BALANCE_UNAVAILABLE', 'Your available points could not be confirmed. Please review checkout.'); }
   }
   return priceRewardPayment(base44, email, { subtotal, reward_discount: 0,

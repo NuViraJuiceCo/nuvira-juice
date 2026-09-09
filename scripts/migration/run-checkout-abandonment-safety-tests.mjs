@@ -24,11 +24,12 @@ function matches(row, query) {
     return row[key] === value;
   });
 }
-function fixture({ role = 'admin', noPayment = false, reward = false, realLedger = false, credit = false, faults = {} } = {}) {
+function fixture({ role = 'admin', noPayment = false, reward = false, realLedger = false, credit = false, directPoints = false, faults = {} } = {}) {
   const order = { id: 'synthetic-order', order_number: 'NV-SYNTHETIC-CANCEL', customer_email: email,
     status: 'pending_payment', payment_status: 'pending', financial_status: 'pending', payment_captured: false,
     created_date: '2026-09-07T00:00:00Z', updated_date: '2026-09-07T00:00:00Z', status_history: [],
-    ...(noPayment ? { stripe_checkout_session_id: 'cs_synthetic' } : { stripe_payment_intent_id: 'pi_synthetic' }) };
+    ...(noPayment ? { stripe_checkout_session_id: 'cs_synthetic' } : { stripe_payment_intent_id: 'pi_synthetic' }),
+    ...(directPoints ? { total: 42 } : {}) };
   const provider = { id: noPayment ? 'cs_synthetic' : 'pi_synthetic', livemode: true, currency: 'usd',
     amount: 4200, amount_received: 0,
     status: noPayment ? 'open' : 'requires_payment_method',
@@ -37,7 +38,7 @@ function fixture({ role = 'admin', noPayment = false, reward = false, realLedger
       checkout_version: noPayment ? '4.0_reward_no_payment' : '3.0_embedded',
       checkout_mode: 'account', checkout_context_hash: 'b'.repeat(64),
       ...(credit ? { credit_reservation_id: `credit:${'b'.repeat(64)}`, credit_reservation_cents: '200' } : {}),
-      ...(reward ? { reward_reservation_id: 'synthetic-reservation' } : {}) } };
+      ...(reward ? { reward_reservation_id: directPoints ? `points:${'b'.repeat(64)}` : 'synthetic-reservation' } : {}) } };
   const effects = []; let releases = 0; let serve;
   const read = async id => {
     effects.push('provider.retrieve'); assert.equal(id, provider.id);
@@ -69,10 +70,15 @@ function fixture({ role = 'admin', noPayment = false, reward = false, realLedger
   const ledgerRows = { UserPoints: [{ id: 'points-synthetic', customer_email: email,
     total_points: 2000, lifetime_points: 2000, redeemed_points: 0, reserved_points: reward ? 1000 : 0,
     points_ledger_revision: 1, points_history: [],
-    reward_reservations: reward ? [{ reservation_id: 'synthetic-reservation', context_hash: 'b'.repeat(64),
+    reward_reservations: reward ? [{ reservation_id: provider.metadata.reward_reservation_id, context_hash: 'b'.repeat(64),
       points: 1000, status: 'held', [noPayment ? 'checkout_session_id' : 'payment_intent_id']: provider.id }] : [] }],
     LoyaltyMember: [{ id: 'member-synthetic', email, total_points: 2000, reserved_points: reward ? 1000 : 0 }],
     LoyaltyTransaction: [],
+    CheckoutSession: directPoints ? [{ id: 'checkout-synthetic', customer_email: email, order_number: order.order_number,
+      stripe_session_id: provider.id, checkout_data: { customer_email: email, order_number: order.order_number,
+        total: 42, points_used: 1000, points_discount: 10, reward_reservation_id: provider.metadata.reward_reservation_id,
+        reward_reservation_points: 1000, checkout_context_hash: 'b'.repeat(64),
+        points_reservation_revision: pointsLedger.DIRECT_POINTS_CHECKOUT_REVISION } }] : [],
     NuViraCredit: [{ id: 'credit_synthetic', customer_email: email, balance: 10, reserved_balance: credit ? 2 : 0,
       lifetime_used: 0, history: [], checkout_reservations: credit ? [{ reservation_id: `credit:${'b'.repeat(64)}`,
         context_hash: 'b'.repeat(64), payment_intent_id: 'pi_synthetic', amount_cents: 200, status: 'held' }] : [] }] };
@@ -297,6 +303,25 @@ for (const noPayment of [false, true]) {
   });
 }
 for (const exact of [false, true]) {
+  test(`${exact ? 'Exact' : 'Batch'} cancellation connects direct-point context, provider truth and both balance projections`, async () => {
+    const f = fixture({ directPoints: true, reward: true, realLedger: true, credit: true });
+    assert.equal((await f.run(exact)).status, 200); assert.equal(f.order.status, 'cancelled');
+    assert.equal(f.ledgerRows.UserPoints[0].reserved_points, 0); assert.equal(f.ledgerRows.UserPoints[0].total_points, 2000);
+    assert.equal(f.ledgerRows.LoyaltyMember[0].reserved_points, 0); assert.equal(f.ledgerRows.LoyaltyTransaction.length, 0);
+    assert.equal(f.ledgerRows.NuViraCredit[0].reserved_balance, 0); assert.equal(f.ledgerRows.NuViraCredit[0].balance, 10);
+    assert.ok(f.effects.indexOf('reward.release') < f.effects.indexOf('order.cas'));
+    const revisions = f.ledgerRows.UserPoints[0].points_ledger_revision;
+    await f.run(exact); assert.equal(f.ledgerRows.UserPoints[0].points_ledger_revision, revisions);
+  });
+  test(`${exact ? 'Exact' : 'Batch'} direct-point context mismatch preserves balances until context is restored`, async () => {
+    const f = fixture({ directPoints: true, reward: true, realLedger: true });
+    const saved = f.ledgerRows.CheckoutSession[0].checkout_data; saved.points_used = 999;
+    await f.run(exact); assert.equal(f.provider.status, 'canceled'); assert.equal(f.order.status, 'pending_payment');
+    assert.equal(f.ledgerRows.UserPoints[0].reserved_points, 1000);
+    saved.points_used = 1000; await f.run(exact);
+    assert.equal(f.order.status, 'cancelled'); assert.equal(f.ledgerRows.UserPoints[0].reserved_points, 0);
+    assert.equal(f.effects.filter(e => e === 'provider.cancel').length, 1);
+  });
   test(`${exact ? 'Exact' : 'Batch'} cancellation releases actual credit hold before local order cancellation`, async () => {
     const f = fixture({ credit: true, reward: true, realLedger: true }); const result = await f.run(exact);
     assert.equal(result.status, 200); assert.equal(f.order.status, 'cancelled');

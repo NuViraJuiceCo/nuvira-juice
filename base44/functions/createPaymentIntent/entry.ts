@@ -6,7 +6,7 @@ import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, readNoPaymentCheckou
 import { creditCents, availableCheckoutCredit, reserveCheckoutCredit, settleCheckoutCredit, CHECKOUT_CREDIT_REVISION, CheckoutCreditError } from '../../shared/checkoutCredit.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const CHECKOUT_RECORD_REVISION = '2026-09-08.payment-credit-reservation-v1';
+const CHECKOUT_RECORD_REVISION = '2026-09-08.payment-points-reservation-v2';
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
 const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
@@ -1170,10 +1170,16 @@ Deno.serve(async (req) => {
           error: 'Your available credits changed. Please review checkout.', writes_performed: false }, { status: 409 });
       }
     }
-    const rewardReservationId = !isGuestCheckout && active_reward && checkoutAttemptDigest
-      ? `reward:${checkoutAttemptDigest}` : null;
+    const directPointsRequested = !isGuestCheckout && Number(points_used) > 0;
+    const rewardReservationId = !isGuestCheckout && (active_reward || directPointsRequested) && checkoutAttemptDigest
+      ? `${active_reward ? 'reward' : 'points'}:${checkoutAttemptDigest}` : null;
     const rewardInternalSecret = Deno.env.get('LOYALTY_LEDGER_SECRET')
       || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '';
+    if (directPointsRequested && (!isValidGuestSecret(checkout_idempotency_key) || !rewardInternalSecret || internalSandboxCheckout)) {
+      return Response.json({ ok: false, error_code: 'POINTS_CHECKOUT_NOT_READY',
+        error: 'Please refresh checkout before using your points.', writes_performed: false,
+        payment_intent_created: false }, { status: 409 });
+    }
     let rewardQuote = null;
     let rewardPricing = null;
     if (!isGuestCheckout && active_reward) {
@@ -1322,7 +1328,7 @@ Deno.serve(async (req) => {
     const effectiveDeliveryFee = subFreeDelivery || rewardQuote?.free_delivery ? 0 : authoritativeDeliveryFee;
     if (rewardQuote) rewardPricing = await priceRewardPayment(base44, normalizedCustomerEmail, rewardQuote, requestBody, subDiscountPct, creditReservationId);
     const checkoutPricing = rewardPricing || (!isGuestCheckout
-      ? await priceMemberPayment(base44, normalizedCustomerEmail, authoritativeSubtotal, requestBody, subDiscountPct, creditReservationId)
+      ? await priceMemberPayment(base44, normalizedCustomerEmail, authoritativeSubtotal, requestBody, subDiscountPct, creditReservationId, rewardReservationId)
       : null);
     const subDiscountAmt = checkoutPricing?.subscription_discount || 0;
     const merchandiseTotalBeforePromotion = checkoutPricing ? checkoutPricing.merchandise_total : authoritativeSubtotal;
@@ -1533,7 +1539,7 @@ Deno.serve(async (req) => {
       sandbox_test_id:            internalSandboxCheckout ? sandboxTestId : '',
       marketing_measurement_consent: marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
       meta_capi_test_enabled:      internalSandboxCheckout && meta_capi_test_enabled === true ? 'true' : 'false',
-      ...(rewardQuote ? { reward_reservation_id: rewardReservationId } : {}),
+      ...(rewardReservationId ? { reward_reservation_id: rewardReservationId } : {}),
       ...(creditReservationId ? { credit_reservation_id: creditReservationId,
         credit_reservation_cents: String(requestedCreditCents) } : {}),
     };
@@ -1601,6 +1607,11 @@ Deno.serve(async (req) => {
         error: 'Please adjust your credits selection. We will not add a minimum charge to use credits.',
         writes_performed: false, payment_intent_created: false }, { status: 409 });
     }
+    if (directPointsRequested && !rewardQuote && effectiveTotal < 0.5) {
+      return Response.json({ ok: false, error_code: 'POINTS_BALANCE_REQUIRES_REVIEW',
+        error: 'Please adjust your points selection. We will not add a minimum charge to use points.',
+        writes_performed: false, payment_intent_created: false }, { status: 409 });
+    }
 
     // Build Stripe idempotency key from the client-supplied checkout key (if present).
     // This ensures duplicate calls from retries or double-taps return the same PI.
@@ -1645,9 +1656,10 @@ Deno.serve(async (req) => {
       orderNumber = paymentIntent.metadata.order_number;
     }
 
-    if (rewardQuote) {
+    const reservePaymentPoints = async () => {
       try {
-        await reservePaymentReward(base44, paymentIntent, rewardQuote, rewardPricing, normalizedCustomerEmail, rewardInternalSecret);
+        await reservePaymentReward(base44, paymentIntent, rewardQuote, checkoutPricing, normalizedCustomerEmail, rewardInternalSecret);
+        return null;
       } catch {
         // A lost reserve response may mean a hold exists. Never release it until
         // the provider has confirmed cancellation of this exact unconfirmed PI.
@@ -1676,6 +1688,10 @@ Deno.serve(async (req) => {
           payment_confirmation_attempted: false, payment_attempt_canceled: canceled,
           reward_reservation_released: released }, { status: 503 });
       }
+    };
+    if (rewardQuote) {
+      const reservationFailure = await reservePaymentPoints();
+      if (reservationFailure) return reservationFailure;
     }
 
     console.log(`[PI] Created PI ${paymentIntent.id} for ${orderNumber}: payment_method_types=card; express_wallets=apple_pay,google_pay. amount=${amountCents}¢, checkout_mode=${isGuestCheckout ? 'guest' : 'account'}`);
@@ -1869,6 +1885,9 @@ Deno.serve(async (req) => {
           credits_discount:          checkoutPricing?.credits_discount || 0,
           ...(rewardQuote ? { reward_checkout: rewardQuote, reward_reservation_id: rewardReservationId,
             reward_reservation_points: rewardPricing.reservation_points, checkout_context_hash: checkoutContextHash } : {}),
+          ...(!rewardQuote && rewardReservationId ? { reward_reservation_id: rewardReservationId,
+            reward_reservation_points: checkoutPricing.reservation_points, checkout_context_hash: checkoutContextHash,
+            points_reservation_revision: '2026-09-08.direct-points-v1' } : {}),
           ...(creditReservationId ? { credit_reservation_id: creditReservationId,
             credit_reservation_revision: CHECKOUT_CREDIT_REVISION, checkout_context_hash: checkoutContextHash } : {}),
           guest_checkout:            isGuestCheckout,
@@ -1907,7 +1926,7 @@ Deno.serve(async (req) => {
             if (latest.id !== paymentIntent.id || latest.status !== 'canceled') throw new Error('credit_cancellation_unconfirmed');
             await settleCheckoutCredit({ entities: base44.asServiceRole.entities, payment: latest, email: normalizedCustomerEmail });
           }
-          if (paymentAttemptCanceled && rewardQuote) {
+          if (paymentAttemptCanceled && rewardReservationId) {
             const result = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
               action: 'settle_reward_checkout', customer_email: normalizedCustomerEmail,
               stripe_payment_intent_id: paymentIntent.id, internal_secret: rewardInternalSecret,
@@ -1925,6 +1944,11 @@ Deno.serve(async (req) => {
       }, { status: 503 });
     }
 
+    if (!rewardQuote && rewardReservationId) {
+      // Direct-point holds require the saved Order and CheckoutSession above.
+      const reservationFailure = await reservePaymentPoints();
+      if (reservationFailure) return reservationFailure;
+    }
     if (creditReservationId) {
       try {
         const held = await reserveCheckoutCredit({ entities: base44.asServiceRole.entities, stripe: checkoutStripe,
@@ -1944,7 +1968,7 @@ Deno.serve(async (req) => {
             const released = await settleCheckoutCredit({ entities: base44.asServiceRole.entities,
               payment: latest, email: normalizedCustomerEmail });
             creditReleased = ['released', 'absent'].includes(released.reservation_status);
-            if (rewardQuote) {
+            if (rewardReservationId) {
               const response = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
                 action: 'settle_reward_checkout', customer_email: normalizedCustomerEmail,
                 stripe_payment_intent_id: paymentIntent.id, internal_secret: rewardInternalSecret,
