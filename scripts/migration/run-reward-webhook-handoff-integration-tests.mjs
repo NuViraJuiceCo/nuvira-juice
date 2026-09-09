@@ -13,7 +13,7 @@ const source = buildSync({ entryPoints: ['base44/functions/stripeWebhook/entry.t
   write: false, format: 'cjs', platform: 'node', target: 'es2022', external: ['npm:*'] }).outputFiles[0].text;
 globalThis.fetch = async () => { throw new Error('External network forbidden'); };
 const copy = value => structuredClone(value);
-function fixture() {
+function fixture({ directPoints = false, mixedPoints = false } = {}) {
   const handoff = createCompleteRewardHandoffFixture(); const c = handoff.communication;
   const settled = createRewardSettlementFixture({ connected: true });
   const s = settled.session; const order = c.order;
@@ -28,6 +28,33 @@ function fixture() {
     reward_checkout: { revision: '2026-09-08.reward-checkout-v1', active_reward: { id: 'synthetic_vip' } },
     active_reward: { id: 'synthetic_vip', points_required: 2000 }, points_used: 0,
     credits_discount: 0, total: 0, guest_checkout: false, internal_sandbox_checkout: false };
+  if (directPoints) {
+    order.items.forEach(item => {
+      item.price = 13;
+      for (const key of ['isFreeReward', 'reward_id', 'reward_type', 'reward_discount_amount', 'cart_line_key']) delete item[key];
+    });
+    Object.assign(order, { subtotal: 78, total_discounts: 78 });
+    Object.assign(data, { items: copy(order.items), subtotal: 78, total_discounts: 78, delivery_fee: 0,
+      points_used: 7800, points_discount: 78, reward_discount: 0, subscription_discount: 0,
+      reward_reservation_points: 7800, active_reward: null,
+      reward_reservation_id: `points:${'a'.repeat(64)}`,
+      points_reservation_revision: '2026-09-08.direct-points-v1', no_payment_points_revision: '2026-09-09.no-payment-points-v1' });
+    delete data.reward_checkout;
+    oldReceipt.reservation_id = data.reward_reservation_id;
+  }
+  if (mixedPoints) {
+    const extra = { ...copy(order.items[0]), quantity: 1, price: 13 };
+    for (const key of ['isFreeReward', 'reward_id', 'reward_type', 'reward_discount_amount', 'cart_line_key']) delete extra[key];
+    order.items.push(extra);
+    Object.assign(order, { subtotal: 13, total_discounts: 13 });
+    Object.assign(data, { items: copy(order.items), subtotal: 13, total_discounts: 13, delivery_fee: 0,
+      points_used: 1300, points_discount: 13, reward_discount: 0, subscription_discount: 0,
+      reward_reservation_points: 3300, reward_reservation_id: `reward:${'a'.repeat(64)}` });
+    Object.assign(data.reward_checkout, { active_reward: copy(data.active_reward), points_required: 2000,
+      items: copy(data.items), subtotal: 13, catalog_subtotal: 91, reward_item_discount: 78,
+      reward_discount: 0, merchandise_total: 13 });
+    oldReceipt.reservation_id = data.reward_reservation_id;
+  }
   const context = { id: 'synthetic_context', customer_email: order.customer_email, order_number: order.order_number,
     stripe_session_id: order.stripe_checkout_session_id, checkout_data: data };
   handoff.native.rows.CheckoutSession.splice(0, Infinity, context);
@@ -41,6 +68,15 @@ function fixture() {
       bag_return_request_id: order.bag_return_request_id } });
   const account = settled.rows.UserPoints[0]; account.customer_email = order.customer_email;
   account.reward_reservations[0].reservation_id = oldReceipt.reservation_id;
+  if (directPoints) {
+    s.metadata.no_payment_points = '7800';
+    Object.assign(account, { total_points: 9000, lifetime_points: 9000, reserved_points: 7800 });
+    account.reward_reservations[0].points = 7800;
+  }
+  if (mixedPoints) {
+    Object.assign(account, { total_points: 9000, lifetime_points: 9000, reserved_points: 3300 });
+    account.reward_reservations[0].points = 3300;
+  }
   settled.rows.LoyaltyMember[0].email = order.customer_email;
   const invoke = c.base44.asServiceRole.functions.invoke;
   c.base44.asServiceRole.functions.invoke = async (name, payload) => {
@@ -114,6 +150,59 @@ test('actual signed webhook settles and completes all nine real stages without c
   assert.equal(f.order.reward_handoff.steps.operations_push.receipt.reason, 'no_eligible_device');
   assert.equal(f.order.reward_handoff.steps.sms.receipt.reason, 'no_phone');
   assert.doesNotMatch(JSON.stringify(f.order.reward_handoff), /example\.test|Synthetic Street|credential/);
+});
+test('direct points flow completes actual ledger, native production, Shopify and all communications without cash', async () => {
+  const f = fixture({ directPoints: true }); const result = await f.run();
+  assert.equal(result.status, 200, JSON.stringify(result)); assert.equal(result.body.handoff_complete, true);
+  assert.ok(REWARD_HANDOFF_STAGES.every(stage => f.order.reward_handoff.steps[stage].state === 'complete'));
+  const account = f.settled.rows.UserPoints[0]; assert.equal(account.total_points, 1200);
+  assert.equal(account.reserved_points, 0); assert.equal(account.redeemed_points, 7800);
+  assert.equal(f.settled.rows.LoyaltyMember[0].total_points, 1200);
+  assert.equal(f.order.payment_captured, false); assert.equal(f.order.stripe_payment_intent_id, undefined);
+  assert.equal(f.order.reward_settlement.points_redeemed, 7800);
+  assert.equal(f.native.rows.FulfillmentTask.length, 1); assert.equal(f.native.rows.ShopifyOrder.length, 1);
+  assert.equal(f.native.rows.ProductionBatch.reduce((sum, row) => sum + row.planned_units, 0), 6);
+  assert.equal(f.shopify.state.creates.length, 1);
+  const input = f.shopify.state.creates[0].order;
+  assert.ok(input.lineItems.every(item => item.priceSet.shopMoney.amount === '0.00'));
+  assert.ok(input.lineItems.every(item => JSON.parse(item.properties.find(p => p.name === 'nuvira_checkout_item').value).price === 13));
+  assert.equal(input.transactions, undefined); assert.equal(count(f, 'provider:send'), 1); assert.equal(count(f, 'operations:send'), 1);
+  assert.equal((await f.run()).status, 200); assert.equal(f.shopify.state.creates.length, 1);
+  assert.equal(f.settled.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+  assert.equal(account.total_points, 1200); assert.equal(count(f, 'provider:send'), 1);
+});
+test('earned tier plus points-covered extra bottle completes all nine handoff stages once', async () => {
+  const f = fixture({ mixedPoints: true }); const result = await f.run();
+  assert.equal(result.status, 200, JSON.stringify(result)); assert.equal(result.body.handoff_complete, true);
+  assert.ok(REWARD_HANDOFF_STAGES.every(stage => f.order.reward_handoff.steps[stage].state === 'complete'));
+  const account = f.settled.rows.UserPoints[0]; assert.equal(account.total_points, 5700);
+  assert.equal(account.reserved_points, 0); assert.equal(account.redeemed_points, 3300);
+  assert.equal(f.settled.rows.LoyaltyMember[0].total_points, 5700);
+  assert.equal(f.order.reward_settlement.points_redeemed, 3300); assert.equal(f.order.payment_captured, false);
+  assert.equal(f.native.rows.ProductionBatch.reduce((sum, row) => sum + row.planned_units, 0), 7);
+  assert.equal(f.native.rows.FulfillmentTask.length, 1); assert.equal(f.shopify.state.creates.length, 1);
+  const input = f.shopify.state.creates[0].order;
+  assert.equal(input.lineItems.reduce((sum, line) => sum + line.quantity, 0), 7);
+  assert.ok(input.lineItems.every(line => line.priceSet.shopMoney.amount === '0.00'));
+  assert.equal(JSON.parse(input.lineItems.at(-1).properties.find(p => p.name === 'nuvira_checkout_item').value).price, 13);
+  assert.equal(input.transactions, undefined); assert.equal(count(f, 'provider:send'), 1);
+  assert.equal(count(f, 'operations:send'), 1);
+  assert.equal((await f.run()).status, 200); assert.equal(account.total_points, 5700);
+  assert.equal(f.settled.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+  assert.equal(f.shopify.state.creates.length, 1); assert.equal(count(f, 'provider:send'), 1);
+});
+for (const [name, mutate] of [
+  ['uncovered extra item', f => { f.data.points_discount = 12; }],
+  ['altered quote price', f => { f.data.reward_checkout.subtotal = 12; }],
+  ['altered reward retail value', f => { f.data.reward_checkout.reward_item_discount = 79; }],
+  ['unreserved credits', f => { f.data.credits_discount = 1; }],
+  ['wrong tier cost', f => { f.data.active_reward.points_required = 1900; }],
+  ['wrong total discounts', f => { f.data.total_discounts = 12; }],
+]) test(`mixed tier/points refuses ${name} before spending or downstream dispatch`, async () => {
+  const f = fixture({ mixedPoints: true }); mutate(f); const result = await f.run();
+  assert.notEqual(result.status, 200); assert.equal(f.settled.rows.UserPoints[0].total_points, 9000);
+  assert.equal(f.settled.rows.UserPoints[0].reserved_points, 3300);
+  assert.equal(f.shopify.state.creates.length, 0); assert.equal(count(f, 'provider:send'), 0);
 });
 test('duplicate same and different event IDs do not repeat fulfillment or communication', async () => {
   const f = fixture(); complete(f, await f.run());

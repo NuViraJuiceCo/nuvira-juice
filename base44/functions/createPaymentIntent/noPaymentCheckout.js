@@ -1,5 +1,8 @@
 // Runs only after the caller has authenticated, priced the catalog/reward, and
 // validated delivery and the selected schedule. Never confirms an order here.
+import { NO_PAYMENT_POINTS_REVISION, verifiedNoPaymentPointsSnapshot, verifiedNoPaymentPointsMetadata,
+  verifiedNoPaymentTierPointsSnapshot } from '../../shared/noPaymentPoints.js';
+export { NO_PAYMENT_POINTS_REVISION };
 export const NO_PAYMENT_CHECKOUT_VERSION = '4.0_reward_no_payment';
 const hashPattern = /^[a-f0-9]{64}$/;
 const sessionPattern = /^cs_[A-Za-z0-9_]+$/;
@@ -147,14 +150,15 @@ export async function readNoPaymentCheckoutRecovery({ base44, stripe, customerEm
   assert(owner && /^[A-Za-z0-9_-]{20,200}$/.test(attemptKey || ''), 'reward_recovery_identity_required');
   const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256',
     new TextEncoder().encode(`${owner}:${attemptKey}`)))].map(value => value.toString(16).padStart(2, '0')).join('');
-  const reservationId = `reward:${digest}`;
+  const reservationIds = [`reward:${digest}`, `points:${digest}`];
   const rows = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: owner }, undefined, 2);
   assert(Array.isArray(rows) && rows.length === 1 && email(rows[0]?.customer_email) === owner
     && Array.isArray(rows[0].reward_reservations), 'reward_recovery_balance_unconfirmed');
-  const holds = rows[0].reward_reservations.filter(hold => hold?.reservation_id === reservationId);
+  const holds = rows[0].reward_reservations.filter(hold => reservationIds.includes(hold?.reservation_id));
   // No record does not prove a concurrent request never reached the provider.
   assert(holds.length === 1, 'reward_recovery_attempt_unconfirmed');
   const hold = holds[0];
+  const reservationId = hold.reservation_id;
   assert(sessionPattern.test(hold.checkout_session_id || '') && !hold.payment_intent_id
     && hashPattern.test(hold.context_hash || '') && ['held', 'consumed', 'released'].includes(hold.status),
   'reward_recovery_hold_unconfirmed');
@@ -167,6 +171,8 @@ export async function readNoPaymentCheckoutRecovery({ base44, stripe, customerEm
     && metadata.is_test_order !== 'true' && metadata.internal_sandbox_checkout !== 'true',
   'reward_recovery_provider_mismatch');
   verifySession(session, metadata);
+  if (reservationId.startsWith('points:')) assert(verifiedNoPaymentPointsMetadata(metadata) === hold.points,
+    'reward_recovery_provider_mismatch');
   return { ok: true, state: session.status, writes_performed: false,
     payment_confirmation_attempted: false, reward_reservation_released: false,
     reward_checkout_recovery: { kind: 'reward_no_payment', checkout_session_id: session.id,
@@ -174,13 +180,20 @@ export async function readNoPaymentCheckoutRecovery({ base44, stripe, customerEm
 }
 
 export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata, quote, pricing, secret }) {
+  const directOnly = /^points:[a-f0-9]{64}$/.test(data?.reward_reservation_id || '');
+  const sessionMetadata = { ...metadata, checkout_version: NO_PAYMENT_CHECKOUT_VERSION,
+    ...(directOnly ? { no_payment_points: String(pricing?.points_used) } : {}) };
+  if (directOnly) {
+    assert(!quote && pricing?.reservation_points === pricing?.points_used, 'reward_zero_checkout_invalid');
+    verifiedNoPaymentPointsSnapshot(data, sessionMetadata);
+  } else if (data?.points_used > 0) verifiedNoPaymentTierPointsSnapshot(data, sessionMetadata);
   // This is not a way to waive a nonzero balance, delivery charge or unreserved credit.
   assert(secret && data?.total === 0 && data.delivery_fee === 0 && pricing?.merchandise_total === 0
     && data.credits_discount === 0 && pricing.credits_discount === 0
     && data.guest_checkout === false && data.internal_sandbox_checkout === false
-    && quote?.revision === '2026-09-08.reward-checkout-v1' && quote.active_reward?.id
+    && (directOnly || (quote?.revision === '2026-09-08.reward-checkout-v1' && quote.active_reward?.id))
     && Number.isSafeInteger(pricing.reservation_points) && pricing.reservation_points > 0
-    && pricing.reservation_points === quote.points_required + pricing.points_used
+    && pricing.reservation_points === (directOnly ? 0 : quote.points_required) + pricing.points_used
     && data.reward_reservation_points === pricing.reservation_points
     && data.reward_reservation_id === metadata.reward_reservation_id
     && hashPattern.test(data.checkout_context_hash || '') && data.checkout_context_hash === metadata.checkout_context_hash
@@ -191,7 +204,6 @@ export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata,
     && metadata.order_number === data.order_number && Array.isArray(data.items) && data.items.length > 0
     && data.items.length <= 50 && data.items.every(item => typeof item.title === 'string' && item.title.trim()
       && Number.isSafeInteger(item.quantity) && item.quantity > 0 && item.quantity <= 100), 'reward_zero_checkout_invalid');
-  const sessionMetadata = { ...metadata, checkout_version: NO_PAYMENT_CHECKOUT_VERSION };
   assert(Object.keys(sessionMetadata).length <= 50, 'reward_metadata_limit');
   // Fail before creating a provider Session or holding points, not only after
   // settlement when the customer would already have spent their reward.
@@ -222,7 +234,7 @@ export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata,
     assert(session.status !== 'expired' && Number.isSafeInteger(session.expires_at), 'reward_checkout_expired');
     const reserved = body(await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
       action: 'reserve_reward_checkout', customer_email: data.customer_email,
-      stripe_checkout_session_id: session.id, reward_id: quote.active_reward.id,
+      stripe_checkout_session_id: session.id, reward_id: quote?.active_reward?.id || null,
       points: pricing.reservation_points, direct_points: pricing.points_used, internal_secret: secret,
       preparation_attempt_id: preparationAttemptId,
     }));

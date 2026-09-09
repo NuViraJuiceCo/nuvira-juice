@@ -12,7 +12,7 @@ import { settleCheckoutCredit } from '../../shared/checkoutCredit.js';
 import { settleVerifiedBirthdayCheckout } from '../createPaymentIntent/birthdayCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260909-refund-recovery-v6';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260909-direct-points-v7';
 const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([

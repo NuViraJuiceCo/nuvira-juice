@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
-import { prepareNoPaymentCheckout, cancelNoPaymentCheckout } from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
+import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, NO_PAYMENT_POINTS_REVISION } from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
 import { handleRewardCheckoutEvent } from '../../base44/functions/stripeWebhook/rewardWebhook.js';
 import * as ledger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 import { readRewardCheckoutRecovery, cancelRewardCheckoutRecovery } from '../../src/lib/rewardCheckoutRecovery.js';
@@ -22,7 +22,7 @@ const matches = (row, query) => Object.entries(query).every(([key, value]) => {
   }
   return row[key] === value;
 });
-function fixture() {
+function fixture({ directPoints = false, mixedPoints = false } = {}) {
   const schedule = { assigned_delivery_date: '2026-09-12', assigned_production_day: '2026-09-11',
     assigned_delivery_window_start: '12:00', assigned_delivery_window_end: '15:00', delivery_window_label: 'Saturday 12 PM - 3 PM' };
   const tier = { id: 'vip-test', is_active: true, reward_type: 'vip_box', points_required: 6000, title: 'VIP Box' };
@@ -41,11 +41,33 @@ function fixture() {
   const metadata = { checkout_version: '3.0_embedded', checkout_mode: 'account', customer_email: email,
     order_number: data.order_number, reward_reservation_id: data.reward_reservation_id,
     checkout_context_hash: data.checkout_context_hash, is_test_order: 'false', internal_sandbox_checkout: 'false' };
+  if (directPoints) {
+    data.items.forEach(item => { item.price = 13; delete item.reward_id; delete item.isFreeReward; });
+    Object.assign(data, { subtotal: 78, total_discounts: 78, points_used: 7800, points_discount: 78,
+      reward_discount: 0, subscription_discount: 0, active_reward: null,
+      reward_reservation_points: 7800, reward_reservation_id: `points:${'a'.repeat(64)}`,
+      points_reservation_revision: ledger.DIRECT_POINTS_CHECKOUT_REVISION,
+      no_payment_points_revision: NO_PAYMENT_POINTS_REVISION });
+    delete data.reward_checkout;
+    Object.assign(pricing, { reservation_points: 7800, points_used: 7800 });
+    metadata.reward_reservation_id = data.reward_reservation_id;
+  }
+  if (mixedPoints) {
+    data.items.forEach(item => Object.assign(item, { catalog_unit_price: 13, reward_discount_amount: 26 }));
+    data.items.push({ product_id: 'synthetic-OASIS', title: 'OASIS', quantity: 1, price: 13, size: '12 oz', category: 'juice' });
+    Object.assign(quote, { items: structuredClone(data.items), catalog_subtotal: 91, subtotal: 13,
+      reward_item_discount: 78, reward_discount: 0, merchandise_total: 13 });
+    Object.assign(data, { subtotal: 13, total_discounts: 13, points_used: 1300, points_discount: 13,
+      reward_discount: 0, subscription_discount: 0, reward_reservation_points: 7300 });
+    Object.assign(pricing, { points_used: 1300, points_discount: 13, reservation_points: 7300 });
+  }
   const rows = { Order: [], CheckoutSession: [], RewardTier: [tier],
     BagReturn: [{ id: 'synthetic-bag', customer_email: email, order_id: 'pending', verification_status: 'requested' }],
     UserPoints: [{ id: 'points', customer_email: email, total_points: 7000, lifetime_points: 7000,
       redeemed_points: 0, reserved_points: 0, points_history: [], reward_reservations: [] }],
     LoyaltyMember: [{ id: 'member', email, total_points: 7000, reserved_points: 0 }], LoyaltyTransaction: [] };
+  if (directPoints) { rows.RewardTier = []; rows.UserPoints[0].total_points = 9000; rows.UserPoints[0].lifetime_points = 9000; }
+  if (mixedPoints) { rows.UserPoints[0].total_points = 9000; rows.UserPoints[0].lifetime_points = 9000; }
   const effects = []; const faults = {}; const entities = {};
   let session; let parameters; let reserveCalls = 0;
   for (const [name, values] of Object.entries(rows)) entities[name] = {
@@ -119,7 +141,7 @@ function fixture() {
     return { data };
   };
   const base44 = { asServiceRole: { entities, functions: { invoke } } };
-  const options = { base44, stripe, data, metadata, quote, pricing, secret };
+  const options = { base44, stripe, data, metadata, quote: directPoints ? null : quote, pricing, secret };
   const complete = () => { session.status = 'complete'; session.payment_status = 'no_payment_required'; };
   const webhook = type => handleRewardCheckoutEvent({ entities, stripe,
     event: { id: 'evt_SYNTHETIC', created: 1788865200, livemode: true, type, data: { object: structuredClone(session) } },
@@ -326,5 +348,94 @@ await test('provider creation errors do not leak provider text or create records
 await test('unverified foreign provider identity never exposes a recovery hint', async () => {
   const f = fixture(); f.faults.createdPatch = { customer_email: 'foreign@example.test' };
   assert.equal((await f.run()).reward_checkout_recovery, undefined);
+});
+await test('direct points prepare, replay, settle and complete replay preserve actual items and consume once', async () => {
+  const f = fixture({ directPoints: true }); const result = await f.run(); assert.ok(result.clientSecret, JSON.stringify(result));
+  assert.equal(f.session().metadata.no_payment_points, '7800'); assert.equal(f.rows.UserPoints[0].reserved_points, 7800);
+  assert.equal(f.rows.LoyaltyTransaction.length, 0); assert.ok(f.rows.Order[0].items.every(item => item.price === 13));
+  assert.equal((await f.run()).clientSecret, result.clientSecret); f.complete();
+  assert.equal((await f.webhook('checkout.session.completed')).body.error, 'reward_checkout_handoff_pending');
+  assert.equal(f.rows.UserPoints[0].total_points, 1200); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+  assert.equal(f.rows.Order[0].reward_settlement.points_redeemed, 7800); assert.equal(f.rows.Order[0].payment_captured, false);
+  assert.equal((await f.run()).checkoutCompleted, true); await f.webhook('checkout.session.completed');
+  assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+});
+await test('concurrent direct points preparation has one writer and only one hold', async () => {
+  const f = fixture({ directPoints: true }); const results = await Promise.all([f.run(), f.run()]);
+  assert.ok(results.some(result => result.clientSecret)); assert.equal(f.rows.Order.length, 1);
+  assert.equal(f.rows.CheckoutSession.length, 1); assert.equal(f.rows.UserPoints[0].reserved_points, 7800);
+  assert.equal(f.effects.includes('Stripe.expire'), false);
+});
+for (const mode of ['explicit', 'natural', 'partial-create', 'lost-hold-response']) await test(`direct points ${mode} cancellation releases once without a debit`, async () => {
+  const f = fixture({ directPoints: true });
+  if (mode === 'partial-create') f.faults['CheckoutSession.create'] = true;
+  if (mode === 'lost-hold-response') f.faults.lostReserve = true;
+  const started = await f.run();
+  if (mode === 'natural') { f.session().status = 'expired'; assert.equal((await f.webhook('checkout.session.expired')).status, 200); }
+  else if (mode !== 'partial-create') assert.equal((await f.cancel()).ok, true);
+  else { assert.equal(started.clientSecret, undefined); assert.equal(started.checkout_session_expired, true); }
+  assert.equal(f.rows.UserPoints[0].reserved_points, 0); assert.equal(f.rows.UserPoints[0].total_points, 9000);
+  assert.equal(f.rows.LoyaltyTransaction.length, 0); assert.equal((await f.cancel()).ok, true);
+  assert.equal(f.rows.UserPoints[0].reward_reservations.length, 1);
+});
+await test('natural expiry before direct points hold persists a tombstone against delayed reserve', async () => {
+  const f = fixture({ directPoints: true }); f.faults.ledger = true;
+  assert.equal((await f.run()).clientSecret, undefined); f.faults.ledger = false;
+  f.session().status = 'expired'; assert.equal((await f.webhook('checkout.session.expired')).status, 200);
+  const hold = f.rows.UserPoints[0].reward_reservations[0]; assert.equal(hold.status, 'released');
+  await assert.rejects(() => ledger.reserveRewardPoints(f.options.base44.asServiceRole.entities, email,
+    { ...hold, status: undefined }), /reservation_already_released/);
+  assert.equal(f.rows.UserPoints[0].reserved_points, 0); assert.equal(f.rows.Order.length, 0);
+});
+for (const [name, change] of [
+  ['wrong value', f => { f.data.points_discount = 77; }],
+  ['wrong cost', f => { f.data.reward_reservation_points = 1; }],
+  ['nonzero fee', f => { f.data.delivery_fee = 1; }],
+  ['wrong subtotal', f => { f.data.subtotal = 77; }],
+  ['hidden credits', f => { f.data.credits_discount = 1; }],
+  ['birthday', f => { f.data.items[0].isBirthdayReward = true; }],
+  ['fake item', f => { f.data.items[0].product_id = '__free_fake'; }],
+  ['tier selection', f => { f.data.active_reward = f.quote.active_reward; }],
+  ['undeclared subscription discount', f => { f.data.subscription_discount = 5; }],
+  ['stale revision', f => { f.data.no_payment_points_revision = 'old'; }],
+]) await test(`direct points ${name} cannot create a provider Session or hold`, async () => {
+  const f = fixture({ directPoints: true }); change(f); await assert.rejects(f.run);
+  assert.deepEqual(f.effects, []); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+});
+for (const [name, change] of [
+  ['lost snapshot', f => { f.rows.CheckoutSession.length = 0; }],
+  ['changed value', f => { f.rows.CheckoutSession[0].checkout_data.points_discount = 77; }],
+  ['changed provider cost', f => { f.session().metadata.no_payment_points = '1'; }],
+  ['changed items', f => { f.rows.Order[0].items[0].quantity = 3; }],
+]) await test(`direct points ${name} cannot consume or mark an order paid`, async () => {
+  const f = fixture({ directPoints: true }); await f.run(); f.complete(); change(f);
+  assert.equal((await f.webhook('checkout.session.completed')).status, 503);
+  assert.equal(f.rows.UserPoints[0].total_points, 9000); assert.equal(f.rows.UserPoints[0].reserved_points, 7800);
+  assert.equal(f.rows.LoyaltyTransaction.length, 0); assert.equal(f.rows.Order[0].payment_status, 'pending');
+});
+await test('mixed tier and points prepare, settle and replay with a single combined reservation', async () => {
+  const f = fixture({ mixedPoints: true }); const result = await f.run();
+  assert.ok(result.clientSecret, JSON.stringify(result)); assert.equal(f.rows.UserPoints[0].reserved_points, 7300);
+  assert.equal(f.rows.Order[0].items.reduce((sum, item) => sum + item.quantity, 0), 7);
+  assert.equal((await f.run()).clientSecret, result.clientSecret); f.complete();
+  assert.equal((await f.webhook('checkout.session.completed')).body.error, 'reward_checkout_handoff_pending');
+  assert.equal(f.rows.UserPoints[0].total_points, 1700); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+  assert.equal(f.rows.Order[0].reward_settlement.points_redeemed, 7300);
+  assert.equal((await f.run()).checkoutCompleted, true); await f.webhook('checkout.session.completed');
+  assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+});
+await test('mixed tier and points explicit cancellation releases both portions without a debit', async () => {
+  const f = fixture({ mixedPoints: true }); await f.run(); assert.equal((await f.cancel()).ok, true);
+  assert.equal(f.rows.UserPoints[0].reserved_points, 0); assert.equal(f.rows.UserPoints[0].total_points, 9000);
+  assert.equal(f.rows.LoyaltyTransaction.length, 0); assert.equal((await f.cancel()).ok, true);
+});
+for (const [name, change] of [
+  ['wrong points value', f => { f.data.points_discount = 12; }],
+  ['wrong catalog value', f => { f.quote.catalog_subtotal = 90; }],
+  ['hidden credit', f => { f.data.credits_discount = 1; }],
+  ['foreign reward line', f => { f.data.items[0].reward_id = 'foreign'; }],
+]) await test(`mixed tier and points ${name} stops before provider or ledger writes`, async () => {
+  const f = fixture({ mixedPoints: true }); change(f); await assert.rejects(f.run);
+  assert.deepEqual(f.effects, []); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
 });
 console.log(`No-payment checkout start: ${count}/${count} passed. Local synthetic I/O only; not live/provider-release evidence.`);

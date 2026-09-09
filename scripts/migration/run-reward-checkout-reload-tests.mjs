@@ -122,6 +122,21 @@ for (const state of ['open', 'complete', 'expired']) await test(`real handler re
   assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC_ONLY|buyer@|6000|a{64}|secret/);
   assert.deepEqual(f.calls, ['ledger.read', 'provider.read']);
 });
+for (const state of ['open', 'complete', 'expired']) await test(`direct points ${state} recovery finds its points-prefixed hold without writes`, async () => {
+  const f = backendFixture({ holdPatch: { reservation_id: `points:${hash}` },
+    metadataPatch: { reward_reservation_id: `points:${hash}`, no_payment_points: '6000' },
+    sessionPatch: { status: state, payment_status: state === 'complete' ? 'no_payment_required' : 'unpaid' } });
+  const response = await f.handle(); const result = await response.json();
+  assert.equal(response.status, 200); assert.deepEqual(result.reward_checkout_recovery, hint);
+  assert.equal(result.state, state); assert.equal(result.writes_performed, false);
+  assert.deepEqual(f.calls, ['ledger.read', 'provider.read']);
+});
+for (const no_payment_points of [undefined, '1', '6000.5', '0', '06000']) await test(`direct points malformed or changed provider cost ${no_payment_points} cannot return a recovery hint`, async () => {
+  const f = backendFixture({ holdPatch: { reservation_id: `points:${hash}` },
+    metadataPatch: { reward_reservation_id: `points:${hash}`, no_payment_points } });
+  const response = await f.handle(); assert.notEqual(response.status, 200);
+  assert.equal((await response.json()).reward_checkout_recovery, undefined);
+});
 for (const [name, options] of [
   ['missing hold', { missingHold: true }], ['duplicate hold', { duplicateHold: true }],
   ['duplicate account', { duplicateBalance: true }], ['database failure', { readFailure: true }],
@@ -271,5 +286,29 @@ await test('source persists before provider invocation and does not redirect an 
     'The new preflight is read-only; it must never move the real payment before durable recovery storage');
   assert.match(submission, /items.length === 0 && !checkoutStartLocked/);
   assert.match(submission, /forgetRewardAttempt\(\);\s*checkoutIdempotencyKey.current = crypto.randomUUID/);
+});
+await test('actual pre-request recovery selection covers both tier rewards and direct points, not paid/guest orders', async () => {
+  const tree = ts.createSourceFile('Checkout.jsx', checkoutSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+  let selection;
+  function visit(node) {
+    if (ts.isIfStatement(node) && node.expression.getText(tree) === '!isGuestCheckout && (activeReward || pointsUsed > 0) && totalBeforePromotion === 0') selection = node.getText(tree);
+    ts.forEachChild(node, visit);
+  }
+  visit(tree); assert.ok(selection);
+  for (const [activeReward, pointsUsed, totalBeforePromotion, isGuestCheckout, expected] of [
+    [null, 3900, 0, false, 'reward'], [{ id: 'tier' }, 0, 0, false, 'reward'],
+    [null, 3900, 3.99, false, 'paid'], [null, 0, 0, false, 'paid'], [null, 3900, 0, true, 'paid'],
+  ]) {
+    const calls = []; const inFlight = { current: true }; const user = { id: owner, email };
+    await vm.runInNewContext(`(async () => { ${selection} })()`, {
+      activeReward, pointsUsed, totalBeforePromotion, isGuestCheckout, user, normalizedCustomerEmail: email,
+      checkoutIdempotencyKey: { current: attemptKey }, localStorage: storage(), guestOrderToken: { current: null },
+      rewardAttemptTrackedRef: { current: false }, paidAttemptRef: { current: null }, checkoutAttemptInFlightRef: inFlight,
+      checkoutCustomerIdentityRef: { current: `${owner}:${email}` },
+      saveRewardCheckoutAttempt: () => calls.push('reward'), savePaidCheckoutAttempt: async () => { calls.push('paid'); return {}; },
+      clearPaidCheckoutAttempt: () => { throw new Error('Unexpected clear'); },
+    });
+    assert.deepEqual(calls, [expected]);
+  }
 });
 console.log(`Reward reload recovery: ${count}/${count} passed; actual handlers/effect, simulated storage/provider, no production writes.`);

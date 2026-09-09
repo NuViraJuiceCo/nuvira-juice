@@ -44,7 +44,8 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
   let lostPointsAck = false;
   let ledgerServed;
   const match = (row, query) => Object.entries(query).every(([key, value]) => key === '$or' ? value.some(q => match(row, q))
-    : value && typeof value === 'object' && '$exists' in value ? (row[key] !== undefined) === value.$exists : row[key] === value);
+    : value && typeof value === 'object' && '$exists' in value ? (row[key] !== undefined) === value.$exists
+    : value && typeof value === 'object' && '$ne' in value ? row[key] !== value.$ne : row[key] === value);
   for (const [name, values] of Object.entries(rows)) entities[name] = {
     filter: async query => {
       if (name === 'Product' && failCatalog) throw new Error('SYNTHETIC_ONLY catalog outage');
@@ -210,6 +211,33 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
 }
 let passed = 0;
 async function test(name, run) { await run(); passed++; console.log('PASS', name); }
+await test('actual mixed tier/points zero-cash entrypoint uses catalog pricing and a combined real ledger hold', async () => {
+  const tier = { id: 'vip', title: 'VIP', reward_type: 'vip_box', points_required: 6000, is_active: true };
+  const ctx = fixture({ realLedger: true, seed: { RewardTier: [tier],
+    UserPoints: [{ id: 'balance-test', customer_email: email, total_points: 9000, lifetime_points: 9000,
+      reserved_points: 0, reward_reservations: [] }],
+    Subscription: [{ customer_email: email, status: 'active', plan_id: 'plan' }],
+    SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }],
+  } });
+  const request = { active_reward: tier, points_used: 1170, points_discount: 11.7,
+    items: [{ ...body.items[0], quantity: 6, price: 0, reward_id: 'vip', isFreeReward: true },
+      { ...body.items[0], quantity: 1, price: 1 }] };
+  const result = await (await ctx.handle(request)).json();
+  assert.equal(result.checkoutKind, 'reward_no_payment', JSON.stringify(result));
+  assert.equal(ctx.effects.includes('PI.create'), false); assert.equal(ctx.rows.UserPoints[0].reserved_points, 7170);
+  const data = ctx.rows.CheckoutSession[0].checkout_data;
+  assert.equal(data.subtotal, 13); assert.equal(data.subscription_discount, 1.3); assert.equal(data.points_discount, 11.7);
+  assert.equal(data.reward_checkout.catalog_subtotal, 91); assert.equal(data.items.at(-1).price, 13);
+  assert.equal(data.items.reduce((sum, item) => sum + item.quantity, 0), 7);
+  assert.equal((await (await ctx.handle(request)).json()).clientSecret, result.clientSecret);
+  Object.assign(ctx.session(), { status: 'complete', payment_status: 'no_payment_required' });
+  const settled = await ctx.runWebhook({ type: 'checkout.session.completed', id: 'evt_MIXED_POINTS_ZERO',
+    created: 1788901200, livemode: true, data: { object: ctx.session() } });
+  assert.equal(settled.status, 503); // This fixture intentionally has no handoff provider credentials.
+  assert.equal(ctx.rows.Order[0].reward_settlement.points_redeemed, 7170);
+  assert.equal(ctx.rows.UserPoints[0].total_points, 1830); assert.equal(ctx.rows.UserPoints[0].reserved_points, 0);
+  assert.equal(ctx.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+});
 for (const guest of [false, true]) {
   await test(`${guest ? 'guest' : 'member'} ignores submitted subtotal and restores catalog metadata before payment`, async () => {
     const ctx = fixture({ guest }); Object.assign(ctx.rows.Product[0], {
@@ -668,12 +696,33 @@ await test('unsecured direct-points attempts stop before provider and record wri
     assert.equal(ctx.effects.length, 0);
   }
 });
-await test('points-only zero-cash checkout never becomes a fabricated fifty-cent payment', async () => {
+await test('actual points-only zero-cash entrypoint creates a true Session with the actual ledger, never a fifty-cent payment', async () => {
   const ctx = fixture({ realLedger: true, seed: {
     Subscription: [{ customer_email: email, status: 'active', plan_id: 'plan' }], SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }],
   } });
   const result = await (await ctx.handle({ points_used: 3510, points_discount: 35.1 })).json();
-  assert.equal(result.error_code, 'POINTS_BALANCE_REQUIRES_REVIEW'); assert.equal(ctx.effects.length, 0);
+  assert.equal(result.checkoutKind, 'reward_no_payment', JSON.stringify(result));
+  assert.equal(result.effectiveTotal, 0); assert.match(result.clientSecret, /^cs_/);
+  assert.equal(ctx.intent(), undefined); assert.equal(ctx.effects.includes('PI.create'), false);
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 3510);
+  const data = ctx.rows.CheckoutSession[0].checkout_data;
+  assert.equal(data.subscription_discount, 3.9); assert.equal(data.points_discount, 35.1);
+  assert.equal(data.subtotal, 39); assert.equal(data.total_discounts, 39);
+  assert.equal(data.no_payment_points_revision, noPayment.NO_PAYMENT_POINTS_REVISION);
+  assert.equal(ctx.session().metadata.no_payment_points, '3510'); assert.ok(Object.keys(ctx.session().metadata).length <= 50);
+  const replay = await (await ctx.handle({ points_used: 3510, points_discount: 35.1 })).json();
+  assert.equal(replay.clientSecret, result.clientSecret); assert.equal(ctx.rows.Order.length, 1);
+  Object.assign(ctx.session(), { status: 'complete', payment_status: 'no_payment_required' });
+  const completed = await ctx.runWebhook({ type: 'checkout.session.completed', id: 'evt_POINTS_ZERO', created: 1788901200,
+    livemode: true, data: { object: ctx.session() } });
+  // This fixture intentionally has no fulfillment/provider credentials, so a
+  // points receipt cannot be confused with full handoff completion.
+  assert.equal(completed.status, 503); assert.equal(ctx.rows.Order[0].payment_captured, false);
+  assert.equal(ctx.rows.Order[0].reward_settlement.points_redeemed, 3510);
+  assert.equal(ctx.rows.UserPoints[0].total_points, 3490); assert.equal(ctx.rows.UserPoints[0].reserved_points, 0);
+  assert.equal(ctx.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+  const recovery = await (await ctx.handle({ mode: 'read_reward_checkout_recovery' })).json();
+  assert.equal(recovery.state, 'complete'); assert.equal(recovery.writes_performed, false);
 });
 for (const guest of [false, true]) {
   for (const state of ['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing', 'requires_capture', 'succeeded', 'canceled']) {

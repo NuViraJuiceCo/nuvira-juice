@@ -2,12 +2,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
 import Stripe from 'npm:stripe@14.21.0';
 import { applyPointsTransaction, syncPointsMemberProjection, readPointsAccount, reserveRewardPoints,
   settleRewardPoints, recordCanceledPointsReservation, verifyDirectPointsCheckoutContext,
-  PointsAccountError, POINTS_ACCOUNT_REVISION } from './pointsAccount.js';
+  PointsAccountError, POINTS_ACCOUNT_REVISION, verifiedNoPaymentPointsMetadata,
+  verifiedNoPaymentTierPointsSnapshot } from './pointsAccount.js';
 
 type AnyRecord = Record<string, any>;
 
 const VALID_TYPES = new Set(['earned', 'bonus', 'redeemed', 'reversal', 'adjustment', 'migration']);
-const LOYALTY_LEDGER_RUNTIME_REVISION = '2026-09-08.refund-manual-review-v2';
+const LOYALTY_LEDGER_RUNTIME_REVISION = '2026-09-09.no-payment-direct-points-v3';
 
 async function rewardPaymentAction(base44: any, body: AnyRecord, action: string, actor: AnyRecord) {
   const customerEmail = email(body.customer_email);
@@ -47,8 +48,13 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
   const expired = payment.status === (noPayment ? 'expired' : 'canceled');
   const entities = base44.asServiceRole.entities;
   const directOnly = /^points:[a-f0-9]{64}$/.test(metadata.reward_reservation_id);
-  if (directOnly && noPayment) return Response.json({ error: 'direct_points_payment_required' }, { status: 409 });
-  const verifiedDirectPoints = directOnly ? await verifyDirectPointsCheckoutContext(entities, payment, customerEmail) : null;
+  // During preparation the ledger CAS owns creation of the protected records.
+  // The exact cost may come from freshly retrieved server-issued metadata for
+  // that hold only. Consumption additionally requires the persisted snapshot.
+  const verifiedDirectPoints = directOnly ? (noPayment
+    ? verifiedNoPaymentPointsMetadata(metadata)
+    : await verifyDirectPointsCheckoutContext(entities, payment, customerEmail)) : null;
+  if (directOnly && noPayment && complete) await verifyDirectPointsCheckoutContext(entities, payment, customerEmail);
   if (action === 'reserve_reward_checkout') {
     const directPoints = body.direct_points ?? 0;
     const rewards = directOnly ? [] : await entities.RewardTier.filter({ id: body.reward_id, is_active: true }, undefined, 2);
@@ -89,7 +95,8 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
   if (!hold && directOnly && expired) {
     const canceled = await recordCanceledPointsReservation(entities, customerEmail, {
       reservation_id: metadata.reward_reservation_id, context_hash: metadata.checkout_context_hash,
-      payment_intent_id: payment.id, points: verifiedDirectPoints, provider_status: 'canceled',
+      [providerField]: payment.id, points: verifiedDirectPoints, provider_status: payment.status,
+      ...(noPayment ? { no_payment_required: true } : {}),
     });
     hold = canceled.reservation;
   }
@@ -118,10 +125,11 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
         || context?.total !== 0 || context?.checkout_context_hash !== metadata.checkout_context_hash
         || context?.reward_reservation_id !== metadata.reward_reservation_id
         || context?.reward_reservation_points !== hold.points
-        || context?.reward_checkout?.revision !== '2026-09-08.reward-checkout-v1'
+        || (!directOnly && context?.reward_checkout?.revision !== '2026-09-08.reward-checkout-v1')
         || !Array.isArray(context?.items) || !context.items.length) {
         return Response.json({ error: 'no_payment_checkout_context_missing' }, { status: 409 });
       }
+      if (!directOnly && context.points_used > 0) verifiedNoPaymentTierPointsSnapshot(context, metadata);
     }
     const idempotencyKey = `${noPayment ? 'stripe_checkout' : 'stripe_payment'}:${payment.id}:redeemed`;
     const existing = await entities.LoyaltyTransaction.filter({ idempotency_key: idempotencyKey }, '-created_date', 20);

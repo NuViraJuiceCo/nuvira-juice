@@ -3,6 +3,9 @@
 // Release requires an isolated Base44 conditional-write contract test in addition
 // to local fixtures. This module does not claim multi-record transactions.
 import { birthdayReservationState, reserveBirthdayOperation, settleBirthdayOperation } from '../../shared/birthdayEntitlement.js';
+import { verifiedNoPaymentPointsMetadata, verifiedNoPaymentPointsSnapshot } from '../../shared/noPaymentPoints.js';
+export { verifiedNoPaymentPointsMetadata };
+export { verifiedNoPaymentTierPointsSnapshot } from '../../shared/noPaymentPoints.js';
 export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-refund-manual-review-v6';
 export const DIRECT_POINTS_CHECKOUT_REVISION = '2026-09-08.direct-points-v1';
 
@@ -65,8 +68,9 @@ export async function readPointsAccount(entities, customerEmail, { initialize = 
 
 export async function verifyDirectPointsCheckoutContext(entities, payment, customerEmail) {
   const meta = payment.metadata || {};
+  const noPayment = /^cs_[A-Za-z0-9_]+$/.test(payment.id || '');
   const sessions = await entities.CheckoutSession.filter({ stripe_session_id: payment.id }, undefined, 2);
-  const orders = await entities.Order.filter({ stripe_payment_intent_id: payment.id }, undefined, 2);
+  const orders = await entities.Order.filter({ [noPayment ? 'stripe_checkout_session_id' : 'stripe_payment_intent_id']: payment.id }, undefined, 2);
   if (!Array.isArray(sessions) || sessions.length !== 1 || !sessions[0]?.id
     || !Array.isArray(orders) || orders.length !== 1 || !orders[0]?.id) fail('points_checkout_context_missing');
   const session = sessions[0]; const order = orders[0]; const data = session.checkout_data;
@@ -75,6 +79,21 @@ export async function verifyDirectPointsCheckoutContext(entities, payment, custo
     ? Math.round(value * 100) : NaN;
   for (const row of [session, order, data]) {
     if (!row || row.customer_email !== customerEmail || row.order_number !== meta.order_number) fail('points_checkout_context_mismatch');
+  }
+  if (noPayment) {
+    const points = verifiedNoPaymentPointsSnapshot(data, meta);
+    if (payment.livemode !== true || payment.mode !== 'payment' || payment.currency !== 'usd'
+      || payment.amount_total !== 0 || payment.payment_intent !== null
+      || !['open', 'complete', 'expired'].includes(payment.status)
+      || !['unpaid', 'no_payment_required'].includes(payment.payment_status)
+      || (payment.status === 'complete' && payment.payment_status !== 'no_payment_required')
+      || payment.customer_email !== customerEmail || meta.customer_email !== customerEmail
+      || order.total !== 0 || order.payment_captured !== false || order.stripe_payment_intent_id
+      || order.is_test_order === true || !same(order.items, data.items)
+      || ['canceled', 'cancelled', 'failed', 'refunded'].includes(order.status)
+      || ['refunded', 'partially_refunded', 'failed'].includes(order.payment_status)
+      || Number(order.amount_refunded || 0) > 0) fail('points_checkout_context_mismatch');
+    return points;
   }
   if (!/^points:[a-f0-9]{64}$/.test(meta.reward_reservation_id || '')
     || !/^[a-f0-9]{64}$/.test(meta.checkout_context_hash || '')
@@ -278,21 +297,24 @@ export async function settleBirthdayGift(entities, customerEmail, request, now =
 // context first. Persist that outcome so an older provider read cannot re-hold.
 export async function recordCanceledPointsReservation(entities, customerEmail, request) {
   const points = integer(request.points);
-  if (request.provider_status !== 'canceled' || !points
+  const noPayment = Boolean(request.checkout_session_id);
+  const providerField = noPayment ? 'checkout_session_id' : 'payment_intent_id';
+  if (request.provider_status !== (noPayment ? 'expired' : 'canceled') || !points
     || !/^points:[a-f0-9]{64}$/.test(request.reservation_id || '')
     || !/^[a-f0-9]{64}$/.test(request.context_hash || '')
-    || !/^pi_[a-zA-Z0-9_]+$/.test(request.payment_intent_id || '')
-    || request.checkout_session_id) fail('confirmed_points_cancellation_required');
+    || !(noPayment ? /^cs_[a-zA-Z0-9_]+$/ : /^pi_[a-zA-Z0-9_]+$/).test(request[providerField] || '')
+    || (noPayment && (request.payment_intent_id || request.no_payment_required !== true))) fail('confirmed_points_cancellation_required');
   return mutate(entities, customerEmail, (row, state) => {
     const existing = state.holds.find(hold => hold.reservation_id === request.reservation_id);
     if (existing) {
       if (existing.points !== points || existing.context_hash !== request.context_hash
-        || existing.payment_intent_id !== request.payment_intent_id || existing.checkout_session_id) fail('reservation_context_conflict');
+        || (existing.payment_intent_id ?? undefined) !== (request.payment_intent_id ?? undefined)
+        || (existing.checkout_session_id ?? undefined) !== (request.checkout_session_id ?? undefined)) fail('reservation_context_conflict');
       if (existing.status !== 'released') fail('reservation_outcome_conflict');
       return { reservation: existing };
     }
     const reservation = { reservation_id: request.reservation_id, context_hash: request.context_hash,
-      payment_intent_id: request.payment_intent_id, points, status: 'released',
+      [providerField]: request[providerField], points, status: 'released',
       settled_at: new Date().toISOString() };
     return { reservation, patch: { reward_reservations: [...state.holds, reservation] } };
   });

@@ -2,14 +2,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from './firstOrderEligibility.js';
 import { loadRewardCheckoutQuote, loadCatalogCheckoutQuote, priceRewardPayment, priceMemberPayment, reservePaymentReward, RewardCheckoutError, REWARD_CHECKOUT_REVISION, CATALOG_CHECKOUT_REVISION } from './rewardCheckout.js';
-import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, readNoPaymentCheckoutRecovery } from './noPaymentCheckout.js';
+import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, readNoPaymentCheckoutRecovery, NO_PAYMENT_POINTS_REVISION } from './noPaymentCheckout.js';
 import { recoverPaidCheckout, cancelPaidCheckout, PAID_RECOVERY_REVISION } from './paidCheckoutRecovery.js';
 import { creditCents, availableCheckoutCredit, reserveCheckoutCredit, settleCheckoutCredit, CHECKOUT_CREDIT_REVISION, CheckoutCreditError } from '../../shared/checkoutCredit.js';
 import { hasBirthdayCheckout, loadBirthdayCheckoutQuote, readBirthdayCheckoutEligibility, reserveVerifiedBirthdayCheckout, settleVerifiedBirthdayCheckout } from './birthdayCheckout.js';
 import { BirthdayEntitlementError, BIRTHDAY_ENTITLEMENT_REVISION } from '../../shared/birthdayEntitlement.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const CHECKOUT_RECORD_REVISION = '2026-09-08.birthday-bound-payment-v4';
+const CHECKOUT_RECORD_REVISION = '2026-09-09.no-payment-direct-points-v5';
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
 const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
@@ -1599,8 +1599,8 @@ Deno.serve(async (req) => {
 
     // A fully earned order uses Checkout Session completion, not a fabricated
     // minimum PaymentIntent. Delivery charges remain in effectiveTotal.
-    if (rewardQuote && Math.round(effectiveTotal * 100) < 50) {
-      if (effectiveTotal !== 0 || rewardPricing.credits_discount !== 0 || internalSandboxCheckout) {
+    if ((rewardQuote || directPointsRequested) && Math.round(effectiveTotal * 100) < 50) {
+      if (effectiveTotal !== 0 || checkoutPricing.credits_discount !== 0 || birthdayQuote || internalSandboxCheckout) {
         return Response.json({ ok: false, error_code: 'REWARD_BALANCE_REQUIRES_REVIEW',
           error: 'Please review your points or credits selection. We will not add a minimum charge or waive an outstanding balance.',
           writes_performed: false, payment_intent_created: false, order_created: false }, { status: 409 });
@@ -1628,10 +1628,14 @@ Deno.serve(async (req) => {
         is_preorder: false, referral_code: appliedReferralCode, referral_discount: appliedReferralDiscountAmt,
         promotion_code: appliedPromotionCode, promotion_discount_percent: promotion.percent,
         promotion_discount_amount: appliedPromotionDiscountAmt, total_discounts: totalDiscountAmount, discount_codes: discountCodes,
-        points_used: rewardPricing.points_used, points_discount: rewardPricing.points_discount,
-        active_reward: rewardQuote.active_reward, reward_discount: rewardPricing.reward_discount, credits_discount: 0,
-        reward_checkout: rewardQuote, reward_reservation_id: rewardReservationId,
-        reward_reservation_points: rewardPricing.reservation_points, checkout_context_hash: checkoutContextHash,
+        points_used: checkoutPricing.points_used, points_discount: checkoutPricing.points_discount,
+        active_reward: rewardQuote?.active_reward || null, reward_discount: checkoutPricing.reward_discount, credits_discount: 0,
+        subscription_discount: checkoutPricing.subscription_discount,
+        ...(rewardQuote ? { reward_checkout: rewardQuote } : {
+          points_reservation_revision: '2026-09-08.direct-points-v1',
+          no_payment_points_revision: NO_PAYMENT_POINTS_REVISION,
+        }), reward_reservation_id: rewardReservationId,
+        reward_reservation_points: checkoutPricing.reservation_points, checkout_context_hash: checkoutContextHash,
         guest_checkout: false, guest_order_token_hash: null, internal_sandbox_checkout: false, sandbox_test_id: null,
         analytics_measurement_consent: analytics_measurement_consent === 'granted' ? 'granted' : 'denied',
         google_measurement_context: normalizedGoogleMeasurementContext,
@@ -1641,7 +1645,7 @@ Deno.serve(async (req) => {
         health_advisory_version: HEALTH_ADVISORY_VERSION,
       };
       const prepared = await prepareNoPaymentCheckout({ base44, stripe, data, metadata: intentMetadata,
-        quote: rewardQuote, pricing: rewardPricing, secret: rewardInternalSecret });
+        quote: rewardQuote, pricing: checkoutPricing, secret: rewardInternalSecret });
       if ('ok' in prepared && prepared.ok === false) return Response.json(prepared, { status: 503 });
       return Response.json({ ...prepared, publishableKey: Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
         effectiveDeliveryFee, rewardQuote, rewardPricing, checkout_record_revision: CHECKOUT_RECORD_REVISION,
