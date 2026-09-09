@@ -3,6 +3,7 @@ import { readPointsAccount } from '../enrollNewCustomerInLoyalty/pointsAccount.j
 // Pure pricing policy. Callers must load products, rewards and balance from the
 // authenticated customer's server records. This quote never reserves/debits points.
 export const REWARD_CHECKOUT_REVISION = '2026-09-08.reward-checkout-v1';
+export const CATALOG_CHECKOUT_REVISION = '2026-09-08.catalog-checkout-v1';
 const TYPES = new Set(['free_shot', 'free_bottle', 'double_points', 'discount_10pct',
   'bundle_upgrade', 'vip_box', 'discount', 'free_delivery']);
 
@@ -30,6 +31,97 @@ const juice = product => product?.category === 'juice' && /^(12oz|12floz|355ml)$
 const shot = product => product?.category === 'shot' && /^(2oz|2floz|60ml)$/.test(size(product));
 const isEarned = item => item?.isFreeReward === true || Boolean(item?.reward_id)
   || String(item?.product_id || '').startsWith('__free_reward_');
+
+// Catalog rows, not cart/local-storage metadata, establish sale identity and
+// value. Birthday claims need a separate verified annual entitlement; do not
+// silently charge their retail price or accept an unverified zero-price line.
+const isBirthday = item => item?.isBirthdayReward === true || Boolean(item?.birthday_product_id)
+  || String(item?.product_id || '') === '__birthday_reward__';
+function catalogIndex(products) {
+  if (!Array.isArray(products) || products.length >= 250) fail('CATALOG_UNAVAILABLE', 'We could not confirm the product catalog. Please try again.');
+  const byId = new Map();
+  for (const product of products) {
+    if (typeof product?.id !== 'string' || !product.id.trim() || byId.has(product.id)) {
+      fail('CATALOG_UNAVAILABLE', 'We could not confirm the product catalog. Please try again.');
+    }
+    byId.set(product.id, product);
+  }
+  return byId;
+}
+function canonicalBundleSnapshot(product, count) {
+  if (product.bundle_composition === undefined || product.bundle_composition === null) return {};
+  const rows = product.bundle_composition;
+  const seen = new Set();
+  if (!Array.isArray(rows) || rows.length < 1 || rows.length > 100) fail('BUNDLE_COMPOSITION_UNAVAILABLE', 'This bundle needs review before checkout.');
+  const components = rows.map(row => {
+    if (typeof row?.product_id !== 'string' || !/^[A-Za-z0-9._:-]{1,120}$/.test(row.product_id)
+      || seen.has(row.product_id) || typeof row.product_name !== 'string' || !row.product_name.trim()
+      || row.product_name.length > 120) fail('BUNDLE_COMPOSITION_UNAVAILABLE', 'This bundle needs review before checkout.');
+    seen.add(row.product_id);
+    return { product_id: row.product_id, product_name: row.product_name.trim(),
+      quantity: integer(row.quantity, 'BUNDLE_COMPOSITION_UNAVAILABLE', 1, 100) };
+  });
+  if (components.reduce((sum, row) => sum + row.quantity, 0) !== count) {
+    fail('BUNDLE_COMPOSITION_UNAVAILABLE', 'This bundle needs review before checkout.');
+  }
+  return { bundle_composition: components };
+}
+
+export function quoteCatalogCheckout({ items, products, resolveProgram, decorateItem }) {
+  if (!Array.isArray(items) || !items.length || items.length > 50) fail('INVALID_ORDER_ITEMS', 'Please review your cart.');
+  const byId = catalogIndex(products);
+  let subtotalCents = 0; let physicalUnits = 0; let hasBeverages = false;
+  const normalized = items.map(item => {
+    if (isBirthday(item)) fail('BIRTHDAY_REWARD_REQUIRES_VERIFICATION', 'Your birthday reward needs verification before payment. Please return to your cart or contact NuVira support.');
+    if (isEarned(item)) fail('REWARD_SELECTION_REQUIRED', 'Please select your earned reward again before checkout.');
+    const quantity = integer(item?.quantity, 'INVALID_ORDER_ITEMS', 1, 100);
+    const id = item?.product_id;
+    if (typeof id !== 'string' || !id.trim() || id.startsWith('__')) fail('PRODUCT_PRICE_OR_AVAILABILITY_CHANGED', 'A product in your cart is unavailable. Please review your cart.');
+    // A real catalog ID wins even if the request claims to be a program.
+    const catalog = byId.get(id);
+    const program = !catalog && typeof resolveProgram === 'function' ? resolveProgram(item) : null;
+    const product = catalog || program;
+    if (!product || (!program && product.is_available !== true) || typeof product.title !== 'string' || !product.title.trim()) {
+      fail('PRODUCT_PRICE_OR_AVAILABILITY_CHANGED', 'A product in your cart changed or is unavailable. Please review your cart.');
+    }
+    const unitCents = cents(product.price);
+    if (cents(item.price) !== unitCents) {
+      fail('PRODUCT_PRICE_OR_AVAILABILITY_CHANGED', 'A product price changed. Please review the current price in your cart before paying.');
+    }
+    let units = product.category === 'juice' ? 1 : product.category === 'shot' ? 0.5 : 0;
+    if (product.category === 'bundle') units = integer(product.bottles_per_unit ?? product.bottle_count, 'BUNDLE_COUNT_UNAVAILABLE', 1, 100);
+    physicalUnits += units * quantity; hasBeverages ||= units > 0;
+    subtotalCents += unitCents * quantity;
+    const priced = {
+      product_id: product.id || product.product_id, title: product.title.trim(), price: dollars(unitCents), quantity,
+      category: product.category, size: product.size || null, image_url: product.image_url || null,
+      shopify_product_id: product.shopify_product_id || null, shopify_variant_id: product.shopify_variant_id || null,
+      meta_catalog_content_id: product.meta_catalog_content_id || null,
+      ...(product.category === 'bundle' ? { bottles_per_unit: units, ...canonicalBundleSnapshot(product, units) } : {}),
+      ...(program ? { is_program: true, program_key: program.program_key, program_days: program.program_days,
+        program_schedule_version: program.program_schedule_version } : {}),
+    };
+    // Decoration is limited to the existing program-shot linkage. It cannot
+    // restore submitted identity, price, category, bottle count or reward data.
+    const addon = typeof decorateItem === 'function' ? decorateItem(priced, item) : null;
+    if (addon && priced.category === 'shot' && typeof addon.program_addon_for === 'string') {
+      Object.assign(priced, { program_addon_for: addon.program_addon_for,
+        program_addon_days: addon.program_addon_days, program_addon_schedule_version: addon.program_addon_schedule_version });
+    }
+    return priced;
+  });
+  if (!Number.isSafeInteger(subtotalCents)) fail('INVALID_ORDER_TOTAL', 'Your total could not be confirmed.');
+  if (hasBeverages && physicalUnits < 3) fail('ORDER_MINIMUM_NOT_MET', 'Orders need at least 3 juices, 6 shots, or an equivalent mix.');
+  return { revision: CATALOG_CHECKOUT_REVISION, items: normalized, subtotal: dollars(subtotalCents),
+    catalog_subtotal: dollars(subtotalCents), physical_units: physicalUnits };
+}
+
+export async function loadCatalogCheckoutQuote(base44, items, options = {}) {
+  let products;
+  try { products = await base44.asServiceRole.entities.Product.filter({ is_available: true }, 'sort_order', 250); }
+  catch { fail('CATALOG_UNAVAILABLE', 'We could not confirm the product catalog. Please try again.'); }
+  return quoteCatalogCheckout({ items, products, ...options });
+}
 
 export function canonicalReward(reward, requested, availablePoints) {
   if (!requested?.id || !reward?.id || reward.id !== requested.id || reward.is_active !== true
@@ -60,6 +152,7 @@ export function quoteRewardCheckout({ items, products, reward, requestedReward, 
   let rewardItemDiscountCents = 0;
   const earnedProductIds = new Set();
   const normalized = items.map((item) => {
+    if (isBirthday(item)) fail('BIRTHDAY_REWARD_REQUIRES_VERIFICATION', 'Your birthday reward needs verification before payment. Please return to your cart or contact NuVira support.');
     const quantity = integer(item?.quantity, 'INVALID_REWARD_QUANTITY', 1, 100);
     const earned = isEarned(item);
     if (earned && (item.reward_id !== selected.id || typeof item.product_id !== 'string'
@@ -99,7 +192,7 @@ export function quoteRewardCheckout({ items, products, reward, requestedReward, 
       shopify_product_id: product.shopify_product_id || null,
       shopify_variant_id: product.shopify_variant_id || null,
       meta_catalog_content_id: product.meta_catalog_content_id || null,
-      ...(product.category === 'bundle' ? { bottles_per_unit: bottles, bundle_composition: product.bundle_composition || [] } : {}),
+      ...(product.category === 'bundle' ? { bottles_per_unit: bottles, ...canonicalBundleSnapshot(product, bottles) } : {}),
       ...(program ? { is_program: true, program_key: program.program_key, program_days: program.program_days,
         program_schedule_version: program.program_schedule_version } : {}),
       ...(earned ? { reward_id: selected.id, reward_type: selected.reward_type,

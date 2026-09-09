@@ -27,7 +27,7 @@ const option = { option_id: 'synthetic-saturday', production_date: '2026-09-11',
 function fixture({ guest = false, failOrder = false, failSession = false, failCancel = false, failReserve = false,
   failRelease = false, missingId = '', strictStripe = false, seed = {}, noRewardSecret = false, distanceMiles = 2,
   failCredit = false, loseCreditAck = false, ignoreCreditWrite = false,
-  realLedger = false, ignorePointsWrite = false, losePointsAck = false } = {}) {
+  realLedger = false, ignorePointsWrite = false, losePointsAck = false, failCatalog = false } = {}) {
   const rows = { Order: [], CheckoutSession: [], Product: [{ id: 'oasis-test', title: 'OASIS', price: 13,
     category: 'juice', size: '12 oz', is_available: true }], Subscription: [], SubscriptionPlan: [], UserProfile: [],
     RewardTier: [{ id: 'reward-test', title: 'Double Points', reward_type: 'double_points', points_required: 1500, is_active: true }],
@@ -40,7 +40,10 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
   const match = (row, query) => Object.entries(query).every(([key, value]) => key === '$or' ? value.some(q => match(row, q))
     : value && typeof value === 'object' && '$exists' in value ? (row[key] !== undefined) === value.$exists : row[key] === value);
   for (const [name, values] of Object.entries(rows)) entities[name] = {
-    filter: async query => structuredClone(values.filter(row => match(row, query))),
+    filter: async query => {
+      if (name === 'Product' && failCatalog) throw new Error('SYNTHETIC_ONLY catalog outage');
+      return structuredClone(values.filter(row => match(row, query)));
+    },
     list: async () => values,
     create: async data => {
       effects.push(`${name}.create`);
@@ -177,6 +180,86 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
 }
 let passed = 0;
 async function test(name, run) { await run(); passed++; console.log('PASS', name); }
+for (const guest of [false, true]) {
+  await test(`${guest ? 'guest' : 'member'} ignores submitted subtotal and restores catalog metadata before payment`, async () => {
+    const ctx = fixture({ guest }); Object.assign(ctx.rows.Product[0], {
+      image_url: '/fixture-oasis.webp', shopify_product_id: 'fixture-product', shopify_variant_id: 'fixture-variant',
+    });
+    const response = await ctx.handle({ subtotal: 0, total: 0,
+      items: [{ ...body.items[0], title: 'Wrong title', category: 'merchandise', size: '99 oz',
+        image_url: '/wrong.webp', shopify_variant_id: 'wrong', bottles_per_unit: 99 }] });
+    const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+    assert.equal(ctx.intent().amount, 4299);
+    const saved = ctx.rows.CheckoutSession[0].checkout_data;
+    assert.equal(saved.subtotal, 39); assert.equal(saved.items[0].title, 'OASIS');
+    assert.equal(saved.items[0].category, 'juice'); assert.equal(saved.items[0].image_url, '/fixture-oasis.webp');
+    assert.equal(saved.items[0].shopify_variant_id, 'fixture-variant'); assert.equal(saved.items[0].bottles_per_unit, undefined);
+  });
+  for (const [label, patch, code] of [
+    ['lowered unit price', { items: [{ ...body.items[0], price: 1 }] }, 'PRODUCT_PRICE_OR_AVAILABILITY_CHANGED'],
+    ['stale higher unit price', { items: [{ ...body.items[0], price: 15 }] }, 'PRODUCT_PRICE_OR_AVAILABILITY_CHANGED'],
+    ['fabricated bottle count', { items: [{ ...body.items[0], quantity: 1, category: 'bundle', bottles_per_unit: 99 }] }, 'ORDER_MINIMUM_NOT_MET'],
+    ['unknown product', { items: [{ ...body.items[0], product_id: 'absent' }] }, 'PRODUCT_PRICE_OR_AVAILABILITY_CHANGED'],
+  ]) await test(`${guest ? 'guest' : 'member'} rejects ${label} before any preparation write`, async () => {
+    const ctx = fixture({ guest }); const response = await ctx.handle(patch); const result = await response.json();
+    assert.equal(response.status, 409); assert.equal(result.error_code, code);
+    assert.equal(result.clientSecret, undefined); assert.equal(ctx.effects.length, 0);
+    assert.equal(ctx.rows.Order.length, 0); assert.equal(ctx.rows.CheckoutSession.length, 0);
+  });
+  await test(`${guest ? 'guest' : 'member'} catalog preflight is read-only and detects catalog outages`, async () => {
+    for (const failCatalog of [false, true]) {
+      const ctx = fixture({ guest, failCatalog });
+      const response = await ctx.handle({ mode: 'preview_catalog_checkout' }); const result = await response.json();
+      assert.equal(response.status, failCatalog ? 409 : 200);
+      assert.equal(result.ok, !failCatalog); assert.equal(result.preview_only, true);
+      for (const key of ['writes_performed', 'provider_calls_performed', 'payment_intent_created', 'order_created']) assert.equal(result[key], false);
+      assert.equal(ctx.effects.length, 0); assert.equal(ctx.rows.Order.length, 0);
+      if (!failCatalog) { assert.equal(result.quote.subtotal, 39); assert.equal(result.quote.revision, rewards.CATALOG_CHECKOUT_REVISION); }
+      else assert.equal(result.error_code, 'CATALOG_UNAVAILABLE');
+    }
+  });
+  await test(`${guest ? 'guest' : 'member'} Trio uses the catalog count without an invalid empty composition`, async () => {
+    const ctx = fixture({ guest, seed: { Product: [{ id: 'trio', title: 'NuVira Trio', price: 36,
+      category: 'bundle', bottle_count: 3, is_available: true }] } });
+    const response = await ctx.handle({ items: [{ product_id: 'trio', title: 'NuVira Trio', price: 36, quantity: 1 }] });
+    const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+    assert.equal(ctx.intent().amount, 3999);
+    const saved = ctx.rows.CheckoutSession[0].checkout_data.items[0];
+    assert.equal(saved.bottles_per_unit, 3); assert.equal(Object.hasOwn(saved, 'bundle_composition'), false);
+  });
+}
+for (const [key, days, price, bottles] of [['hydration', 2, 104, 8], ['hydration', 3, 144, 12],
+  ['radiance', 2, 104, 8], ['radiance', 3, 144, 12], ['reset', 3, 144, 12]]) {
+  await test(`actual ${key} ${days}-day checkout retains canonical program composition and media`, async () => {
+    const ctx = fixture();
+    const response = await ctx.handle({ items: [{ product_id: `program_${key}_${days}day`, title: 'Wrong program title',
+      price, quantity: 1, category: 'juice', bottles_per_unit: 999, bundle_composition: [], image_url: '/wrong.webp' }] });
+    const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+    const saved = ctx.rows.CheckoutSession[0].checkout_data.items[0];
+    assert.equal(saved.program_key, key); assert.equal(saved.program_days, days); assert.equal(saved.bottles_per_unit, bottles);
+    assert.equal(saved.bundle_composition.reduce((sum, item) => sum + item.quantity, 0), bottles);
+    assert.equal(saved.image_url, `/images/programs/${key}-card.webp`); assert.equal(saved.price, price);
+  });
+}
+await test('program shot add-on lineage survives canonical pricing without accepting a forged price', async () => {
+  const ctx = fixture({ seed: { Product: [{ id: 'shot', title: 'Hydration Shot', category: 'shot', size: '2 oz',
+    price: 6, is_available: true }] } });
+  const response = await ctx.handle({ items: [
+    { product_id: 'program_hydration_2day', title: 'Hydration Program (2-Day)', price: 104, quantity: 1 },
+    { product_id: 'shot', title: 'Hydration Shot', price: 6, quantity: 2, program_addon_for: 'hydration', program_addon_days: 2 },
+  ] });
+  const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+  const saved = ctx.rows.CheckoutSession[0].checkout_data.items[1];
+  assert.equal(saved.program_addon_for, 'hydration'); assert.equal(saved.program_addon_days, 2); assert.equal(saved.price, 6);
+});
+await test('birthday markers are never silently made into a paid or unverified free line', async () => {
+  for (const active_reward of [null, { id: 'reward-test' }]) {
+    const ctx = fixture(); const response = await ctx.handle({ active_reward,
+      items: [{ ...body.items[0], isBirthdayReward: true, birthday_product_id: 'oasis-test' }] });
+    assert.equal(response.status, 409); assert.equal((await response.json()).error_code, 'BIRTHDAY_REWARD_REQUIRES_VERIFICATION');
+    assert.equal(ctx.effects.length, 0);
+  }
+});
 for (const guest of [false, true]) await test(`${guest ? 'guest' : 'member'} persists both records before returning a payment secret`, async () => {
   const ctx = fixture({ guest }); const response = await ctx.handle(); const result = await response.json();
   assert.equal(response.status, 200); assert.ok(result.clientSecret);
@@ -243,6 +326,7 @@ for (const [name, patch, guest] of [
   ['receipt address', { address_line1: '456 Example St' }, false],
 ]) await test(`${name} cannot reuse a prepared payment with stale checkout context`, async () => {
   const ctx = fixture({ guest, strictStripe: true }); await ctx.handle(); ctx.advance();
+  ctx.rows.Product.push({ ...ctx.rows.Product[0], id: 'aura-test', title: 'AURA' });
   const response = await ctx.handle(patch); const result = await response.json();
   assert.equal(response.status, 409); assert.equal(result.error_code, 'CHECKOUT_ATTEMPT_CHANGED');
   assert.equal(result.clientSecret, undefined);

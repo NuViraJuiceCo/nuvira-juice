@@ -8,6 +8,7 @@ import RewardEmbeddedCheckout from '@/components/checkout/RewardEmbeddedCheckout
 import { readRewardCheckoutRecovery, cancelRewardCheckoutRecovery } from '@/lib/rewardCheckoutRecovery';
 import { readRewardCheckoutAttempt, saveRewardCheckoutAttempt, clearRewardCheckoutAttempt } from '@/lib/rewardCheckoutAttempt';
 import { rewardDeliveryMinimumSubtotal } from '@/lib/rewardDeliveryMinimum';
+import { verifyCheckoutCatalog } from '@/lib/checkoutCatalogPreflight';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ChevronDown, Truck, Gift, LockKeyhole } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
@@ -46,6 +47,7 @@ const CHECKOUT_PROCESSING_WATCHDOG_MS = 20000;
 
 const CHECKOUT_START_STAGES = {
   IDLE: 'idle',
+  CHECKING_CART: 'checking_cart',
   SAVING_PROFILE: 'saving_profile',
   SAVING_BAG_RETURN: 'saving_bag_return',
   CREATING_PAYMENT_ATTEMPT: 'creating_payment_attempt',
@@ -186,6 +188,8 @@ function CheckoutFlow() {
       : `nv-checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
   const checkoutAttemptInFlightRef = useRef(false);
+  const checkoutCustomerIdentityRef = useRef('');
+  checkoutCustomerIdentityRef.current = `${user?.id || ''}:${user?.email || ''}`;
   const checkoutStartLockedRef = useRef(false);
   const checkoutWatchdogRef = useRef(null);
   const shippingAnalyticsTrackedRef = useRef(false);
@@ -671,7 +675,7 @@ function CheckoutFlow() {
 
     checkoutAttemptInFlightRef.current = true;
     setCheckoutStartLockedSafely(false);
-    setCheckoutStartStage(CHECKOUT_START_STAGES.SAVING_PROFILE);
+    setCheckoutStartStage(CHECKOUT_START_STAGES.CHECKING_CART);
     setCheckoutStartMessage('');
     setIsSubmitting(true);
     startCheckoutProcessingWatchdog();
@@ -698,6 +702,37 @@ function CheckoutFlow() {
           checkoutAttemptInFlightRef.current = false;
           setIsSubmitting(false);
           toast.error('This address requires route review. Please contact us to arrange delivery.');
+          return;
+        }
+      }
+
+      // Ordinary carts get the same server catalog authority as reward carts.
+      // This read finishes before any profile, bag-return or payment write.
+      if (!activeReward) {
+        const preflightOwner = `${user?.id || ''}:${user?.email || ''}`;
+        const discardObsoletePreflight = () => {
+          // Unmount cleanup has already cleared the in-flight flag. Account
+          // changes must also prevent this old closure from submitting data.
+          if (!checkoutAttemptInFlightRef.current) return true;
+          if (checkoutCustomerIdentityRef.current === preflightOwner) return false;
+          clearCheckoutProcessingWatchdog();
+          checkoutAttemptInFlightRef.current = false;
+          setIsSubmitting(false);
+          return true;
+        };
+        try {
+          await verifyCheckoutCatalog((_name, payload) => base44.functions.invoke('createPaymentIntent', payload), items);
+          if (discardObsoletePreflight()) return;
+        } catch (error) {
+          if (discardObsoletePreflight()) return;
+          clearCheckoutProcessingWatchdog();
+          checkoutAttemptInFlightRef.current = false;
+          setCheckoutStartLockedSafely(false);
+          setCheckoutStartStage(CHECKOUT_START_STAGES.FAILED_BEFORE_PAYMENT_ATTEMPT);
+          setCheckoutStartMessage(error.message);
+          setIsSubmitting(false);
+          toast.error(error.message);
+          // Keep any existing recovery marker and idempotency key untouched.
           return;
         }
       }

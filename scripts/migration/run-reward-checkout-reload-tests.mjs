@@ -253,7 +253,13 @@ await test('a stalled recovery request exits loading without declaring the attem
 });
 await test('source persists before provider invocation and does not redirect an unresolved empty cart', () => {
   const submission = checkoutSource.slice(checkoutSource.indexOf('const handlePlaceOrder = async'));
-  assert.ok(submission.indexOf('saveRewardCheckoutAttempt(') < submission.indexOf("base44.functions.invoke('createPaymentIntent'"));
+  const paymentStage = submission.indexOf('paymentAttemptStarted = true;');
+  assert.ok(paymentStage >= 0);
+  const paymentSubmission = submission.slice(paymentStage);
+  assert.ok(paymentSubmission.indexOf('saveRewardCheckoutAttempt(') >= 0);
+  assert.ok(paymentSubmission.indexOf('saveRewardCheckoutAttempt(') < paymentSubmission.indexOf("base44.functions.invoke('createPaymentIntent'"));
+  assert.ok(submission.indexOf('await verifyCheckoutCatalog(') < paymentStage,
+    'The new preflight is read-only; it must never move the real payment before durable recovery storage');
   assert.match(submission, /items.length === 0 && !checkoutStartLocked/);
   assert.match(submission, /forgetRewardAttempt\(\);\s*checkoutIdempotencyKey.current = crypto.randomUUID/);
 });

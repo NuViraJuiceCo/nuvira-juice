@@ -1,12 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from './firstOrderEligibility.js';
-import { loadRewardCheckoutQuote, priceRewardPayment, priceMemberPayment, reservePaymentReward, RewardCheckoutError, REWARD_CHECKOUT_REVISION } from './rewardCheckout.js';
+import { loadRewardCheckoutQuote, loadCatalogCheckoutQuote, priceRewardPayment, priceMemberPayment, reservePaymentReward, RewardCheckoutError, REWARD_CHECKOUT_REVISION, CATALOG_CHECKOUT_REVISION } from './rewardCheckout.js';
 import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, readNoPaymentCheckoutRecovery } from './noPaymentCheckout.js';
 import { creditCents, availableCheckoutCredit, reserveCheckoutCredit, settleCheckoutCredit, CHECKOUT_CREDIT_REVISION, CheckoutCreditError } from '../../shared/checkoutCredit.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const CHECKOUT_RECORD_REVISION = '2026-09-08.payment-points-reservation-v2';
+const CHECKOUT_RECORD_REVISION = '2026-09-08.catalog-authoritative-payment-v3';
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
 const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
@@ -255,42 +255,25 @@ function guestAccountBenefitsRequested(body) {
 }
 
 async function authoritativeGuestCheckoutItems(base44, requestedItems) {
-  const availableProducts = await base44.asServiceRole.entities.Product.filter(
-    { is_available: true },
-    'sort_order',
-    250,
-  );
-  const productById = Object.fromEntries(
-    availableProducts.map((product) => [String(product?.id || '').trim(), product]),
-  );
-  const resolved = [];
-  for (const requestedItem of requestedItems) {
-    const programKey = programKeyForCheckoutItem(requestedItem);
-    if (programKey) {
-      const programDays = programDaysForCheckoutItem(requestedItem, programKey);
-      const option = programDays ? PROGRAM_ORDER_OPTIONS[programKey]?.[programDays] : null;
-      if (!option || Number(requestedItem?.price) !== option.price) return null;
-      resolved.push(normalizeCheckoutItem({ ...requestedItem, price: option.price }));
-      continue;
-    }
-
-    const productId = String(requestedItem?.product_id || '').trim();
-    if (!productId || productId.startsWith('__')) return null;
-    const product = productById[productId];
-    if (!product) return null;
-    const authoritativePrice = Number(product.price);
-    if (!Number.isFinite(authoritativePrice) || authoritativePrice < 0) return null;
-    resolved.push(normalizeCheckoutItem({
-      ...requestedItem,
-      product_id: product.id,
-      title: product.title,
-      price: authoritativePrice,
-      image_url: product.image_url || requestedItem.image_url || null,
-      category: product.category,
-      size: product.size || requestedItem.size || null,
-    }));
-  }
-  return resolved;
+  // Shared by guests and ordinary members; the historical helper name is kept
+  // for compatibility with existing guest checkout contract coverage.
+  const quote = await loadCatalogCheckoutQuote(base44, requestedItems, {
+    resolveProgram: item => {
+      const match = String(item?.product_id || '').match(/^program[_-](hydration|radiance|reset)(?:[_-]([23])day)?$/);
+      if (!match) return null;
+      const key = match[1];
+      const days = Number(match[2] || item.program_days || 3);
+      if (item.program_key && item.program_key !== key) return null;
+      if (item.program_days && Number(item.program_days) !== days) return null;
+      const option = PROGRAM_ORDER_OPTIONS[key]?.[days];
+      if (!option) return null;
+      return normalizeCheckoutItem({ product_id: `program_${key}_${days}day`, program_key: key, program_days: days,
+        price: option.price, quantity: item.quantity, image_url: `/images/programs/${key}-card.webp` });
+    },
+    decorateItem: (priced, requested) => normalizeCheckoutItem({ ...priced,
+      program_addon_for: requested.program_addon_for, program_addon_days: requested.program_addon_days }),
+  });
+  return quote.items;
 }
 
 function sanitizeGuestConfirmationOrder(order) {
@@ -940,7 +923,7 @@ Deno.serve(async (req) => {
 
     const {
       mode, discount_code, eligible_subtotal,
-      items, subtotal, delivery_fee,
+      items, delivery_fee,
       fulfillment_type, delivery_address, contact_phone,
       customer_email, customer_name: checkoutCustomerName,
       customer_first_name: checkoutFirstName,
@@ -972,6 +955,7 @@ Deno.serve(async (req) => {
     if (mode === 'checkout_runtime_status') {
       if (authenticatedUser?.role !== 'admin') return Response.json({ error: 'forbidden' }, { status: 403 });
       return Response.json({ ok: true, mode, checkout_record_revision: CHECKOUT_RECORD_REVISION,
+        catalog_quote_revision: CATALOG_CHECKOUT_REVISION,
         reward_quote_revision: REWARD_CHECKOUT_REVISION, reward_payment_integration_complete: false,
         writes_performed: false, provider_calls_performed: false, payment_intent_created: false, order_created: false });
     }
@@ -1001,6 +985,21 @@ Deno.serve(async (req) => {
         return Response.json({ ok: false, error_code: 'REWARD_CANCEL_NOT_CONFIRMED',
           error: 'We could not confirm cancellation. Check your order status before starting another checkout.',
           reward_reservation_released: false }, { status: 409 });
+      }
+    }
+
+    if (mode === 'preview_catalog_checkout') {
+      try {
+        const pricedItems = await authoritativeGuestCheckoutItems(base44, items);
+        return Response.json({ ok: true, quote: { revision: CATALOG_CHECKOUT_REVISION, items: pricedItems,
+          subtotal: pricedItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0) / 100 },
+          preview_only: true, writes_performed: false, provider_calls_performed: false,
+          payment_intent_created: false, order_created: false });
+      } catch (error) {
+        return Response.json({ ok: false, error_code: error instanceof RewardCheckoutError ? error.code : 'CATALOG_UNAVAILABLE',
+          error: error instanceof RewardCheckoutError ? error.message : 'We could not confirm your cart. Please try again.',
+          preview_only: true, writes_performed: false, provider_calls_performed: false,
+          payment_intent_created: false, order_created: false }, { status: 409 });
       }
     }
 
@@ -1208,9 +1207,7 @@ Deno.serve(async (req) => {
           program_addon_schedule_version: addon.program_addon_schedule_version } : item;
       });
     }
-    const normalizedItems = rewardQuote ? rewardQuote.items : isGuestCheckout
-      ? await authoritativeGuestCheckoutItems(base44, items)
-      : items.map(normalizeCheckoutItem);
+    const normalizedItems = rewardQuote ? rewardQuote.items : await authoritativeGuestCheckoutItems(base44, items);
     if (!normalizedItems) {
       return Response.json({
         error: 'A product in your cart changed or is unavailable. Please return to your cart and try again.',
@@ -1220,9 +1217,8 @@ Deno.serve(async (req) => {
         order_created: false,
       }, { status: 409 });
     }
-    const authoritativeSubtotal = rewardQuote ? rewardQuote.subtotal : isGuestCheckout
-      ? Math.round(normalizedItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0) * 100) / 100
-      : Number(subtotal);
+    const authoritativeSubtotal = rewardQuote ? rewardQuote.subtotal
+      : normalizedItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0) / 100;
     // Owner-approved: earned items count at normal catalog retail value toward
     // the delivery-area dollar minimum. This never changes what is charged or
     // waives the zone fee, taxes, bottle minimum, or route-review requirement.

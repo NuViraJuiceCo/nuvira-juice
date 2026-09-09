@@ -131,7 +131,8 @@ export default function Cart() {
   };
 
   const handleBirthdayProductSelect = (product) => {
-    addItem({ ...product, id: '__birthday_reward__', price: 0, title: `🎂 ${product.title} (Free)` }, 1, { isBirthdayReward: true });
+    addItem({ ...product, id: '__birthday_reward__', price: 0, title: `🎂 ${product.title} (Free)` }, 1,
+      { isBirthdayReward: true, birthday_product_id: product.id });
   };
 
   const { data: schedules = [] } = useQuery({

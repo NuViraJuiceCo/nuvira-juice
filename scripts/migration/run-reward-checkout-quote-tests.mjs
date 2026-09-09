@@ -137,7 +137,7 @@ await test('known program count and identity come from trusted program resolver'
     resolveProgram: item => item.product_id === 'program_hydration_2day' ? {
       product_id: 'program_hydration_2day', title: 'Hydration Program (2-Day)', price: 104,
       category: 'bundle', bottles_per_unit: 8, program_key: 'hydration', program_days: 2,
-      program_schedule_version: 'trusted', bundle_composition: [{ product_id: 'oasis', quantity: 6 }, { product_id: 'aura', quantity: 2 }],
+      program_schedule_version: 'trusted', bundle_composition: [{ product_id: 'oasis', product_name: 'OASIS', quantity: 6 }, { product_id: 'aura', product_name: 'AURA', quantity: 2 }],
     } : null,
   });
   assert.equal(result.physical_units, 9); assert.equal(result.subtotal, 104);
@@ -212,7 +212,8 @@ await test('preview does not claim points reservation or debit, payment, or fulf
 await test('admin runtime marker is read-only and explicitly reports unfinished reward payment integration', async () => {
   const db = fakeDb({ user: { email, role: 'admin' } });
   const response = await handler(db)(request({ mode: 'checkout_runtime_status' })); const body = await response.json();
-  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-08.payment-points-reservation-v2');
+  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-08.catalog-authoritative-payment-v3');
+  assert.equal(body.catalog_quote_revision, checkout.CATALOG_CHECKOUT_REVISION);
   assert.equal(body.reward_payment_integration_complete, false); assert.equal(body.writes_performed, false);
   assert.equal(db.reads.length, 0);
 });
