@@ -3,7 +3,7 @@
 // Release requires an isolated Base44 conditional-write contract test in addition
 // to local fixtures. This module does not claim multi-record transactions.
 import { birthdayReservationState, reserveBirthdayOperation, settleBirthdayOperation } from '../../shared/birthdayEntitlement.js';
-export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-direct-payment-v4';
+export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-refund-manual-review-v6';
 export const DIRECT_POINTS_CHECKOUT_REVISION = '2026-09-08.direct-points-v1';
 
 export class PointsAccountError extends Error {
@@ -130,6 +130,38 @@ function transactionPatch(state, transaction, snapshot = null) {
   const amount = Number(transaction.amount);
   if (!Number.isSafeInteger(amount) || (!snapshot && amount === 0)) fail('nonzero_integer_amount_required');
   const type = transaction.transaction_type;
+  // Refund reconciliation must not silently clamp a debit after these points
+  // were spent/reserved elsewhere. This guard runs inside the same balance CAS
+  // as concurrent redemptions; ordinary legacy adjustments retain their policy.
+  if (type === 'reversal' && transaction.metadata?.require_available_balance === true) {
+    const paymentId = transaction.metadata.payment_intent_id;
+    const earningKey = `stripe_payment:${paymentId}:earned`;
+    const awards = state.history.filter(row => row.idempotency_key === earningKey);
+    const legacy = state.history.filter(row => typeof row.idempotency_key === 'string'
+      && row.idempotency_key.startsWith('stripe_refund_event:')
+      && row.idempotency_key.endsWith(`:order:${transaction.order_id}`));
+    if (!/^pi_[a-zA-Z0-9_]+$/.test(paymentId || '') || !transaction.order_id
+      || transaction.idempotency_key !== `stripe_payment:${paymentId}:full_refund_reversal`
+      || awards.length !== 1 || awards[0].transaction_id !== transaction.metadata.earned_transaction_id
+      || (awards[0].transaction_type || awards[0].type) !== 'earned'
+      || !Number.isSafeInteger(awards[0].amount) || awards[0].amount <= 0
+      || legacy.some(row => row.transaction_type !== 'reversal' || !Number.isSafeInteger(row.amount) || row.amount >= 0)
+      || new Set(legacy.map(row => row.idempotency_key)).size !== legacy.length
+      || awards[0].amount + legacy.reduce((sum, row) => sum + row.amount, 0) !== -amount) {
+      fail('refund_purchase_receipt_changed');
+    }
+    // Points are fungible. A historical debit that dipped below the remaining
+    // purchase award consumed some of it; later earnings must not erase that
+    // evidence. A legacy debit without a balance receipt needs review too.
+    let remainingAward = awards[0].amount;
+    let spent = false;
+    for (const receipt of state.history.slice(state.history.indexOf(awards[0]) + 1)) {
+      if (legacy.includes(receipt)) remainingAward += receipt.amount;
+      else if (receipt.amount < 0 && (!Number.isSafeInteger(receipt.balanceAfter)
+        || receipt.balanceAfter < remainingAward)) spent = true;
+    }
+    if (spent || state.total - state.reserved + amount < 0) fail('refund_points_reversal_requires_review');
+  }
   const after = snapshot ? {
     total: integer(snapshot.balanceAfter), lifetime: integer(snapshot.lifetimeAfter), redeemed: integer(snapshot.redeemedAfter),
   } : {
@@ -158,7 +190,7 @@ function transactionPatch(state, transaction, snapshot = null) {
  * @param {{balanceAfter: number, lifetimeAfter: number, redeemedAfter: number}|null} snapshot */
 export async function applyPointsTransaction(entities, customerEmail, transaction, snapshot = null) {
   if (!transaction?.id || !transaction.idempotency_key) fail('idempotency_key_required');
-  return mutate(entities, customerEmail, (row, state) => {
+  const result = await mutate(entities, customerEmail, (row, state) => {
     const matches = state.history.filter(item => item.idempotency_key === transaction.idempotency_key);
     if (matches.length > 1) fail('duplicate_points_receipts');
     const receipt = matches[0];
@@ -169,8 +201,31 @@ export async function applyPointsTransaction(entities, customerEmail, transactio
       // when another purchase was posted after a partially completed transaction.
       return { receipt, projection: receipt.balanceAfter === undefined ? null : receipt };
     }
-    return transactionPatch(state, transaction, snapshot);
+    const guardedRefund = transaction.transaction_type === 'reversal'
+      && transaction.metadata?.require_available_balance === true;
+    const reviews = guardedRefund ? list(row.refund_review_holds) : [];
+    const reviewMatches = reviews.filter(review => review.review_key === transaction.idempotency_key);
+    if (reviewMatches.length > 1) fail('duplicate_refund_review_holds');
+    if (reviewMatches[0]) {
+      const hold = reviewMatches[0];
+      if (hold.payment_intent_id !== transaction.metadata.payment_intent_id
+        || hold.order_id !== transaction.order_id || hold.points_to_review !== -transaction.amount
+        || hold.earned_transaction_id !== transaction.metadata.earned_transaction_id) fail('refund_review_hold_conflict');
+      return { refundReview: hold };
+    }
+    try { return transactionPatch(state, transaction, snapshot); }
+    catch (error) {
+      if (!guardedRefund || error?.code !== 'refund_points_reversal_requires_review') throw error;
+      const hold = { review_key: transaction.idempotency_key, payment_intent_id: transaction.metadata.payment_intent_id,
+        order_id: transaction.order_id, earned_transaction_id: transaction.metadata.earned_transaction_id,
+        points_to_review: -transaction.amount, reason: 'spent_or_unavailable', created_at: new Date().toISOString() };
+      // Commit the decision in the SAME CAS as spending. No balance or benefit
+      // change. Even a lost response cannot turn a held review into a late debit.
+      return { refundReview: hold, patch: { refund_review_holds: [...reviews, hold] } };
+    }
   }, { initialize: Boolean(snapshot || transaction.amount > 0) });
+  if (result.refundReview) fail('refund_points_reversal_requires_review');
+  return result;
 }
 
 export async function reserveRewardPoints(entities, customerEmail, request) {

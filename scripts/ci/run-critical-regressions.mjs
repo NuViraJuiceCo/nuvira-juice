@@ -38,6 +38,7 @@ const harnesses = [
   'scripts/migration/run-reward-webhook-handoff-integration-tests.mjs',
   'scripts/migration/run-order-confirmation-truth-tests.mjs',
   'scripts/migration/run-payment-benefit-retry-tests.mjs',
+  'scripts/migration/run-full-refund-loyalty-recovery-tests.mjs',
   'scripts/migration/run-g71-bag-return-activation-tests.mjs',
   'scripts/migration/run-reward-selection-safety-tests.mjs',
   'scripts/migration/run-reward-order-minimum-tests.mjs',

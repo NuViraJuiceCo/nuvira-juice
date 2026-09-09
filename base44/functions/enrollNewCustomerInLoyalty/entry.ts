@@ -7,6 +7,7 @@ import { applyPointsTransaction, syncPointsMemberProjection, readPointsAccount, 
 type AnyRecord = Record<string, any>;
 
 const VALID_TYPES = new Set(['earned', 'bonus', 'redeemed', 'reversal', 'adjustment', 'migration']);
+const LOYALTY_LEDGER_RUNTIME_REVISION = '2026-09-08.refund-manual-review-v2';
 
 async function rewardPaymentAction(base44: any, body: AnyRecord, action: string, actor: AnyRecord) {
   const customerEmail = email(body.customer_email);
@@ -419,6 +420,7 @@ Deno.serve(async (req) => {
         }
       }
       return Response.json({ success: true, idempotent: true, transaction_id: canonicalId,
+        runtime_revision: LOYALTY_LEDGER_RUNTIME_REVISION,
         transaction: { ...(activePrior.find((row: AnyRecord) => row.id === canonicalId) || priorTransaction), status: 'posted' } });
     }
 
@@ -462,6 +464,7 @@ Deno.serve(async (req) => {
       success: true,
       idempotent: applied.idempotent,
       transaction_id: applied.transaction_id,
+      runtime_revision: LOYALTY_LEDGER_RUNTIME_REVISION,
       available_points: applied.account.total_points - (applied.account.reserved_points || 0),
       lifetime_points: applied.account.lifetime_points,
       redeemed_points: applied.account.redeemed_points,

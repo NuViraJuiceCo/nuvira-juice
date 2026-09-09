@@ -7,6 +7,7 @@ import { transformSync } from 'esbuild';
 import * as benefits from '../../base44/functions/stripeWebhook/paymentBenefits.js';
 import * as rewardWebhook from '../../base44/functions/stripeWebhook/rewardWebhook.js';
 import * as rewardHandoffRuntime from '../../base44/functions/stripeWebhook/rewardHandoffRuntime.js';
+import * as refundLoyalty from '../../base44/functions/stripeWebhook/refundLoyalty.js';
 import { applyPointsTransaction, syncPointsMemberProjection } from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 import * as pointsLedger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 
@@ -118,6 +119,7 @@ function serve(f) {
       if (name.includes('birthdayCheckout')) return birthdayCheckout;
       if (name.includes('rewardWebhook')) return rewardWebhook;
       if (name.includes('rewardHandoffRuntime')) return rewardHandoffRuntime;
+      if (name.includes('refundLoyalty')) return refundLoyalty;
       if (name.includes('metaConversions')) return { sendMetaPurchaseConversion: async () => ({ sent: false, reason: 'synthetic' }) };
       if (name.includes('googleMeasurement')) return { sendGooglePurchaseMeasurement: async () => ({ sent: false, reason: 'synthetic' }) };
       if (name.includes('stripe')) return class { webhooks = { constructEventAsync: async raw => JSON.parse(raw) };

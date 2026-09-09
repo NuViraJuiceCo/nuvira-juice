@@ -6,11 +6,12 @@ import { sendMetaPurchaseConversion } from './metaConversions.js';
 import { settleEmbeddedPaymentBenefits, applyCheckoutCredit } from './paymentBenefits.js';
 import { handleRewardCheckoutEvent } from './rewardWebhook.js';
 import { runVerifiedRewardHandoff } from './rewardHandoffRuntime.js';
+import { reconcileFullRefundLoyalty, verifyFullRefundPayment } from './refundLoyalty.js';
 import { settleCheckoutCredit } from '../../shared/checkoutCredit.js';
 import { settleVerifiedBirthdayCheckout } from '../createPaymentIntent/birthdayCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260908-reward-handoff-v3';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260908-refund-review-v5';
 const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
@@ -2213,7 +2214,10 @@ Deno.serve(async (req) => {
       }
 
       // ── STEP 3: One-time order refund path (only if NOT a subscription PI) ──
-      const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId });
+      const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId }, undefined, 2);
+      if (!Array.isArray(orders) || orders.length > 1) {
+        return Response.json({ error: 'refund_order_identity_ambiguous' }, { status: 503 });
+      }
 
       if (orders.length === 0) {
         console.warn(`[charge.refunded] No order or subscription found for PI ${paymentIntentId}`);
@@ -2236,10 +2240,23 @@ Deno.serve(async (req) => {
       const latestRefund = refundObjects.find((refund) => refund?.id && Number(refund?.amount || 0) > 0) || null;
       const stripeRefundId = latestRefund?.id || charge.id;
 
+      if (isFullRefund && !skipLoyaltyWrite(stagingSafeMode)) {
+        // Verify current provider truth before changing order lifecycle too.
+        await verifyFullRefundPayment({ entities: base44.asServiceRole.entities, stripe, event, order });
+      }
+
       // IDEMPOTENCY: Check if already refunded
       if (order.payment_status === 'refunded' || order.status === 'refunded' || order.status === 'cancelled') {
+        // Terminal order state is not proof that its loyalty reversal finished.
+        // Recover it from the original award using one payment-level key.
+        let loyaltyOutcome = null;
+        if (isFullRefund && !skipLoyaltyWrite(stagingSafeMode)) {
+          loyaltyOutcome = await reconcileFullRefundLoyalty({ entities: base44.asServiceRole.entities, stripe, event, order,
+            postLoyalty: payload => postLoyaltyTransaction(base44, payload) });
+        }
         console.log(`[charge.refunded] Order ${orderNumber} already refunded/cancelled, skipping`);
-        return Response.json({ received: true, action: 'already_refunded' });
+        return Response.json({ received: true, action: 'already_refunded',
+          ...(loyaltyOutcome ? { loyalty_outcome: loyaltyOutcome.outcome } : {}) });
       }
 
       console.log(`[charge.refunded] Processing refund for Order ${orderNumber} (${order.id}), customer ${order.customer_email}`);
@@ -2360,25 +2377,12 @@ Deno.serve(async (req) => {
 
       // Reverse points earned on a fully refunded order. Refunds must never
       // increase a customer's available or lifetime points.
+      let refundLoyaltyOutcome = null;
       if (skipLoyaltyWrite(stagingSafeMode)) {
         // Loyalty is intentionally suppressed in isolated staging smoke tests.
       } else if (isFullRefund && order.customer_email) {
-        const pointsToReverse = Math.floor(Number(order.total || refundAmount) * 10);
-        await postLoyaltyTransaction(base44, {
-          customer_email: order.customer_email,
-          amount: -pointsToReverse,
-          transaction_type: 'reversal',
-          idempotency_key: `stripe_refund_event:${event.id}:order:${order.id}`,
-          description: `Full refund of order ${orderNumber}`,
-          source_type: 'stripe_refund',
-          source_id: charge.id,
-          provider_event_id: event.id,
-          order_id: order.id,
-          order_number: orderNumber,
-          occurred_at: new Date(event.created * 1000).toISOString(),
-          metadata: { refund_amount: refundAmount },
-        });
-        console.log(`[charge.refunded] Reversed ${pointsToReverse} points for ${order.customer_email}`);
+        refundLoyaltyOutcome = await reconcileFullRefundLoyalty({ entities: base44.asServiceRole.entities, stripe, event, order,
+          postLoyalty: payload => postLoyaltyTransaction(base44, payload) });
       }
 
       // Send refund notification email
@@ -2398,7 +2402,8 @@ Deno.serve(async (req) => {
         is_full_refund: isFullRefund,
       }).catch(err => console.error('[charge.refunded] Email failed:', err.message));
 
-      return Response.json({ received: true, action, refund_amount: refundAmount });
+      return Response.json({ received: true, action, refund_amount: refundAmount,
+        ...(refundLoyaltyOutcome ? { loyalty_outcome: refundLoyaltyOutcome.outcome } : {}) });
     }
 
     // ── invoice.payment_failed — subscription payment failed ─────────────────

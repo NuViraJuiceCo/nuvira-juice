@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { handleRewardCheckoutEvent } from '../../base44/functions/stripeWebhook/rewardWebhook.js';
+import { createRefundFixture } from './run-full-refund-loyalty-recovery-tests.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
@@ -319,24 +320,19 @@ let assertions = 0;
   assertions += 8;
 }
 
-// Existing full-refund behavior remains terminal and invokes only its approved mocked helpers.
+// Full-refund source remains terminal and now proves its actual ledger reversal.
 {
-  const state = makeState();
-  const result = await invoke(state, chargeRefundedEvent({
-    id: 'evt_synthetic_full_refund',
-    amountRefunded: 4799,
-    amount: 4799,
-    refundId: 're_synthetic_full_refund',
-    operation: null,
-  }));
-  assert.equal(result.status, 200, JSON.stringify({ body: result.body, logs: result.capturedLogs }));
+  const state = await createRefundFixture({ amount: 4799 });
+  const result = await state.run();
+  assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.equal(result.body.action, 'full_refund_processed');
   assert.equal(state.rows.Order[0].status, 'refunded');
   assert.equal(state.rows.Order[0].payment_status, 'refunded');
   assert.equal(state.rows.Order[0].financial_status, 'refunded');
   assert.equal(state.rows.Order[0].payment_captured, false);
-  assert.deepEqual(state.calls.map((call) => call.name), ['syncRefundToHub', 'enrollNewCustomerInLoyalty', 'sendOrderReceivedNotification']);
-  assert.equal(state.providerCalls.length, 1);
+  assert.equal(state.rows.UserPoints[0].points_history.find(row => row.transaction_type === 'reversal')?.amount, -479);
+  assert.deepEqual(state.effects.filter(effect => ['syncRefundToHub', 'ledger.reversal', 'sendOrderReceivedNotification'].includes(effect)),
+    ['syncRefundToHub', 'ledger.reversal', 'sendOrderReceivedNotification']);
   assertions += 8;
 }
 

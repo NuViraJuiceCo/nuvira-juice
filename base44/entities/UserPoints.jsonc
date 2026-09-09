@@ -34,6 +34,24 @@
       "default": 0,
       "description": "Points held for uncompleted payments; available points equal total minus reserved."
     },
+    "refund_review_holds": {
+      "type": "array",
+      "default": [],
+      "description": "Server-only refund loyalty review latches, written with points_ledger_revision. They do not debit points, restore rewards, or expire when a balance grows. Closing an operations review is not authorization to debit.",
+      "items": {
+        "type": "object",
+        "required": ["review_key", "payment_intent_id", "order_id", "earned_transaction_id", "points_to_review", "reason", "created_at"],
+        "properties": {
+          "review_key": { "type": "string" },
+          "payment_intent_id": { "type": "string" },
+          "order_id": { "type": "string" },
+          "earned_transaction_id": { "type": "string" },
+          "points_to_review": { "type": "integer", "minimum": 1 },
+          "reason": { "type": "string", "enum": ["spent_or_unavailable"] },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
     "reward_reservations": {
       "type": "array",
       "default": [],
