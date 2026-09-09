@@ -74,6 +74,12 @@ export function createRewardSmsHandoffAdapter({ base44, fetchStatus, apiKey, api
     return { outcome: 'completed', evidence_id: `sendblue:${handle}` };
   }
   return {
+    preflight: async ({ order: snapshot, idempotencyKey }) => {
+      const order = await current(snapshot, idempotencyKey);
+      if (await eligibility(order)) return; // A confirmed opt-out needs no credential.
+      payload(order);
+      check(typeof fetchStatus === 'function' && apiKey && apiSecret && phone(senderPhone), 'reward_sms_readback_unavailable');
+    },
     reconcile: async ({ order: snapshot, idempotencyKey }) => {
       const order = await current(snapshot, idempotencyKey);
       const result = await proof(order) || await eligibility(order);

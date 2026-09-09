@@ -97,5 +97,8 @@ test('lost confirmation response recovers without repeating native, Shopify, bag
   assert.equal(f.communication.calls.filter(call => call === 'update:BagReturn').length, 1);
   assert.equal(f.shopify.state.creates.length, 1); assert.equal(f.native.rows.FulfillmentTask.length, 1);
 });
-for (const [name, fn] of tests) { try { await fn(); } catch (error) { throw new Error(name, { cause: error }); } }
-console.log(`Complete reward handoff: ${tests.length}/${tests.length}; all nine adapters executed, simulated providers/storage only.`);
+export { fixture as createCompleteRewardHandoffFixture };
+if (process.argv[1]?.endsWith('run-reward-complete-handoff-tests.mjs')) {
+  for (const [name, fn] of tests) { try { await fn(); } catch (error) { throw new Error(name, { cause: error }); } }
+  console.log(`Complete reward handoff: ${tests.length}/${tests.length}; all nine adapters executed, simulated providers/storage only.`);
+}

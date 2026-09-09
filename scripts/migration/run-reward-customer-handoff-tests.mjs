@@ -194,7 +194,7 @@ function fixture(environment = {}) {
   }
   const input = stage => ({ order: snapshot(), idempotencyKey: `reward_handoff:${order.id}:${stage}` });
   const perform = async stage => { claim(stage); return adapters[stage].perform(input(stage)); };
-  return { order, bag, rows, entities, base44, calls, provider, faults, adapters, claim, input, perform, fetchEmail, env };
+  return { order, bag, rows, entities, base44, calls, provider, faults, adapters, claim, input, perform, fetchEmail, fetchStatus, env };
 }
 
 test('Bag return links only its order, leaves verification/credit/counts unchanged, and replays without a write', async () => {
@@ -660,10 +660,11 @@ test('Actual durable runner uses seven adapters and reconciles a lost email resp
   assert.equal(f.calls.filter(c => c === 'update:BagReturn').length, 1);
   assert.doesNotMatch(JSON.stringify(f.order.reward_handoff), /example\.test|Synthetic Test Street|credential/);
 });
-test('Factory cannot accidentally advertise all stages or change the production webhook activation boundary', () => {
+test('Customer-only factory stays partial and the webhook uses the complete runtime after settlement', () => {
   const f = fixture(); assert.deepEqual(Object.keys(f.adapters), ['bag_return', 'confirmation_email', 'customer_in_app', 'customer_push', 'operations_email', 'operations_push', 'sms']);
   const webhook = fs.readFileSync('base44/functions/stripeWebhook/entry.ts', 'utf8');
-  assert.match(webhook, /runHandoff: null/);
+  assert.match(webhook, /runHandoff: result => runVerifiedRewardHandoff/);
+  assert.doesNotMatch(webhook, /runHandoff:.*createRewardCustomerHandoffAdapters/);
   assert.match(fs.readFileSync('base44/functions/getAdminOperationsDashboardSummary/entry.ts', 'utf8'),
     /Bundle revision: reward-communications-20260908/);
 });

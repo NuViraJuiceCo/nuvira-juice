@@ -7,6 +7,7 @@ import ts from 'typescript';
 import { transformSync } from 'esbuild';
 import { finalizeNoPaymentRewardOrder, expireNoPaymentRewardOrder, isVerifiedNoPaymentOrder } from '../../base44/functions/stripeWebhook/rewardSettlement.js';
 import * as rewardWebhook from '../../base44/functions/stripeWebhook/rewardWebhook.js';
+import * as rewardHandoffRuntime from '../../base44/functions/stripeWebhook/rewardHandoffRuntime.js';
 import * as benefits from '../../base44/functions/stripeWebhook/paymentBenefits.js';
 import * as ledger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 
@@ -362,12 +363,14 @@ function actualWebhook(f, { missingSecret = false, staging = false, invalidSigna
     return { data: await f.options.settleReservation(payload) };
   } } } };
   vm.runInNewContext(webhookSource, { module, exports: module.exports, Request, Response, URL, setTimeout, clearTimeout,
+    fetch: async () => { throw new Error('External network forbidden'); },
     console: { log() {}, warn() {}, error() {} },
     Deno: { serve: fn => { handler = fn; }, env: { get: name => name === 'NUVIRA_STAGING_SAFE_MODE'
       ? (staging ? 'true' : '') : name === 'LOYALTY_LEDGER_SECRET' && !missingSecret ? 'synthetic-internal' : '' } },
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('rewardWebhook')) return rewardWebhook;
+      if (name.includes('rewardHandoffRuntime')) return rewardHandoffRuntime;
       if (name.includes('paymentBenefits')) return benefits;
       if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('birthdayCheckout')) return birthdayCheckout;
@@ -419,6 +422,9 @@ test('Dispatcher error response never returns downstream PII/payload text', asyn
   assert.equal(result.status, 503); assert.doesNotMatch(JSON.stringify(result), /synthetic-secret/);
 });
 
-let passed = 0;
-for (const [name, fn] of tests) { try { await fn(); passed++; console.log(`PASS ${name}`); } catch (error) { console.error(`FAIL ${name}`, error); process.exitCode = 1; } }
-console.log(`No-payment reward settlement: ${passed}/${tests.length}; local source and simulated provider/storage only.`);
+export { fixture as createRewardSettlementFixture };
+if (process.argv[1]?.endsWith('run-no-payment-reward-settlement-tests.mjs')) {
+  let passed = 0;
+  for (const [name, fn] of tests) { try { await fn(); passed++; console.log(`PASS ${name}`); } catch (error) { console.error(`FAIL ${name}`, error); process.exitCode = 1; } }
+  console.log(`No-payment reward settlement: ${passed}/${tests.length}; local source and simulated provider/storage only.`);
+}

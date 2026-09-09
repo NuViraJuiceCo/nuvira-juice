@@ -9,9 +9,9 @@ const clean = value => String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 
 const escaped = value => clean(value).replace(/&/g, '&amp;').replace(/</g, '&lt;')
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 
-// These are customer-channel adapters, not a complete handoff factory. The webhook must
-// remain unactivated until every required stage has an independently tested
-// adapter. Ordinary paid-order delivery behavior is intentionally untouched.
+// These are customer-channel adapters, not a complete handoff factory.
+// The signed reward runtime composes them with the other reviewed stages.
+// Ordinary paid-order delivery behavior is intentionally untouched.
 export async function readCurrentRewardHandoffOrder(entities, snapshot, stage, idempotencyKey, requireClaim = false) {
     requireProof(opaque(snapshot?.id) && idempotencyKey === `reward_handoff:${snapshot.id}:${stage}`,
       'reward_customer_handoff_identity_invalid');
@@ -172,6 +172,12 @@ export function createRewardCustomerHandoffAdapters({ base44, fetchEmail, resend
     return completed(`resend:${providerId}`);
   }
   const confirmation_email = {
+    preflight: async ({ order: snapshot, idempotencyKey }) => {
+      const order = await currentOrder(snapshot, 'confirmation_email', idempotencyKey);
+      emailPayload(order);
+      requireProof(typeof resendApiKey === 'string' && resendApiKey.length > 0
+        && typeof fetchEmail === 'function', 'reward_email_readback_unavailable');
+    },
     reconcile: async ({ order: snapshot, idempotencyKey }) => {
       const order = await currentOrder(snapshot, 'confirmation_email', idempotencyKey);
       const proof = await emailProof(order, await emailRows(order));

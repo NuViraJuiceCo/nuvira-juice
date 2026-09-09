@@ -21,8 +21,8 @@ const readQuery = `query RewardMirrorById($id: ID!) { order(id: $id) { ${orderFi
 const createMutation = `mutation RewardMirrorCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
   orderCreate(order: $order, options: $options) { userErrors { field message } order { id } } }`;
 
-// Local-only adapter. Not imported by the production entrypoint. This covers
-// the settled zero-merchandise/zero-fee reward contract, not unreserved credits.
+// This covers the settled zero-merchandise/zero-fee reward contract, not
+// unreserved credits. Only the signed reward-checkout runtime composes it.
 // A durable runner dispatch claim is required. A lost response is reconciled
 // through provider reads; an unknown outcome never triggers a second creation.
 export function createRewardShopifyHandoffAdapter({ base44, fetchShopify, shopifyStoreUrl, shopifyApiToken }) {
@@ -124,6 +124,9 @@ export function createRewardShopifyHandoffAdapter({ base44, fetchShopify, shopif
     return result.nodes[0] || null;
   }
   return { shopify_mirror: {
+    preflight: async ({ order: snapshot, idempotencyKey }) => {
+      await current(snapshot, idempotencyKey); endpoint();
+    },
     reconcile: async ({ order: snapshot, idempotencyKey }) => {
       const order = await current(snapshot, idempotencyKey);
       const result = proof(order, await search(order));

@@ -135,12 +135,13 @@ test('a cancellation between the absence lookup and create prevents provider mut
   const f = fixture(); f.state.faults.afterSearch = () => { f.order.status = 'cancelled'; };
   await assert.rejects(f.perform); assert.equal(f.state.creates.length, 0);
 });
-test('existing webhook mirror suppression is preserved and adapter remains unactivated', () => {
+test('existing mirror suppression remains and Shopify is only composed through the full runtime', () => {
   const receiver = fs.readFileSync('base44/functions/shopifyWebhookReceiver/entry.ts', 'utf8');
   assert.match(receiver, /hasTag\(order, 'base44-app'\)/);
   assert.match(receiver, /topic\.startsWith\('orders\/'\) && isAppOriginatedShopifyMirror\(payload\)/);
   const webhook = fs.readFileSync('base44/functions/stripeWebhook/entry.ts', 'utf8');
-  assert.match(webhook, /runHandoff: null/); assert.doesNotMatch(webhook, /createRewardShopifyHandoffAdapter/);
+  assert.match(webhook, /runHandoff: result => runVerifiedRewardHandoff/);
+  assert.doesNotMatch(webhook, /createRewardShopifyHandoffAdapter/);
 });
 export { fixture as createShopifyFixture };
 if (process.argv[1]?.endsWith('run-reward-shopify-handoff-tests.mjs')) {

@@ -7,8 +7,8 @@ const escape = value => clean(value).replace(/&/g, '&amp;').replace(/</g, '&lt;'
   .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 const recipient = 'operations@nuvirajuice.com';
 
-// Deliberately partial until native operations and the provider mirror pass
-// their own evidence contracts. No production activation here.
+// Composed with native operations and provider mirror evidence by the signed
+// reward-checkout runtime; this module never activates itself.
 export function createRewardOperationsHandoffAdapters({ base44, fetchEmail, resendApiKey }) {
   const entities = base44.asServiceRole.entities;
   const current = (snapshot, key, claim = false) =>
@@ -73,6 +73,11 @@ export function createRewardOperationsHandoffAdapters({ base44, fetchEmail, rese
     return { outcome: 'completed', evidence_id: `resend:${providerId}` };
   }
   const operations_email = {
+    preflight: async ({ order: snapshot, idempotencyKey }) => {
+      const order = await current(snapshot, idempotencyKey); payload(order);
+      check(typeof fetchEmail === 'function' && typeof resendApiKey === 'string' && resendApiKey,
+        'reward_operations_email_readback_unavailable');
+    },
     reconcile: async ({ order: snapshot, idempotencyKey }) => {
       const order = await current(snapshot, idempotencyKey);
       const result = await proof(order);

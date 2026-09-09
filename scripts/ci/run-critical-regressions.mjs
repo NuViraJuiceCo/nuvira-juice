@@ -35,6 +35,7 @@ const harnesses = [
   'scripts/migration/run-reward-native-handoff-tests.mjs',
   'scripts/migration/run-reward-shopify-handoff-tests.mjs',
   'scripts/migration/run-reward-complete-handoff-tests.mjs',
+  'scripts/migration/run-reward-webhook-handoff-integration-tests.mjs',
   'scripts/migration/run-order-confirmation-truth-tests.mjs',
   'scripts/migration/run-payment-benefit-retry-tests.mjs',
   'scripts/migration/run-g71-bag-return-activation-tests.mjs',

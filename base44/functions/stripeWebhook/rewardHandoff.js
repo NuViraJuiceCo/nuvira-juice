@@ -97,6 +97,13 @@ export async function runRewardHandoff({ entities, orderId, adapters, now = () =
       row = await save(row, steps, 'pending');
       continue;
     }
+    // Read-only preflight failures (for example a missing readback credential)
+    // happened before dispatch. Do not strand that step behind an ambiguous
+    // dispatch claim; a later invocation may safely retry its preflight.
+    if (typeof adapters[stage].preflight === 'function') {
+      try { await adapters[stage].preflight({ order: row, idempotencyKey }); }
+      catch { return { complete: false, preflight_failed: true, stage }; }
+    }
     step = { state: 'dispatching', attempt_id: attemptId(), started_at: now() };
     steps[stage] = step;
     row = await save(row, steps, 'pending'); // Claim durably before dispatch.

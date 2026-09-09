@@ -9,8 +9,7 @@ const itemProof = item => ({ ...nativeItemSnapshot(item, true), title: item.titl
 const sameItems = (left, right) => Array.isArray(left) && left.length === right.length
   && JSON.stringify(left.map(itemProof)) === JSON.stringify(right.map(itemProof));
 
-// No production activation: this adapter must join all nine reviewed adapters
-// before the existing webhook's runHandoff can be enabled.
+// Joined only by the signed reward-checkout runtime, after settlement proof.
 export function createRewardNativeHandoffAdapter({ base44, internalSecret }) {
   const entities = base44.asServiceRole.entities;
   const current = async (snapshot, key, claim = false) => {
@@ -109,6 +108,11 @@ export function createRewardNativeHandoffAdapter({ base44, internalSecret }) {
     return { outcome: 'completed', evidence_id: `native_order:${mirror.id}:task:${task.id}` };
   }
   return { native_operations: {
+    preflight: async ({ order: snapshot, idempotencyKey }) => {
+      await current(snapshot, idempotencyKey);
+      check(typeof internalSecret === 'string' && internalSecret && typeof base44.asServiceRole.functions.fetch === 'function',
+        'reward_native_transport_unavailable');
+    },
     reconcile: async ({ order: snapshot, idempotencyKey }) => {
       const order = await current(snapshot, idempotencyKey);
       const result = await proof(order);
