@@ -1,5 +1,6 @@
 // Pure proof for credit-covered merchandise. Only callers that independently
 // retrieve Stripe may treat metadata as authority. No provider/storage writes.
+import { verifiedNoPaymentBirthdayMetadata, verifiedNoPaymentBirthdaySnapshot } from './noPaymentBirthday.js';
 export const NO_PAYMENT_CREDIT_REVISION = '2026-09-09.no-payment-credit-v1';
 const check = value => { if (!value) throw new Error('no_payment_credit_context_unconfirmed'); };
 const cents = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -7,6 +8,7 @@ const cents = value => typeof value === 'number' && Number.isFinite(value) && va
   ? Math.round(value * 100) : NaN;
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 export function verifiedNoPaymentCreditMetadata(meta) {
+  if (meta?.birthday_reservation_id) verifiedNoPaymentBirthdayMetadata(meta);
   check(meta?.checkout_version === '4.0_reward_no_payment' && meta.checkout_mode === 'account'
     && /^credit:[a-f0-9]{64}$/.test(meta.credit_reservation_id || '')
     && /^[a-f0-9]{64}$/.test(meta.checkout_context_hash || '')
@@ -16,10 +18,11 @@ export function verifiedNoPaymentCreditMetadata(meta) {
     && (!meta.reward_reservation_id.startsWith('credit:') || meta.reward_reservation_id === meta.credit_reservation_id)
     && typeof meta.customer_email === 'string' && meta.customer_email.includes('@')
     && typeof meta.order_number === 'string' && meta.order_number
-    && !meta.birthday_reservation_id && meta.is_test_order !== 'true' && meta.internal_sandbox_checkout !== 'true');
+    && meta.is_test_order !== 'true' && meta.internal_sandbox_checkout !== 'true');
   return Number(meta.credit_reservation_cents);
 }
 export function verifiedNoPaymentCreditSnapshot(data, meta) {
+  if (meta?.birthday_reservation_id) return verifiedNoPaymentBirthdaySnapshot(data, meta);
   const credit = verifiedNoPaymentCreditMetadata(meta);
   check(data?.no_payment_credit_revision === NO_PAYMENT_CREDIT_REVISION
     && data.credit_reservation_revision === '2026-09-08.credit-reservation-v1'

@@ -2,6 +2,7 @@ import { readCurrentRewardHandoffOrder } from './rewardCustomerHandoff.js';
 import { nativeItemSnapshot } from '../syncOrderToHub/nativeItemSnapshot.js';
 import { verifiedNoPaymentPointsSnapshot, verifiedNoPaymentTierPointsSnapshot } from '../../shared/noPaymentPoints.js';
 import { verifiedNoPaymentCreditSnapshot } from '../../shared/noPaymentCredit.js';
+import { noPaymentBirthdayMetadata } from '../../shared/noPaymentBirthday.js';
 
 export const REWARD_SHOPIFY_REVISION = '2026-09-08.reward-shopify-mirror-v1';
 const check = (ok, code) => { if (!ok) throw new Error(code); };
@@ -53,6 +54,8 @@ export function createRewardShopifyHandoffAdapter({ base44, fetchShopify, shopif
         customer_email: order.customer_email, order_number: order.order_number,
         checkout_context_hash: order.reward_settlement.context_hash,
         reward_reservation_id: order.reward_settlement.reservation_id,
+        ...(data.birthday_reservation_id ? { birthday_reservation_id: data.birthday_reservation_id,
+          no_payment_birthday: noPaymentBirthdayMetadata(data) } : {}),
         ...(directOnly ? { no_payment_points: String(data.points_used) } : {}),
         ...(creditCovered ? { credit_reservation_id: order.reward_settlement.credit_reservation_id,
           credit_reservation_cents: String(order.reward_settlement.credit_redeemed_cents) } : {}) });

@@ -61,15 +61,17 @@ export function assertBirthdayWindow(request) {
 }
 export function birthdayReservationBinding(request) {
   assertBirthdayWindow(request);
+  const noPayment = Boolean(request?.checkout_session_id);
   if (!/^birthday:[a-f0-9]{64}$/.test(request?.reservation_id || '')
     || !/^[a-f0-9]{64}$/.test(request?.context_hash || '')
     || !id(request?.customer_app_user_id) || !id(request?.product_id) || request.product_id.startsWith('__')
     || !Number.isSafeInteger(request?.retail_value_cents) || request.retail_value_cents <= 0
-    || !/^pi_[A-Za-z0-9_]+$/.test(request?.payment_intent_id || '') || request.checkout_session_id) {
+    || (noPayment ? !/^cs_[A-Za-z0-9_]+$/.test(request.checkout_session_id) || Boolean(request.payment_intent_id)
+      : !/^pi_[A-Za-z0-9_]+$/.test(request?.payment_intent_id || ''))) {
     fail('invalid_birthday_reservation');
   }
   return Object.fromEntries(['reservation_id', 'context_hash', 'customer_app_user_id', 'product_id',
-    'retail_value_cents', 'payment_intent_id', 'cycle_year', 'month_day', 'window_start', 'window_end']
+    'retail_value_cents', noPayment ? 'checkout_session_id' : 'payment_intent_id', 'cycle_year', 'month_day', 'window_start', 'window_end']
     .map(key => [key, request[key]]));
 }
 
@@ -85,10 +87,10 @@ export function birthdayReservationState(account) {
       || (hold.settled_at && Date.parse(hold.settled_at) < Date.parse(hold.created_at))
       || (hold.status !== 'released' && (localDay(hold.created_at) < day(hold.window_start)
         || localDay(hold.created_at) > day(hold.window_end)))
-      || ids.has(hold.reservation_id) || payments.has(hold.payment_intent_id)
+      || ids.has(hold.reservation_id) || payments.has(hold.checkout_session_id || hold.payment_intent_id)
       || (owner && owner !== hold.customer_app_user_id) || (monthDay && monthDay !== hold.month_day)
       || (hold.status !== 'released' && activeCycles.has(hold.cycle_year))) fail('invalid_birthday_reservations');
-    ids.add(hold.reservation_id); payments.add(hold.payment_intent_id);
+    ids.add(hold.reservation_id); payments.add(hold.checkout_session_id || hold.payment_intent_id);
     if (hold.status !== 'released') activeCycles.add(hold.cycle_year);
     owner = hold.customer_app_user_id; monthDay = hold.month_day;
   }
@@ -118,14 +120,14 @@ export function reserveBirthdayOperation(account, request, identity, now = Date.
   if (existing) {
     sameBinding(existing, requested);
     if (existing.status === 'released') fail('birthday_reservation_already_released');
-    if (!['requires_payment_method', 'requires_confirmation', 'requires_action', 'succeeded'].includes(request.provider_status)) {
+    if (!(requested.checkout_session_id ? ['open', 'complete'] : ['requires_payment_method', 'requires_confirmation', 'requires_action', 'succeeded']).includes(request.provider_status)) {
       fail('birthday_payment_not_reservable');
     }
     // Same-provider retries use the saved entitlement even after its window
     // closes. They cannot grant a second gift or change the selected bottle.
     return { reservation: existing };
   }
-  if (!['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(request.provider_status)) {
+  if (!(requested.checkout_session_id ? ['open'] : ['requires_payment_method', 'requires_confirmation', 'requires_action']).includes(request.provider_status)) {
     fail('birthday_payment_not_reservable');
   }
   const available = birthdayAvailability(account, identity, now);
@@ -141,10 +143,10 @@ export function reserveBirthdayOperation(account, request, identity, now = Date.
 // decline, timeout, expiry of the birthday window or refund is NOT cancellation.
 export function settleBirthdayOperation(account, request, now = Date.now()) {
   const requested = birthdayReservationBinding(request);
-  if (!['succeeded', 'canceled'].includes(request.provider_status)) fail('confirmed_birthday_payment_outcome_required');
+  if (!(requested.checkout_session_id ? ['complete', 'expired'] : ['succeeded', 'canceled']).includes(request.provider_status)) fail('confirmed_birthday_payment_outcome_required');
   const state = birthdayReservationState(account);
   const existing = state.holds.find(hold => hold.reservation_id === requested.reservation_id);
-  const status = request.provider_status === 'succeeded' ? 'consumed' : 'released';
+  const status = ['succeeded', 'complete'].includes(request.provider_status) ? 'consumed' : 'released';
   const settledAt = new Date(now).toISOString();
   if (!existing) {
     if (status !== 'released') fail('birthday_reservation_missing');

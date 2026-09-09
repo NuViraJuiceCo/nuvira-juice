@@ -6,6 +6,7 @@ import { createCompleteRewardHandoffFixture } from './run-reward-complete-handof
 import { createRewardSettlementFixture } from './run-no-payment-reward-settlement-tests.mjs';
 import { REWARD_HANDOFF_STAGES } from '../../base44/functions/stripeWebhook/rewardHandoff.js';
 import { runVerifiedRewardHandoff } from '../../base44/functions/stripeWebhook/rewardHandoffRuntime.js';
+import { noPaymentBirthdayMetadata } from '../../base44/shared/noPaymentBirthday.js';
 
 // Bundle the real webhook and every local helper. Only SDK/provider transports,
 // storage, and native safe-sync planning use synthetic fixtures; no network.
@@ -13,7 +14,8 @@ const source = buildSync({ entryPoints: ['base44/functions/stripeWebhook/entry.t
   write: false, format: 'cjs', platform: 'node', target: 'es2022', external: ['npm:*'] }).outputFiles[0].text;
 globalThis.fetch = async () => { throw new Error('External network forbidden'); };
 const copy = value => structuredClone(value);
-function fixture({ directPoints = false, mixedPoints = false, creditMode = null } = {}) {
+function fixture({ directPoints = false, mixedPoints = false, creditMode = null, birthday = false } = {}) {
+  directPoints ||= birthday;
   directPoints ||= creditMode === 'points' || creditMode === 'only';
   mixedPoints ||= creditMode === 'tier';
   const handoff = createCompleteRewardHandoffFixture(); const c = handoff.communication;
@@ -107,6 +109,23 @@ function fixture({ directPoints = false, mixedPoints = false, creditMode = null 
         rows.forEach(row => Object.assign(row, copy(patch.$set)));
         return { success: true, has_more: false, updated: rows.length }; },
     };
+  }
+  if (birthday) {
+    const gift = { ...copy(order.items[0]), quantity: 1, price: 0, isBirthdayReward: true,
+      birthday_product_id: order.items[0].product_id, catalog_unit_price: 13, birthday_discount_amount: 13 };
+    order.items.push(gift); data.items = copy(order.items);
+    const b = { revision: '2026-09-08.birthday-entitlement-v1', product_id: gift.product_id, retail_value_cents: 1300,
+      cycle_year: 2026, month_day: '09-08', window_start: '2026-09-08', window_end: '2026-10-08' };
+    Object.assign(data, { customer_app_user_id: 'synthetic-birthday-user', birthday_checkout: b,
+      birthday_reservation_id: `birthday:${'a'.repeat(64)}`, birthday_discount: 13, catalog_subtotal: 91,
+      no_payment_birthday_revision: '2026-09-09.no-payment-birthday-v1' });
+    Object.assign(s.metadata, { birthday_reservation_id: data.birthday_reservation_id,
+      no_payment_birthday: noPaymentBirthdayMetadata(data) });
+    account.birthday_reservations = [{ reservation_id: data.birthday_reservation_id,
+      context_hash: data.checkout_context_hash, customer_app_user_id: data.customer_app_user_id,
+      product_id: gift.product_id, retail_value_cents: 1300, cycle_year: 2026, month_day: b.month_day,
+      window_start: b.window_start, window_end: b.window_end, checkout_session_id: s.id,
+      status: 'held', created_at: '2026-09-08T15:00:00Z' }];
   }
   settled.rows.LoyaltyMember[0].email = order.customer_email;
   const invoke = c.base44.asServiceRole.functions.invoke;
@@ -441,6 +460,18 @@ test('root routes the complete runner only inside the signed reward-event branch
   assert.ok(entry.indexOf('if (rewardResult) return Response.json') < entry.indexOf("if (event.type === 'checkout.session.completed')"));
   const factory = fs.readFileSync('base44/functions/stripeWebhook/rewardHandoffRuntime.js', 'utf8');
   assert.doesNotMatch(factory, /sendGooglePurchase|sendMetaPurchase|paymentIntents|\.capture\(|\.confirm\(|\.refund/);
+});
+for (const creditMode of [null, 'only', 'points']) test(`birthday plus ${creditMode || 'points-only'} completes the actual signed webhook and all nine handoffs`, async () => {
+  const f = fixture({ birthday: true, creditMode });
+  const result = await f.run(); assert.equal(result.status, 200, JSON.stringify({ result, handoff: f.order.reward_handoff }));
+  assert.ok(REWARD_HANDOFF_STAGES.every(stage => f.order.reward_handoff.steps[stage].state === 'complete'));
+  assert.equal(f.settled.rows.UserPoints[0].birthday_reservations[0].status, 'consumed');
+  assert.equal(f.order.reward_settlement.birthday_retail_cents, 1300);
+  assert.equal(f.native.rows.ProductionBatch.reduce((sum, row) => sum + row.planned_units, 0), 7);
+  assert.equal(f.native.rows.FulfillmentTask.length, 1); assert.equal(f.shopify.state.creates.length, 1);
+  assert.equal(count(f, 'provider:send'), 1); assert.equal(count(f, 'operations:send'), 1);
+  assert.equal((await f.run()).status, 200); assert.equal(f.shopify.state.creates.length, 1);
+  assert.equal(f.settled.rows.UserPoints[0].birthday_reservations.length, 1);
 });
 let passed = 0;
 for (const [name, fn] of tests) { try { await fn(); passed++; console.log(`PASS ${name}`); }

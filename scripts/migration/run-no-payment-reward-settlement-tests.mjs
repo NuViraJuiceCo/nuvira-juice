@@ -252,6 +252,21 @@ test('credit settlement receipt accepts exact identities and rejects weak or con
   for (const prefix of ['points', 'reward']) assert.equal(isVerifiedNoPaymentOrder({ ...order,
     reward_settlement: { ...r, points_redeemed: 1300, reservation_id: `${prefix}:${'c'.repeat(64)}` } }), true);
 });
+test('birthday gift cannot be projected without its exact consumed entitlement receipt', async () => {
+  const f = fixture(); await f.run(); const order = structuredClone(f.order);
+  order.items = [{ product_id: 'gift', title: 'OASIS', quantity: 1, price: 0, isBirthdayReward: true,
+    birthday_product_id: 'gift', catalog_unit_price: 13, birthday_discount_amount: 13 }];
+  assert.equal(isVerifiedNoPaymentOrder(order), false);
+  Object.assign(order.reward_settlement, { birthday_reservation_id: `birthday:${'a'.repeat(64)}`,
+    birthday_product_id: 'gift', birthday_retail_cents: 1300 });
+  assert.equal(isVerifiedNoPaymentOrder(order), true);
+  for (const patch of [{ birthday_reservation_id: 'birthday:bad' }, { birthday_product_id: 'another' },
+    { birthday_retail_cents: 0 }, { birthday_retail_cents: 1301 }, { birthday_retail_cents: '1300' }]) {
+    assert.equal(isVerifiedNoPaymentOrder({ ...order, reward_settlement: { ...order.reward_settlement, ...patch } }), false);
+  }
+  assert.equal(isVerifiedNoPaymentOrder({ ...order, items: [] }), false);
+  assert.equal(isVerifiedNoPaymentOrder({ ...order, items: [...order.items, ...order.items] }), false);
+});
 for (const file of consumers) test(`Bundle-local receipt predicate parity: ${file}`, () => {
   assert.equal(declaration(read(root + file), 'isVerifiedNoPaymentOrder'), canonical);
 });

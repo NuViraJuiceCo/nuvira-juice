@@ -3,6 +3,8 @@
 import { verifiedNoPaymentPointsSnapshot, verifiedNoPaymentTierPointsSnapshot } from '../../shared/noPaymentPoints.js';
 import { verifiedNoPaymentCreditSnapshot } from '../../shared/noPaymentCredit.js';
 import { settleNoPaymentCheckoutCredit } from '../../shared/checkoutCredit.js';
+import { verifiedNoPaymentBirthdaySnapshot } from '../../shared/noPaymentBirthday.js';
+import { settleNoPaymentBirthdayCheckout } from '../createPaymentIntent/birthdayCheckout.js';
 export const REWARD_SETTLEMENT_REVISION = '2026-09-08.reward-settlement-v1';
 
 export function isVerifiedNoPaymentOrder(order) {
@@ -23,6 +25,17 @@ export function isVerifiedNoPaymentOrder(order) {
     && receipt.checkout_session_id === order.stripe_checkout_session_id
     && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
     && typeof receipt.reservation_id === 'string' && receipt.reservation_id.length > 0
+    && (() => {
+      const gifts = (Array.isArray(order.items) ? order.items : []).filter(item => item.isBirthdayReward || item.birthday_product_id);
+      if (!gifts.length) return !receipt.birthday_reservation_id && !receipt.birthday_product_id && !receipt.birthday_retail_cents;
+      const gift = gifts[0];
+      return gifts.length === 1 && /^birthday:[a-f0-9]{64}$/.test(receipt.birthday_reservation_id || '')
+        && gift.isBirthdayReward === true && gift.quantity === 1 && gift.price === 0
+        && gift.product_id === receipt.birthday_product_id && gift.birthday_product_id === receipt.birthday_product_id
+        && Number.isSafeInteger(receipt.birthday_retail_cents) && receipt.birthday_retail_cents > 0
+        && Math.round(gift.catalog_unit_price * 100) === receipt.birthday_retail_cents
+        && Math.round(gift.birthday_discount_amount * 100) === receipt.birthday_retail_cents;
+    })()
     && Number.isSafeInteger(receipt.points_redeemed)
     && receipt.points_redeemed >= (receipt.revision === '2026-09-09.credit-settlement-v2' ? 0 : 1)
     && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
@@ -64,7 +77,7 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
     && /^[a-f0-9]{64}$/.test(metadata.checkout_context_hash || '')
     && metadata.reward_reservation_id && metadata.order_number, 'reward_provider_identity_invalid');
   // A signed event from another revision/context cannot settle the latest record.
-  for (const key of ['checkout_version', 'checkout_context_hash', 'reward_reservation_id', 'order_number', 'customer_email', 'no_payment_points', 'credit_reservation_id', 'credit_reservation_cents']) {
+  for (const key of ['checkout_version', 'checkout_context_hash', 'reward_reservation_id', 'order_number', 'customer_email', 'no_payment_points', 'credit_reservation_id', 'credit_reservation_cents', 'birthday_reservation_id', 'no_payment_birthday']) {
     requireExact(eventSession.metadata[key] === metadata[key], 'reward_event_context_mismatch');
   }
   const orders = await entities.Order.filter({ stripe_checkout_session_id: session.id }, '-created_date', 2);
@@ -77,6 +90,7 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
   const directOnly = /^points:[a-f0-9]{64}$/.test(metadata.reward_reservation_id || '');
   const creditCovered = Boolean(metadata.credit_reservation_id);
   const benefits = creditCovered ? verifiedNoPaymentCreditSnapshot(data, metadata) : null;
+  const birthday = metadata.birthday_reservation_id ? verifiedNoPaymentBirthdaySnapshot(data, metadata).birthday : null;
   if (creditCovered) { /* Complete private priced proof was checked above. */ }
   else if (directOnly) verifiedNoPaymentPointsSnapshot(data, metadata);
   else if (data?.points_used > 0) verifiedNoPaymentTierPointsSnapshot(data, metadata);
@@ -109,6 +123,9 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
       && order.reward_settlement.context_hash === metadata.checkout_context_hash
       && order.reward_settlement.reservation_id === metadata.reward_reservation_id
       && order.reward_settlement.points_redeemed === data.reward_reservation_points
+      && (!birthday || (order.reward_settlement.birthday_reservation_id === birthday.reservation_id
+        && order.reward_settlement.birthday_product_id === birthday.product_id
+        && order.reward_settlement.birthday_retail_cents === birthday.retail_value_cents))
       && (!creditCovered || (order.reward_settlement.credit_redeemed_cents === benefits.credit_cents
         && order.reward_settlement.credit_reservation_id === metadata.credit_reservation_id)), 'reward_settlement_receipt_conflict');
   } else {
@@ -123,9 +140,15 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
     const credit = await settleNoPaymentCheckoutCredit({ entities, stripe, email, sessionId: session.id });
     requireExact(credit.reservation_status === 'consumed', 'checkout_credit_not_consumed');
   }
+  if (birthday) {
+    const result = await settleNoPaymentBirthdayCheckout({ entities, stripe, customerEmail: email, sessionId: session.id });
+    requireExact(result.reservation_status === 'consumed', 'checkout_birthday_not_consumed');
+  }
   if (order.reward_settlement) return { order, checkoutData: data, idempotent: true };
 
   const receipt = { revision: creditCovered ? '2026-09-09.credit-settlement-v2' : REWARD_SETTLEMENT_REVISION,
+    ...(birthday ? { birthday_reservation_id: birthday.reservation_id, birthday_product_id: birthday.product_id,
+      birthday_retail_cents: birthday.retail_value_cents } : {}),
     ...(creditCovered ? { credit_redeemed_cents: benefits.credit_cents, credit_reservation_id: metadata.credit_reservation_id } : {}),
     checkout_session_id: session.id,
     context_hash: metadata.checkout_context_hash, reservation_id: metadata.reward_reservation_id,
@@ -176,7 +199,7 @@ export async function expireNoPaymentRewardOrder({ entities, stripe, event, sett
     && email && normalizedEmail(session.customer_email) === email
     && metadata.order_number && metadata.reward_reservation_id
     && /^[a-f0-9]{64}$/.test(metadata.checkout_context_hash || ''), 'reward_provider_expiration_unconfirmed');
-  for (const key of ['checkout_version', 'checkout_context_hash', 'reward_reservation_id', 'order_number', 'customer_email', 'no_payment_points', 'credit_reservation_id', 'credit_reservation_cents']) {
+  for (const key of ['checkout_version', 'checkout_context_hash', 'reward_reservation_id', 'order_number', 'customer_email', 'no_payment_points', 'credit_reservation_id', 'credit_reservation_cents', 'birthday_reservation_id', 'no_payment_birthday']) {
     requireExact(eventSession.metadata[key] === metadata[key], 'reward_event_context_mismatch');
   }
   const orders = await entities.Order.filter({ stripe_checkout_session_id: session.id }, '-created_date', 2);
@@ -196,6 +219,10 @@ export async function expireNoPaymentRewardOrder({ entities, stripe, event, sett
   if (metadata.credit_reservation_id) {
     const credit = await settleNoPaymentCheckoutCredit({ entities, stripe, email, sessionId: session.id });
     requireExact(credit.reservation_status === 'released', 'checkout_credit_not_released');
+  }
+  if (metadata.birthday_reservation_id) {
+    const birthday = await settleNoPaymentBirthdayCheckout({ entities, stripe, customerEmail: email, sessionId: session.id });
+    requireExact(birthday.reservation_status === 'released', 'checkout_birthday_not_released');
   }
   const released = metadata.reward_reservation_id.startsWith('credit:') ? { success: true, reservation_status: 'released' }
     : await settleReservation({ customer_email: email, stripe_checkout_session_id: session.id });

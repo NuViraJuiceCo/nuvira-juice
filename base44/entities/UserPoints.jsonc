@@ -77,11 +77,12 @@
       "description": "Server-managed annual birthday gifts, serialized with points_ledger_revision but never debiting points. Only confirmed payment success/cancellation settles a hold. Full date of birth is not copied here.",
       "items": {
         "type": "object",
-        "required": ["reservation_id", "context_hash", "customer_app_user_id", "product_id", "retail_value_cents", "payment_intent_id", "cycle_year", "month_day", "window_start", "window_end", "status", "created_at"],
+        "required": ["reservation_id", "context_hash", "customer_app_user_id", "product_id", "retail_value_cents", "cycle_year", "month_day", "window_start", "window_end", "status", "created_at"],
         "properties": {
           "reservation_id": { "type": "string" },
           "context_hash": { "type": "string" },
           "customer_app_user_id": { "type": "string" },
+          "checkout_session_id": { "type": "string", "description": "Real zero-cost Stripe Session, mutually exclusive with payment_intent_id; enforced by annual entitlement runtime." },
           "product_id": { "type": "string" },
           "retail_value_cents": { "type": "integer", "minimum": 1 },
           "payment_intent_id": { "type": "string" },

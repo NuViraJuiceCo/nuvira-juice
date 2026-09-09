@@ -1,6 +1,7 @@
 // Pure proof helpers. Provider metadata is trusted only after the caller's
 // independent authenticated Stripe retrieval; a client request is never proof.
 import { verifiedNoPaymentCreditMetadata, verifiedNoPaymentCreditSnapshot } from './noPaymentCredit.js';
+import { verifiedNoPaymentBirthdayMetadata, verifiedNoPaymentBirthdaySnapshot } from './noPaymentBirthday.js';
 export const NO_PAYMENT_POINTS_REVISION = '2026-09-09.no-payment-points-v1';
 const check = value => { if (!value) throw new Error('no_payment_points_context_unconfirmed'); };
 const cents = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -8,6 +9,12 @@ const cents = value => typeof value === 'number' && Number.isFinite(value) && va
   ? Math.round(value * 100) : NaN;
 
 export function verifiedNoPaymentPointsMetadata(metadata) {
+  if (metadata?.birthday_reservation_id) {
+    verifiedNoPaymentBirthdayMetadata(metadata);
+    check(metadata.reward_reservation_id.startsWith('points:')
+      && /^[1-9][0-9]*$/.test(metadata.no_payment_points || '') && Number.isSafeInteger(Number(metadata.no_payment_points)));
+    return Number(metadata.no_payment_points);
+  }
   if (metadata?.credit_reservation_id) {
     verifiedNoPaymentCreditMetadata(metadata);
     check(/^points:[a-f0-9]{64}$/.test(metadata.reward_reservation_id || '')
@@ -26,6 +33,7 @@ export function verifiedNoPaymentPointsMetadata(metadata) {
 }
 
 export function verifiedNoPaymentPointsSnapshot(data, metadata) {
+  if (metadata?.birthday_reservation_id) return verifiedNoPaymentBirthdaySnapshot(data, metadata).points;
   if (metadata?.credit_reservation_id) return verifiedNoPaymentCreditSnapshot(data, metadata).points;
   const points = verifiedNoPaymentPointsMetadata(metadata);
   check(data?.no_payment_points_revision === NO_PAYMENT_POINTS_REVISION

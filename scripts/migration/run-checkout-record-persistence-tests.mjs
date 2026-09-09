@@ -855,6 +855,28 @@ await test('released points, missing credit hold, expired context cannot revive 
 });
 const birthdayCart = () => [{ ...body.items[0], quantity: 2 }, { product_id: '__birthday_reward__',
   birthday_product_id: 'oasis-test', isBirthdayReward: true, title: 'Birthday selection', price: 0, quantity: 1 }];
+for (const credit of [0, 13, 70.2]) await test(`actual birthday root prepares zero-cost checkout with ${credit} credit and no artificial charge`, async () => {
+  const ctx = fixture({ birthdayUser: true, realLedger: true, strictStripe: true, recoveryKey: true,
+    seed: { NuViraCredit: [{ ...creditSeed.NuViraCredit[0], balance: 100 }],
+      Subscription: [{ customer_email: email, status: 'active', plan_id: 'plan' }],
+      SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }],
+      UserPoints: [{ id: 'balance-test', customer_email: email, total_points: 9000, lifetime_points: 9000,
+        reserved_points: 0, redeemed_points: 0, points_history: [], reward_reservations: [] }] } });
+  const request = { items: [{ ...body.items[0], quantity: 6 }, birthdayCart()[1]],
+    points_used: Math.round((70.2 - credit) * 100), points_discount: Math.round((70.2 - credit) * 100) / 100,
+    credits_discount: credit, guest_order_token: null };
+  const response = await ctx.handle(request); const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result)); assert.ok(result.clientSecret);
+  assert.equal(result.checkoutKind, 'reward_no_payment'); assert.equal(ctx.intent(), undefined);
+  assert.ok(Object.keys(ctx.session().metadata).length <= 50);
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'held');
+  assert.equal(ctx.rows.CheckoutSession[0].checkout_data.catalog_subtotal, 91);
+  const retry = await ctx.handle(request); assert.equal(retry.status, 200, JSON.stringify(await retry.json()));
+  const cancelled = await (await ctx.handle({ mode: 'cancel_reward_checkout', checkout_session_id: ctx.session().id })).json();
+  assert.equal(cancelled.ok, true, JSON.stringify(cancelled));
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'released');
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 0); assert.equal(Number(ctx.rows.NuViraCredit[0].reserved_balance || 0), 0);
+});
 await test('authenticated birthday eligibility and priced preview are read-only and do not expose DOB', async () => {
   const ctx = fixture({ birthdayUser: true });
   const available = await (await ctx.handle({ mode: 'birthday_checkout_eligibility' })).json();

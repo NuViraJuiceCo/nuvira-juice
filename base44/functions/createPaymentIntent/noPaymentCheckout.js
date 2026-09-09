@@ -4,6 +4,9 @@ import { NO_PAYMENT_POINTS_REVISION, verifiedNoPaymentPointsSnapshot, verifiedNo
   verifiedNoPaymentTierPointsSnapshot } from '../../shared/noPaymentPoints.js';
 import { NO_PAYMENT_CREDIT_REVISION, verifiedNoPaymentCreditSnapshot, verifiedNoPaymentCreditMetadata } from '../../shared/noPaymentCredit.js';
 import { reserveNoPaymentCheckoutCredit, settleNoPaymentCheckoutCredit } from '../../shared/checkoutCredit.js';
+import { noPaymentBirthdayMetadata, NO_PAYMENT_BIRTHDAY_REVISION } from '../../shared/noPaymentBirthday.js';
+import { reserveNoPaymentBirthdayCheckout, settleNoPaymentBirthdayCheckout } from './birthdayCheckout.js';
+export { NO_PAYMENT_BIRTHDAY_REVISION };
 export { NO_PAYMENT_POINTS_REVISION };
 export { NO_PAYMENT_CREDIT_REVISION };
 export const NO_PAYMENT_CHECKOUT_VERSION = '4.0_reward_no_payment';
@@ -126,6 +129,10 @@ export async function cancelNoPaymentCheckout({ base44, stripe, sessionId, custo
     const released = await settleNoPaymentCheckoutCredit({ entities, stripe, email: email(customerEmail), sessionId: session.id });
     assert(released.reservation_status === 'released', 'credit_release_unconfirmed');
   }
+  if (metadata.birthday_reservation_id) {
+    const birthday = await settleNoPaymentBirthdayCheckout({ entities, stripe, customerEmail, sessionId: session.id });
+    assert(birthday.reservation_status === 'released', 'birthday_release_unconfirmed');
+  }
   const released = metadata.reward_reservation_id.startsWith('credit:') ? { success: true, reservation_status: 'released' }
     : body(await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
     action: 'settle_reward_checkout', customer_email: email(customerEmail),
@@ -200,12 +207,19 @@ export async function readNoPaymentCheckoutRecovery({ base44, stripe, customerEm
       order_number: metadata.order_number } };
 }
 
-export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata, quote, pricing, secret }) {
+export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata, quote, pricing, secret, authenticatedUser }) {
   const creditCovered = Boolean(data?.credit_reservation_id);
   const hasPoints = Number(pricing?.reservation_points) > 0;
   const directOnly = /^points:[a-f0-9]{64}$/.test(data?.reward_reservation_id || '');
   const sessionMetadata = { ...metadata, checkout_version: NO_PAYMENT_CHECKOUT_VERSION,
+    ...(data.birthday_reservation_id ? { no_payment_birthday: noPaymentBirthdayMetadata(data) } : {}),
     ...(directOnly ? { no_payment_points: String(pricing?.points_used) } : {}) };
+  // No-cash checkouts never generate advertising Purchase/Test Events. Omit
+  // their inactive placeholders so birthday + points + credit stays within
+  // Stripe's 50-key limit; retain every price, schedule and entitlement binding.
+  assert(!sessionMetadata.sandbox_test_id && sessionMetadata.meta_capi_test_enabled !== 'true', 'reward_zero_checkout_invalid');
+  delete sessionMetadata.sandbox_test_id;
+  delete sessionMetadata.meta_capi_test_enabled;
   if (creditCovered) verifiedNoPaymentCreditSnapshot(data, sessionMetadata);
   else if (directOnly) {
     assert(!quote && pricing?.reservation_points === pricing?.points_used, 'reward_zero_checkout_invalid');
@@ -296,6 +310,10 @@ export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata,
       const credit = await reserveNoPaymentCheckoutCredit({ entities, stripe, email: data.customer_email,
         sessionId: session.id, preparationAttemptId });
       assert(['held', 'consumed'].includes(credit.reservation_status), 'credit_reservation_unconfirmed');
+    }
+    if (data.birthday_reservation_id) {
+      const birthday = await reserveNoPaymentBirthdayCheckout({ entities, stripe, authenticatedUser, sessionId: session.id });
+      assert(['held', 'consumed'].includes(birthday.reservation_status), 'birthday_reservation_unconfirmed');
     }
     if (session.status === 'complete') return { checkoutCompleted: true, checkoutSessionId: session.id,
       checkoutKind: 'reward_no_payment', effectiveTotal: 0, orderNumber: data.order_number, idempotent_replay: true };

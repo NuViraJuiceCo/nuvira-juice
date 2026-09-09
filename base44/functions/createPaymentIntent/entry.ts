@@ -2,14 +2,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
 import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from './firstOrderEligibility.js';
 import { loadRewardCheckoutQuote, loadCatalogCheckoutQuote, priceRewardPayment, priceMemberPayment, reservePaymentReward, RewardCheckoutError, REWARD_CHECKOUT_REVISION, CATALOG_CHECKOUT_REVISION } from './rewardCheckout.js';
-import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, readNoPaymentCheckoutRecovery, NO_PAYMENT_POINTS_REVISION, NO_PAYMENT_CREDIT_REVISION } from './noPaymentCheckout.js';
+import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, readNoPaymentCheckoutRecovery, NO_PAYMENT_POINTS_REVISION, NO_PAYMENT_CREDIT_REVISION, NO_PAYMENT_BIRTHDAY_REVISION } from './noPaymentCheckout.js';
 import { recoverPaidCheckout, cancelPaidCheckout, PAID_RECOVERY_REVISION } from './paidCheckoutRecovery.js';
 import { creditCents, availableCheckoutCredit, reserveCheckoutCredit, settleCheckoutCredit, CHECKOUT_CREDIT_REVISION, CheckoutCreditError } from '../../shared/checkoutCredit.js';
 import { hasBirthdayCheckout, loadBirthdayCheckoutQuote, readBirthdayCheckoutEligibility, reserveVerifiedBirthdayCheckout, settleVerifiedBirthdayCheckout } from './birthdayCheckout.js';
 import { BirthdayEntitlementError, BIRTHDAY_ENTITLEMENT_REVISION } from '../../shared/birthdayEntitlement.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const CHECKOUT_RECORD_REVISION = '2026-09-09.no-payment-credit-v6';
+const CHECKOUT_RECORD_REVISION = '2026-09-09.no-payment-birthday-v7';
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
 const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
@@ -1600,7 +1600,7 @@ Deno.serve(async (req) => {
     // A fully earned order uses Checkout Session completion, not a fabricated
     // minimum PaymentIntent. Delivery charges remain in effectiveTotal.
     if ((rewardQuote || directPointsRequested || creditReservationId) && Math.round(effectiveTotal * 100) < 50) {
-      if (effectiveTotal !== 0 || birthdayQuote || internalSandboxCheckout) {
+      if (effectiveTotal !== 0 || internalSandboxCheckout) {
         return Response.json({ ok: false, error_code: 'REWARD_BALANCE_REQUIRES_REVIEW',
           error: 'Please review your points or credits selection. We will not add a minimum charge or waive an outstanding balance.',
           writes_performed: false, payment_intent_created: false, order_created: false }, { status: 409 });
@@ -1632,6 +1632,9 @@ Deno.serve(async (req) => {
         active_reward: rewardQuote?.active_reward || null, reward_discount: checkoutPricing.reward_discount,
         credits_discount: checkoutPricing.credits_discount,
         subscription_discount: checkoutPricing.subscription_discount,
+        ...(birthdayQuote ? { birthday_checkout: birthdayQuote.birthday_checkout,
+          birthday_reservation_id: birthdayReservationId, birthday_discount: birthdayQuote.birthday_discount,
+          catalog_subtotal: birthdayQuote.catalog_subtotal, no_payment_birthday_revision: NO_PAYMENT_BIRTHDAY_REVISION } : {}),
         ...(rewardQuote ? { reward_checkout: rewardQuote } : {
           points_reservation_revision: '2026-09-08.direct-points-v1',
           no_payment_points_revision: NO_PAYMENT_POINTS_REVISION,
@@ -1647,7 +1650,7 @@ Deno.serve(async (req) => {
         health_advisory_acknowledged: true, health_advisory_acknowledged_at: healthAdvisoryAcknowledgedAt,
         health_advisory_version: HEALTH_ADVISORY_VERSION,
       };
-      const prepared = await prepareNoPaymentCheckout({ base44, stripe, data,
+      const prepared = await prepareNoPaymentCheckout({ base44, stripe, data, authenticatedUser,
         metadata: { ...intentMetadata, reward_reservation_id: rewardReservationId || creditReservationId },
         quote: rewardQuote, pricing: checkoutPricing, secret: rewardInternalSecret });
       if ('ok' in prepared && prepared.ok === false) return Response.json(prepared, { status: 503 });

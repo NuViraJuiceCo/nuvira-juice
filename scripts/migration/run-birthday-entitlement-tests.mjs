@@ -404,7 +404,8 @@ test('Settlement coordinator defers retryable payments and accepts only fresh ca
 test('Gift schema preserves admin-only writes and paid wiring exposes no public reservation action', () => {
   const schema = JSON.parse(fs.readFileSync('base44/entities/UserPoints.jsonc', 'utf8'));
   assert.equal(schema.rls.update.user_condition.role, 'admin'); assert.equal(schema.rls.create.user_condition.role, 'admin');
-  assert.ok(schema.properties.birthday_reservations.items.required.includes('payment_intent_id'));
+  assert.equal(schema.properties.birthday_reservations.items.required.includes('payment_intent_id'), false);
+  assert.equal(schema.properties.birthday_reservations.items.properties.checkout_session_id.type, 'string');
   for (const file of ['base44/functions/createPaymentIntent/entry.ts', 'base44/functions/stripeWebhook/entry.ts',
     'base44/functions/enrollNewCustomerInLoyalty/entry.ts']) {
     const source = fs.readFileSync(file, 'utf8');

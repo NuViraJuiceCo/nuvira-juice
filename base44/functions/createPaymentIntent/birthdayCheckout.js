@@ -1,6 +1,7 @@
 import { birthdayAvailability, birthdayReservationState, assertBirthdayWindow, birthdayReservationBinding, BIRTHDAY_ENTITLEMENT_REVISION, BirthdayEntitlementError } from '../../shared/birthdayEntitlement.js';
 import { readPointsAccount, reserveBirthdayGift, settleBirthdayGift } from '../enrollNewCustomerInLoyalty/pointsAccount.js';
 import { quoteCatalogCheckout } from './rewardCheckout.js';
+import { verifiedNoPaymentBirthdayMetadata, verifiedNoPaymentBirthdaySnapshot } from '../../shared/noPaymentBirthday.js';
 
 // Server-only: the entrypoint supplies authenticated identity and service-role
 // entities. Client DOB, annual claim flags and payment status are never trusted.
@@ -31,8 +32,8 @@ async function birthdayHistoryNeedsReview(entities, email, account) {
       if (!Array.isArray(data?.items)) return true;
       const gifts = data.items.filter(item => marked(item) || /birthday|🎂/i.test(String(item?.title || '')));
       if (!gifts.length) continue;
-      const providerId = name === 'Order' ? row.stripe_payment_intent_id : row.stripe_session_id;
-      const hold = holds.find(item => item.payment_intent_id === providerId);
+      const providerId = name === 'Order' ? row.stripe_payment_intent_id || row.stripe_checkout_session_id : row.stripe_session_id;
+      const hold = holds.find(item => (item.checkout_session_id || item.payment_intent_id) === providerId);
       if (gifts.length !== 1 || !hold || gifts[0].product_id !== hold.product_id
         || gifts[0].birthday_product_id !== hold.product_id || gifts[0].isBirthdayReward !== true
         || gifts[0].quantity !== 1 || gifts[0].price !== 0) return true;
@@ -112,10 +113,10 @@ export async function loadBirthdayCheckoutQuote({ base44, stripe, authenticatedU
     const hold = birthdayReservationState(account).holds.find(row => row.reservation_id === retryReservationId);
     if (hold && ['held', 'consumed'].includes(hold.status)) {
       const verified = await readVerifiedBirthdayPayment({ entities, stripe, customerEmail: email,
-        paymentIntentId: hold.payment_intent_id });
+        paymentIntentId: hold.checkout_session_id || hold.payment_intent_id });
       assert(hold.customer_app_user_id === authenticatedUser.id
         && Object.entries(birthdayReservationBinding(verified.request)).every(([key, value]) => hold[key] === value)
-        && ['requires_payment_method', 'requires_confirmation', 'requires_action', 'succeeded'].includes(verified.payment.status),
+        && (hold.checkout_session_id ? ['open', 'complete'] : ['requires_payment_method', 'requires_confirmation', 'requires_action', 'succeeded']).includes(verified.payment.status),
       'birthday_retry_unconfirmed');
       eligibility = { ...hold, eligible: true, status: 'available' };
     }
@@ -129,6 +130,8 @@ export async function loadBirthdayCheckoutQuote({ base44, stripe, authenticatedU
 // payment status or an email-only lookup. No confirm/capture/refund/cancel call.
 // Paid-PI support only: cashless/route-review integration remains a release gate.
 export async function readVerifiedBirthdayPayment({ entities, stripe, customerEmail, paymentIntentId }) {
+  if (/^cs_[A-Za-z0-9_]+$/.test(paymentIntentId || '')) return readVerifiedNoPaymentBirthday({
+    entities, stripe, customerEmail, sessionId: paymentIntentId });
   assert(typeof customerEmail === 'string' && customerEmail === customerEmail.trim().toLowerCase()
     && customerEmail.includes('@') && /^pi_[A-Za-z0-9_]+$/.test(paymentIntentId || ''));
   const payment = await stripe.paymentIntents.retrieve(paymentIntentId);
@@ -225,4 +228,57 @@ export async function verifyBirthdayCheckoutHold(options) {
   const hold = birthdayReservationState(account).holds.find(row => row.reservation_id === verified.request.reservation_id);
   assert(hold?.status === 'held' && Object.entries(birthdayReservationBinding(verified.request))
     .every(([key, value]) => hold[key] === value), 'birthday_hold_unconfirmed');
+}
+
+// Session-based birthday settlement never creates a card charge. The annual
+// entitlement is independent of any points/credit redemption on the same cart.
+export async function readVerifiedNoPaymentBirthday({ entities, stripe, customerEmail, sessionId }) {
+  assert(/^cs_[A-Za-z0-9_]+$/.test(sessionId || '') && customerEmail === customerEmail?.trim().toLowerCase());
+  const payment = await stripe.checkout.sessions.retrieve(sessionId);
+  const meta = payment?.metadata || {};
+  const binding = verifiedNoPaymentBirthdayMetadata(meta, sessionId);
+  assert(payment.id === sessionId && payment.livemode === true && payment.currency === 'usd'
+    && payment.mode === 'payment' && payment.amount_total === 0 && payment.payment_intent === null
+    && payment.customer_email === customerEmail && meta.customer_email === customerEmail
+    && ['open', 'complete', 'expired'].includes(payment.status)
+    && ['unpaid', 'no_payment_required'].includes(payment.payment_status)
+    && (payment.status !== 'complete' || payment.payment_status === 'no_payment_required'));
+  // Expiration can arrive after interrupted record creation. The provider's
+  // immutable binding can release/tombstone the exact annual hold, never consume.
+  if (payment.status !== 'expired') {
+    const context = one(await entities.CheckoutSession.filter({ stripe_session_id: sessionId }, undefined, 2));
+    const order = one(await entities.Order.filter({ stripe_checkout_session_id: sessionId }, undefined, 2));
+    const data = context.checkout_data;
+    verifiedNoPaymentBirthdaySnapshot(data, meta);
+    assert([context, order].every(row => row.customer_email === customerEmail && row.order_number === meta.order_number)
+      && order.total === 0 && order.payment_captured === false && !order.stripe_payment_intent_id
+      && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
+      && !['cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+      && !(Number(order.amount_refunded || 0) > 0) && JSON.stringify(order.items) === JSON.stringify(data.items));
+  }
+  return { payment, request: { ...binding, provider_status: payment.status } };
+}
+
+export async function reserveNoPaymentBirthdayCheckout({ entities, stripe, authenticatedUser, sessionId, now = Date.now() }) {
+  const customerEmail = String(authenticatedUser?.email || '').trim().toLowerCase();
+  assert(authenticatedUser?.id && customerEmail.includes('@'), 'birthday_sign_in_required');
+  const verified = await readVerifiedNoPaymentBirthday({ entities, stripe, customerEmail, sessionId });
+  assert(verified.request.customer_app_user_id === authenticatedUser.id, 'birthday_owner_mismatch');
+  const read = await readBirthdayCheckoutEligibility(entities, authenticatedUser, now);
+  if (read.eligibility.status === 'birthday_history_review_required') {
+    const account = await readPointsAccount(entities, customerEmail);
+    const expected = { ...verified.request, status: 'held', created_at: new Date(now).toISOString() };
+    if (await birthdayHistoryNeedsReview(entities, customerEmail, {
+      ...account, birthday_reservations: [...birthdayReservationState(account).holds, expected],
+    })) fail('birthday_history_review_required');
+  }
+  const result = await reserveBirthdayGift(entities, customerEmail, verified.request, read.identity, now);
+  return { success: true, reservation_status: result.reservation.status, idempotent: result.idempotent };
+}
+
+export async function settleNoPaymentBirthdayCheckout({ entities, stripe, customerEmail, sessionId, now = Date.now() }) {
+  const verified = await readVerifiedNoPaymentBirthday({ entities, stripe, customerEmail, sessionId });
+  assert(['complete', 'expired'].includes(verified.payment.status), 'birthday_provider_outcome_required');
+  const result = await settleBirthdayGift(entities, customerEmail, verified.request, now);
+  return { success: true, reservation_status: result.reservation.status, idempotent: result.idempotent };
 }

@@ -6,6 +6,7 @@ import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, NO_PAYMENT_POINTS_RE
 import { handleRewardCheckoutEvent } from '../../base44/functions/stripeWebhook/rewardWebhook.js';
 import * as ledger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 import { readRewardCheckoutRecovery, cancelRewardCheckoutRecovery } from '../../src/lib/rewardCheckoutRecovery.js';
+import { birthdayWindow } from '../../base44/shared/birthdayEntitlement.js';
 
 // Actual preparation, central ledger, and settlement code; all I/O simulated.
 // No network, real credentials, customer orders, email, events, or inventory.
@@ -22,7 +23,8 @@ const matches = (row, query) => Object.entries(query).every(([key, value]) => {
   }
   return row[key] === value;
 });
-function fixture({ directPoints = false, mixedPoints = false, creditMode = null } = {}) {
+function fixture({ directPoints = false, mixedPoints = false, creditMode = null, birthday = false } = {}) {
+  directPoints ||= birthday;
   directPoints ||= creditMode === 'only' || creditMode === 'points';
   mixedPoints ||= creditMode === 'tier';
   const schedule = { assigned_delivery_date: '2026-09-12', assigned_production_day: '2026-09-11',
@@ -84,6 +86,23 @@ function fixture({ directPoints = false, mixedPoints = false, creditMode = null 
     UserPoints: [{ id: 'points', customer_email: email, total_points: 7000, lifetime_points: 7000,
       redeemed_points: 0, reserved_points: 0, points_history: [], reward_reservations: [] }],
     LoyaltyMember: [{ id: 'member', email, total_points: 7000, reserved_points: 0 }], LoyaltyTransaction: [] };
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const authenticatedUser = { id: 'synthetic-user', email, created_date: '2025-01-01T12:00:00Z' };
+  if (birthday) {
+    const birth = `1990-${today.slice(5)}`;
+    const window = birthdayWindow({ birthday: birth, signupDate: authenticatedUser.created_date });
+    const gift = { product_id: 'birthday-OASIS', title: 'OASIS', quantity: 1, price: 0,
+      size: '12 oz', category: 'juice', isBirthdayReward: true, birthday_product_id: 'birthday-OASIS',
+      catalog_unit_price: 13, birthday_discount_amount: 13 };
+    data.items.push(gift);
+    Object.assign(data, { customer_app_user_id: authenticatedUser.id, birthday_discount: 13, catalog_subtotal: 91,
+      birthday_reservation_id: `birthday:${'a'.repeat(64)}`, no_payment_birthday_revision: '2026-09-09.no-payment-birthday-v1',
+      birthday_checkout: { revision: '2026-09-08.birthday-entitlement-v1', product_id: gift.product_id,
+        retail_value_cents: 1300, cycle_year: window.cycle_year, month_day: window.month_day,
+        window_start: window.window_start, window_end: window.window_end } });
+    metadata.birthday_reservation_id = data.birthday_reservation_id;
+    rows.UserProfile = [{ id: 'synthetic-profile', customer_email: email, birthday: birth }];
+  }
   if (directPoints) { rows.RewardTier = []; rows.UserPoints[0].total_points = 9000; rows.UserPoints[0].lifetime_points = 9000; }
   if (mixedPoints) { rows.UserPoints[0].total_points = 9000; rows.UserPoints[0].lifetime_points = 9000; }
   const effects = []; const faults = {}; const entities = {};
@@ -159,7 +178,7 @@ function fixture({ directPoints = false, mixedPoints = false, creditMode = null 
     return { data };
   };
   const base44 = { asServiceRole: { entities, functions: { invoke } } };
-  const options = { base44, stripe, data, metadata, quote: directPoints ? null : quote, pricing, secret };
+  const options = { base44, stripe, data, metadata, quote: directPoints ? null : quote, pricing, secret, authenticatedUser };
   const complete = () => { session.status = 'complete'; session.payment_status = 'no_payment_required'; };
   const webhook = type => handleRewardCheckoutEvent({ entities, stripe,
     event: { id: 'evt_SYNTHETIC', created: 1788865200, livemode: true, type, data: { object: structuredClone(session) } },
@@ -533,5 +552,65 @@ await test('points settlement followed by credit outage retries without another 
   assert.equal(f.rows.UserPoints[0].total_points, 7700);
   assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
   assert.equal(f.rows.Order[0].payment_status, 'paid');
+});
+for (const creditMode of [null, 'only', 'points']) {
+  await test(`birthday plus ${creditMode || 'points'} reserves all benefits before secret and settles once`, async () => {
+    const f = fixture({ birthday: true, creditMode });
+    const first = await f.run(); assert.ok(first.clientSecret, JSON.stringify(first));
+    assert.equal(f.rows.UserPoints[0].birthday_reservations.length, 1);
+    assert.equal(f.rows.UserPoints[0].birthday_reservations[0].status, 'held');
+    assert.equal(f.rows.UserPoints[0].birthday_reservations[0].checkout_session_id, f.session().id);
+    assert.equal(f.rows.UserPoints[0].birthday_reservations[0].payment_intent_id, undefined);
+    assert.equal((await f.run()).clientSecret, first.clientSecret);
+    assert.ok(Object.keys(f.session().metadata).length <= 50);
+    f.complete(); await f.webhook('checkout.session.completed'); await f.webhook('checkout.session.completed');
+    assert.equal(f.rows.UserPoints[0].birthday_reservations.length, 1);
+    assert.equal(f.rows.UserPoints[0].birthday_reservations[0].status, 'consumed');
+    assert.equal(f.rows.Order[0].payment_status, 'paid');
+    assert.equal(f.rows.Order[0].reward_settlement.birthday_retail_cents, 1300);
+    assert.equal(f.rows.Order[0].reward_settlement.birthday_product_id, 'birthday-OASIS');
+  });
+  await test(`birthday plus ${creditMode || 'points'} cancellation releases annual and monetary holds`, async () => {
+    const f = fixture({ birthday: true, creditMode }); assert.ok((await f.run()).clientSecret);
+    await f.cancel(); await f.cancel();
+    assert.equal(f.rows.UserPoints[0].birthday_reservations[0].status, 'released');
+    assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+    assert.equal(f.rows.NuViraCredit[0].reserved_balance, 0);
+    assert.equal(f.rows.NuViraCredit[0].balance, 100);
+    assert.equal(f.rows.Order[0].status, 'cancelled');
+  });
+}
+for (const [name, mutate] of [
+  ['birthday owner', f => { f.data.customer_app_user_id = 'foreign-user'; }],
+  ['gift quantity', f => { f.data.items.at(-1).quantity = 2; }],
+  ['gift retail value', f => { f.data.items.at(-1).catalog_unit_price = 99; }],
+  ['gift product binding', f => { f.data.items.at(-1).birthday_product_id = 'foreign-product'; }],
+  ['gift subtotal', f => { f.data.catalog_subtotal = 92; }],
+]) await test(`birthday ${name} mismatch cannot expose a confirmation secret`, async () => {
+  const f = fixture({ birthday: true, creditMode: 'points' }); mutate(f);
+  try { assert.equal((await f.run()).clientSecret, undefined); } catch (error) { assert.match(error.message, /birthday.*unconfirmed/); }
+  assert.equal(f.rows.Order.filter(order => order.payment_status === 'paid').length, 0);
+  assert.equal(f.rows.UserPoints[0].total_points, 9000); assert.equal(f.rows.NuViraCredit[0].balance, 100);
+});
+for (const failedEntity of ['Order', 'CheckoutSession']) await test(`birthday ${failedEntity} failure releases existing holds and records terminal annual cancellation`, async () => {
+  const f = fixture({ birthday: true, creditMode: 'points' }); f.faults[`${failedEntity}.create`] = true;
+  const result = await f.run(); assert.equal(result.clientSecret, undefined);
+  assert.equal(result.checkout_session_expired, true); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+  assert.equal(f.rows.UserPoints[0].birthday_reservations[0].status, 'released');
+  assert.equal(f.rows.NuViraCredit[0].balance, 100);
+});
+await test('birthday Session expiration without checkout context releases annual and monetary holds once', async () => {
+  const f = fixture({ birthday: true, creditMode: 'points' }); assert.ok((await f.run()).clientSecret);
+  f.rows.CheckoutSession.splice(0); f.session().status = 'expired';
+  await f.webhook('checkout.session.expired'); await f.webhook('checkout.session.expired');
+  assert.equal(f.rows.UserPoints[0].birthday_reservations[0].status, 'released');
+  assert.equal(f.rows.UserPoints[0].reserved_points, 0); assert.equal(f.rows.NuViraCredit[0].reserved_balance, 0);
+  assert.equal(f.rows.Order[0].status, 'cancelled');
+});
+await test('completed birthday confirmation cannot be canceled or release any consumed entitlement', async () => {
+  const f = fixture({ birthday: true, creditMode: 'only' }); assert.ok((await f.run()).clientSecret); f.complete();
+  await f.webhook('checkout.session.completed'); await assert.rejects(f.cancel, /already_completed/);
+  assert.equal(f.rows.UserPoints[0].birthday_reservations[0].status, 'consumed');
+  assert.equal(f.rows.NuViraCredit[0].balance, 22); assert.equal(f.rows.Order[0].payment_status, 'paid');
 });
 console.log(`No-payment checkout start: ${count}/${count} passed. Local synthetic I/O only; not live/provider-release evidence.`);
