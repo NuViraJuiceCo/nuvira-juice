@@ -6,9 +6,10 @@ import { sendMetaPurchaseConversion } from './metaConversions.js';
 import { settleEmbeddedPaymentBenefits, applyCheckoutCredit } from './paymentBenefits.js';
 import { handleRewardCheckoutEvent } from './rewardWebhook.js';
 import { settleCheckoutCredit } from '../../shared/checkoutCredit.js';
+import { settleVerifiedBirthdayCheckout } from '../createPaymentIntent/birthdayCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260908-credit-reservation-v1';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260908-birthday-reservation-v2';
 const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
@@ -357,6 +358,8 @@ async function settleEmbeddedBenefits(base44, event, paymentIntent, order, check
   return settleEmbeddedPaymentBenefits({
     entities: base44.asServiceRole.entities,
     postLoyalty: payload => postLoyaltyTransaction(base44, payload),
+    settleBirthday: payload => settleVerifiedBirthdayCheckout({ entities: base44.asServiceRole.entities, stripe,
+      customerEmail: payload.customer_email, paymentIntentId: payload.stripe_payment_intent_id }),
     settleReservation: async payload => {
       const result = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
         ...payload, action: 'settle_reward_checkout',
@@ -1203,6 +1206,11 @@ Deno.serve(async (req) => {
     if (event.type === 'payment_intent.canceled') {
       const pi = event.data.object;
       const meta = pi.metadata || {};
+      if (meta.birthday_reservation_id && !skipLoyaltyWrite(stagingSafeMode)) {
+        const result = await settleVerifiedBirthdayCheckout({ entities: base44.asServiceRole.entities, stripe,
+          customerEmail: meta.customer_email, paymentIntentId: pi.id });
+        if (result.reservation_status !== 'released') throw new Error('birthday_cancellation_release_unconfirmed');
+      }
       if (meta.credit_reservation_id && !skipLoyaltyWrite(stagingSafeMode)) {
         const latest = await stripe.paymentIntents.retrieve(pi.id);
         if (latest.id !== pi.id || latest.status !== 'canceled') throw new Error('credit_cancellation_unconfirmed');

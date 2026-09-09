@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
+import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
+import * as birthdayEntitlement from '../../base44/shared/birthdayEntitlement.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { transformSync } from 'esbuild';
+import { transformSync, buildSync } from 'esbuild';
 import * as offers from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
 import * as rewards from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
 import * as noPayment from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
@@ -13,6 +15,8 @@ const source = fs.readFileSync('base44/functions/createPaymentIntent/entry.ts', 
 const compiled = transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
 const compiledLedger = transformSync(fs.readFileSync('base44/functions/enrollNewCustomerInLoyalty/entry.ts', 'utf8'),
   { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
+const compiledWebhook = buildSync({ entryPoints: ['base44/functions/stripeWebhook/entry.ts'], bundle: true,
+  write: false, platform: 'node', format: 'cjs', external: ['npm:*'] }).outputFiles[0].text;
 const email = 'buyer@example.test';
 const body = {
   items: [{ product_id: 'oasis-test', title: 'OASIS', price: 13, quantity: 3, category: 'juice', size: '12 oz' }],
@@ -29,12 +33,12 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
   failRelease = false, missingId = '', strictStripe = false, seed = {}, noRewardSecret = false, distanceMiles = 2,
   failCredit = false, loseCreditAck = false, ignoreCreditWrite = false,
   realLedger = false, ignorePointsWrite = false, losePointsAck = false, failCatalog = false,
-  recoveryKey = false, cancelCaptureRace = false, ignoreOrderWrite = false } = {}) {
+  recoveryKey = false, cancelCaptureRace = false, ignoreOrderWrite = false, birthdayUser = false } = {}) {
   const rows = { Order: [], CheckoutSession: [], Product: [{ id: 'oasis-test', title: 'OASIS', price: 13,
     category: 'juice', size: '12 oz', is_available: true }], Subscription: [], SubscriptionPlan: [], UserProfile: [],
     RewardTier: [{ id: 'reward-test', title: 'Double Points', reward_type: 'double_points', points_required: 1500, is_active: true }],
     UserPoints: [{ id: 'balance-test', customer_email: email, total_points: 7000, reserved_points: 0, reward_reservations: [] }],
-    NuViraCredit: [], LoyaltyMember: [], LoyaltyTransaction: [], ...structuredClone(seed) };
+    NuViraCredit: [], LoyaltyMember: [], LoyaltyTransaction: [], OperationalAlert: [], ...structuredClone(seed) };
   const effects = []; const entities = {};
   let lostCreditAck = false;
   let lostPointsAck = false;
@@ -75,7 +79,8 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
     constructor(...args) { super(...(args.length ? args : [clock])); }
     static now() { return clock; }
   }
-  const db = { auth: { me: async () => guest ? null : { id: 'test-user', email } },
+  const db = { auth: { me: async () => guest ? null : { id: 'test-user', email,
+    ...(birthdayUser ? { birthday: '1990-09-08', created_date: '2025-01-01T15:00:00Z' } : {}) } },
     asServiceRole: { entities, functions: { invoke: async (name, payload) => {
       if (name === 'enrollNewCustomerInLoyalty') {
         if (realLedger) {
@@ -131,10 +136,16 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       if (name.includes('firstOrderEligibility')) return offers;
       if (name.includes('rewardCheckout')) return rewards;
       if (name.includes('checkoutCredit')) return creditReservation;
+      if (name.includes('birthdayCheckout')) return birthdayCheckout;
+      if (name.includes('birthdayEntitlement')) return birthdayEntitlement;
       if (name.includes('noPaymentCheckout')) return noPayment;
       if (name.includes('paidCheckoutRecovery')) return paidRecovery;
       if (name.includes('pointsAccount')) return pointsLedger;
       if (name.includes('stripe')) return class {
+        webhooks = { constructEventAsync: async (raw, signature) => {
+          if (signature !== 'SYNTHETIC_VALID_SIGNATURE') throw new Error('Synthetic signature rejected');
+          return JSON.parse(raw);
+        } };
         constructor() { this.paymentIntents = {
           create: async (data, options) => {
             effects.push('PI.create');
@@ -173,7 +184,21 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
   const ledgerModule = { exports: {} };
   vm.runInNewContext(compiledLedger, { ...runtime, module: ledgerModule, exports: ledgerModule.exports,
     Deno: { ...runtime.Deno, serve: fn => { ledgerServed = fn; } } });
-  return { rows, effects, intent: () => storedIntent, session: () => storedSession,
+  return { rows, effects, entities, runWebhook: async (event, signature = 'SYNTHETIC_VALID_SIGNATURE') => {
+    let webhook;
+    const hookModule = { exports: {} };
+    vm.runInNewContext(compiledWebhook, { ...runtime, module: hookModule, exports: hookModule.exports,
+      Deno: { ...runtime.Deno, serve: fn => { webhook = fn; } } });
+    entities.Order.update = async (id, patch) => {
+      effects.push('Order.webhook-update'); const row = rows.Order.find(row => row.id === id); assert.ok(row);
+      Object.assign(row, structuredClone(patch)); return structuredClone(row);
+    };
+    const response = await webhook(new Request('https://unit.test/webhook', { method: 'POST',
+      headers: { 'stripe-signature': signature }, body: JSON.stringify(event) }));
+    return { status: response.status, body: await response.json() };
+  }, stripe: { paymentIntents: { retrieve: async id => {
+    effects.push('PI.retrieve'); assert.equal(id, storedIntent.id); return structuredClone(storedIntent);
+  } } }, intent: () => storedIntent, session: () => storedSession,
     settle: async () => {
       const response = await ledgerServed(new Request('https://unit.test/ledger', { method: 'POST', body: JSON.stringify({
         action: 'settle_reward_checkout', customer_email: email, stripe_payment_intent_id: storedIntent.id,
@@ -261,7 +286,8 @@ await test('birthday markers are never silently made into a paid or unverified f
   for (const active_reward of [null, { id: 'reward-test' }]) {
     const ctx = fixture(); const response = await ctx.handle({ active_reward,
       items: [{ ...body.items[0], isBirthdayReward: true, birthday_product_id: 'oasis-test' }] });
-    assert.equal(response.status, 409); assert.equal((await response.json()).error_code, 'BIRTHDAY_REWARD_REQUIRES_VERIFICATION');
+    assert.equal(response.status, 409); assert.equal((await response.json()).error_code,
+      active_reward ? 'BIRTHDAY_REWARD_COMBINATION_UNAVAILABLE' : 'BIRTHDAY_NOT_AVAILABLE');
     assert.equal(ctx.effects.length, 0);
   }
 });
@@ -755,5 +781,137 @@ await test('released points, missing credit hold, expired context cannot revive 
     const result = await (await ctx.handle({ mode: 'resume_paid_checkout', guest_order_token: null })).json();
     assert.equal(result.ok, false); assert.equal(result.clientSecret, undefined);
   }
+});
+const birthdayCart = () => [{ ...body.items[0], quantity: 2 }, { product_id: '__birthday_reward__',
+  birthday_product_id: 'oasis-test', isBirthdayReward: true, title: 'Birthday selection', price: 0, quantity: 1 }];
+await test('authenticated birthday eligibility and priced preview are read-only and do not expose DOB', async () => {
+  const ctx = fixture({ birthdayUser: true });
+  const available = await (await ctx.handle({ mode: 'birthday_checkout_eligibility' })).json();
+  assert.equal(available.eligibility.status, 'available');
+  assert.doesNotMatch(JSON.stringify(available), /1990|buyer@|test-user/);
+  const quoted = await (await ctx.handle({ mode: 'preview_catalog_checkout', items: birthdayCart() })).json();
+  assert.equal(quoted.ok, true, JSON.stringify(quoted)); assert.equal(quoted.quote.subtotal, 26);
+  assert.equal(quoted.quote.catalog_subtotal, 39); assert.equal(quoted.quote.items[1].price, 0);
+  assert.equal(ctx.effects.length, 0);
+});
+await test('birthday paid preparation saves real bottle identity and annual hold before exposing a secret', async () => {
+  const ctx = fixture({ birthdayUser: true, strictStripe: true, recoveryKey: true });
+  const request = { items: birthdayCart(), guest_order_token: null };
+  const response = await ctx.handle(request); const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result)); assert.ok(result.clientSecret);
+  assert.equal(ctx.intent().amount, 2999); assert.ok(Object.keys(ctx.intent().metadata).length <= 50);
+  const data = ctx.rows.CheckoutSession[0].checkout_data;
+  assert.equal(data.subtotal, 26); assert.equal(data.birthday_discount, 13); assert.equal(data.catalog_subtotal, 39);
+  assert.equal(data.items[1].product_id, 'oasis-test'); assert.equal(data.items[1].title, 'OASIS');
+  assert.equal(data.items[1].price, 0); assert.equal(ctx.rows.Order[0].items[1].isBirthdayReward, true);
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'held');
+  assert.equal(ctx.rows.UserPoints[0].total_points, 7000); assert.equal(ctx.rows.UserPoints[0].reserved_points, 0);
+  assert.ok(ctx.effects.indexOf('UserPoints.CAS') > ctx.effects.indexOf('CheckoutSession.create'));
+  ctx.advance(); const replay = await ctx.handle(request);
+  assert.equal(replay.status, 200, JSON.stringify(await replay.json()));
+  assert.equal(ctx.rows.Order.length, 1); assert.equal(ctx.rows.CheckoutSession.length, 1);
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations.length, 1);
+  const resumed = await (await ctx.handle({ ...request, mode: 'resume_paid_checkout' })).json();
+  assert.equal(resumed.ok, true, JSON.stringify(resumed)); assert.ok(resumed.clientSecret);
+  const cancelled = await (await ctx.handle({ ...request, mode: 'cancel_paid_checkout' })).json();
+  assert.equal(cancelled.ok, true, JSON.stringify(cancelled));
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'released');
+  assert.equal(ctx.rows.Order[0].status, 'cancelled');
+  assert.equal((await (await ctx.handle({ mode: 'birthday_checkout_eligibility' })).json()).eligibility.status, 'available');
+});
+await test('birthday normal retail value qualifies the dollar minimum without charging for the gift', async () => {
+  const ctx = fixture({ birthdayUser: true, distanceMiles: 25 });
+  const response = await ctx.handle({ items: [{ ...body.items[0], quantity: 5 }, birthdayCart()[1]] });
+  const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(result.birthdayQuote.catalog_subtotal, 78); assert.equal(result.birthdayQuote.subtotal, 65);
+  assert.equal(ctx.intent().amount, Math.round((65 + result.effectiveDeliveryFee) * 100));
+});
+await test('birthday, direct points and credit holds share a valid compact provider request', async () => {
+  const ctx = fixture({ birthdayUser: true, realLedger: true, seed: creditSeed, recoveryKey: true });
+  const response = await ctx.handle({ items: birthdayCart(), points_used: 1000, points_discount: 10, credits_discount: 6 });
+  const result = await response.json(); assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(ctx.intent().amount, 1399); assert.ok(Object.keys(ctx.intent().metadata).length <= 50);
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'held');
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 1000); assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 6);
+  const canceled = await (await ctx.handle({ mode: 'cancel_paid_checkout', guest_order_token: null })).json();
+  assert.equal(canceled.ok, true, JSON.stringify(canceled));
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'released');
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 0); assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 0);
+});
+for (const [label, options] of [['guest', { guest: true }], ['missing birthday', {}]]) {
+  await test(`${label} cannot prepare a free birthday bottle`, async () => {
+    const ctx = fixture(options); const response = await ctx.handle({ items: birthdayCart() });
+    assert.equal(response.status, 409); assert.equal(ctx.effects.length, 0);
+    assert.equal((await response.json()).clientSecret, undefined);
+  });
+}
+for (const [label, patch] of [
+  ['multiple gifts', { items: [...birthdayCart(), birthdayCart()[1]] }],
+  ['gift alone', { items: [birthdayCart()[1]] }],
+  ['missing selection', { items: [birthdayCart()[0], { ...birthdayCart()[1], birthday_product_id: null }] }],
+  ['unavailable product', { items: [birthdayCart()[0], { ...birthdayCart()[1], birthday_product_id: 'absent' }] }],
+  ['reward combination', { items: birthdayCart(), active_reward: { id: 'reward-test' } }],
+]) await test(`birthday ${label} fails before provider or record writes`, async () => {
+  const ctx = fixture({ birthdayUser: true }); const response = await ctx.handle(patch);
+  assert.equal(response.status, 409, JSON.stringify(await response.json())); assert.equal(ctx.effects.length, 0);
+});
+for (const [label, options] of [
+  ['lost hold acknowledgment', { losePointsAck: true }], ['ignored hold write', { ignorePointsWrite: true }],
+  ['hold and cancellation uncertainty', { ignorePointsWrite: true, failCancel: true }],
+]) await test(`birthday ${label} withholds payment secret`, async () => {
+  const ctx = fixture({ birthdayUser: true, ...options });
+  const response = await ctx.handle({ items: birthdayCart() }); const result = await response.json();
+  assert.equal(response.status, 503, JSON.stringify(result)); assert.equal(result.clientSecret, undefined);
+  if (options.losePointsAck) assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'released');
+  if (options.failCancel) assert.equal(result.payment_attempt_canceled, false);
+});
+await test('missing birthday hold blocks resumed payment without fabricating a reservation', async () => {
+  const ctx = fixture({ birthdayUser: true, recoveryKey: true });
+  assert.equal((await ctx.handle({ items: birthdayCart() })).status, 200);
+  ctx.rows.UserPoints[0].birthday_reservations = [];
+  const before = JSON.stringify(ctx.rows);
+  const result = await (await ctx.handle({ mode: 'resume_paid_checkout', guest_order_token: null })).json();
+  assert.equal(result.ok, false); assert.equal(result.clientSecret, undefined); assert.equal(JSON.stringify(ctx.rows), before);
+});
+await test('paid birthday settlement consumes once and does not award points for the complimentary bottle', async () => {
+  const { settleEmbeddedPaymentBenefits } = await import('../../base44/functions/stripeWebhook/paymentBenefits.js');
+  const ctx = fixture({ birthdayUser: true }); assert.equal((await ctx.handle({ items: birthdayCart() })).status, 200);
+  ctx.intent().status = 'succeeded'; ctx.intent().amount_received = ctx.intent().amount;
+  const data = ctx.rows.CheckoutSession[0].checkout_data; const posts = new Map();
+  const args = { entities: ctx.entities, order: ctx.rows.Order[0], paymentIntent: ctx.intent(), checkoutData: data,
+    event: { id: 'evt_SYNTHETIC_BIRTHDAY', created: 1788894000 },
+    postLoyalty: async payload => { posts.set(payload.idempotency_key, payload); },
+    settleBirthday: () => birthdayCheckout.settleVerifiedBirthdayCheckout({ ...ctx, customerEmail: email,
+      paymentIntentId: ctx.intent().id, now: Date.parse('2026-09-08T19:00:00Z') }) };
+  await settleEmbeddedPaymentBenefits(args); await settleEmbeddedPaymentBenefits(args);
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'consumed');
+  assert.equal(posts.size, 1); assert.equal([...posts.values()][0].amount, 299);
+  assert.equal((await (await ctx.handle({ mode: 'birthday_checkout_eligibility' })).json()).eligibility.status, 'already_redeemed');
+  await assert.rejects(() => settleEmbeddedPaymentBenefits({ ...args, settleBirthday: undefined }), /birthday_payment_settlement_unavailable/);
+  ctx.rows.Order[0].payment_status = 'refunded';
+  await assert.rejects(() => args.settleBirthday(), /birthday_checkout_context_unconfirmed/);
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'consumed');
+});
+await test('actual signed-webhook cancellation releases the birthday hold before downstream cancellation', async () => {
+  const ctx = fixture({ birthdayUser: true }); assert.equal((await ctx.handle({ items: birthdayCart() })).status, 200);
+  ctx.intent().status = 'canceled';
+  const event = { type: 'payment_intent.canceled', id: 'evt_BIRTHDAY_CANCEL_SYNTHETIC', livemode: true,
+    created: 1788894000, data: { object: structuredClone(ctx.intent()) } };
+  const result = await ctx.runWebhook(event); assert.equal(result.status, 200, JSON.stringify(result));
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'released');
+  assert.equal(ctx.rows.Order[0].status, 'cancelled');
+  const revision = ctx.rows.UserPoints[0].points_ledger_revision;
+  assert.equal((await ctx.runWebhook(event)).status, 200);
+  assert.equal(ctx.rows.UserPoints[0].points_ledger_revision, revision);
+  assert.equal(ctx.rows.OperationalAlert.length, 1);
+});
+await test('actual webhook rejects forged or stale cancellation before releasing the birthday gift', async () => {
+  const ctx = fixture({ birthdayUser: true }); assert.equal((await ctx.handle({ items: birthdayCart() })).status, 200);
+  const event = { type: 'payment_intent.canceled', id: 'evt_SYNTHETIC_CANCEL', livemode: true,
+    created: 1788894000, data: { object: { ...ctx.intent(), status: 'canceled' } } };
+  assert.equal((await ctx.runWebhook(event, 'INVALID_SIGNATURE')).status, 400);
+  assert.equal((await ctx.runWebhook(event)).status, 500); // Fresh provider still says retryable, not canceled.
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'held');
+  assert.equal(ctx.rows.Order[0].status, 'pending_payment'); assert.equal(ctx.rows.OperationalAlert.length, 0);
 });
 console.log(`Checkout record persistence: ${passed}/${passed} passed. Real handler, synthetic storage/Maps/Stripe only; no external calls or production writes.`);

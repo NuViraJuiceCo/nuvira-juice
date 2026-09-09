@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
+import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
+import * as birthdayEntitlement from '../../base44/shared/birthdayEntitlement.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -62,6 +64,8 @@ function loadHandler(path, db, env = {}, stripeMock = null) {
       if (name.includes('firstOrderEligibility')) return policy;
       if (name.includes('rewardCheckout')) return rewardCheckout;
       if (name.includes('checkoutCredit')) return creditReservation;
+      if (name.includes('birthdayCheckout')) return birthdayCheckout;
+      if (name.includes('birthdayEntitlement')) return birthdayEntitlement;
       if (name.includes('noPaymentCheckout')) return noPaymentCheckout;
       if (name.includes('paidCheckoutRecovery')) return paidRecovery;
       if (name.includes('stripe')) return class {
@@ -188,6 +192,9 @@ await test('zero-dollar rewards and free items cannot bypass the new offer non-s
     { points_used: 500 },
     { items: [{ product_id: 'synthetic', isFreeReward: true, price: 0 }] },
     { items: [{ product_id: '__free_reward_synthetic__', price: 0 }] },
+    { items: [{ product_id: '__birthday_reward__', price: 0 }] },
+    { items: [{ product_id: 'synthetic', isBirthdayReward: true, price: 0 }] },
+    { items: [{ product_id: 'synthetic', birthday_product_id: 'synthetic', price: 0 }] },
   ]) {
     assert.equal(policy.firstOrderStackingBlock(offer, [0, 0, 0], checkout).status, 400);
     assert.equal(policy.firstOrderStackingBlock({ code: 'NUVIRASUMMER' }, [0, 0, 0], checkout), null);

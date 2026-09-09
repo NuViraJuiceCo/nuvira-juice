@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
+import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
+import * as birthdayEntitlement from '../../base44/shared/birthdayEntitlement.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -173,6 +175,8 @@ function handler(db) {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('rewardCheckout')) return checkout;
       if (name.includes('checkoutCredit')) return creditReservation;
+      if (name.includes('birthdayCheckout')) return birthdayCheckout;
+      if (name.includes('birthdayEntitlement')) return birthdayEntitlement;
       if (name.includes('noPaymentCheckout')) return noPaymentCheckout;
       if (name.includes('paidCheckoutRecovery')) return paidRecovery;
       if (name.includes('firstOrderEligibility')) return offers;
@@ -214,7 +218,7 @@ await test('preview does not claim points reservation or debit, payment, or fulf
 await test('admin runtime marker is read-only and explicitly reports unfinished reward payment integration', async () => {
   const db = fakeDb({ user: { email, role: 'admin' } });
   const response = await handler(db)(request({ mode: 'checkout_runtime_status' })); const body = await response.json();
-  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-08.catalog-authoritative-payment-v3');
+  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-08.birthday-bound-payment-v4');
   assert.equal(body.catalog_quote_revision, checkout.CATALOG_CHECKOUT_REVISION);
   assert.equal(body.reward_payment_integration_complete, false); assert.equal(body.writes_performed, false);
   assert.equal(db.reads.length, 0);

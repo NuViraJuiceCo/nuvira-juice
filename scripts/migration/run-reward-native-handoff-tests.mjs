@@ -228,6 +228,14 @@ test('optional item metadata is declared on both persistent projection schemas',
   const task = JSON.parse(fs.readFileSync('base44/entities/FulfillmentTask.jsonc')).properties.items.items.properties;
   for (const key of Object.keys(order)) { assert.ok(mirror[key], `ShopifyOrder.${key}`); assert.ok(task[key], `FulfillmentTask.${key}`); }
 });
+test('birthday projection retains free real bottle identity without changing price or quantity', () => {
+  const item = { product_id: 'oasis', title: 'OASIS', quantity: 1, price: 0, category: 'juice', size: '12oz',
+    isBirthdayReward: true, birthday_product_id: 'oasis', birthday_discount_amount: 13, catalog_unit_price: 13 };
+  const snapshot = nativeItemSnapshot(item, true);
+  assert.equal(snapshot.product_id, 'oasis'); assert.equal(snapshot.birthday_product_id, 'oasis');
+  assert.equal(snapshot.isBirthdayReward, true); assert.equal(snapshot.birthday_discount_amount, 13);
+  assert.equal(snapshot.price, undefined); assert.equal(snapshot.quantity, undefined);
+});
 test('legacy no-metadata lines remain valid and product ID never becomes a synthetic reward ID', () => {
   assert.deepEqual(nativeItemSnapshot({ title: 'Legacy', quantity: 1, price: 13 }), {});
   assert.throws(() => nativeItemSnapshot({ title: 'Legacy', quantity: 1, price: 13 }, true));

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
+import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
+import * as birthdayEntitlement from '../../base44/shared/birthdayEntitlement.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -101,6 +103,8 @@ function backendFixture({ user = { id: owner, email }, balancePatch = {}, holdPa
       if (name.includes('paidCheckoutRecovery')) return paidRecovery;
       if (name.includes('rewardCheckout')) return rewards;
       if (name.includes('checkoutCredit')) return creditReservation;
+      if (name.includes('birthdayCheckout')) return birthdayCheckout;
+      if (name.includes('birthdayEntitlement')) return birthdayEntitlement;
       if (name.includes('firstOrderEligibility')) return offers;
       if (name.includes('stripe')) return class { constructor() { return stripe; } };
       throw new Error(`Unexpected dependency ${name}`);

@@ -1,4 +1,5 @@
 import { creditAccountState, settleCheckoutCredit } from '../../shared/checkoutCredit.js';
+import { hasBirthdayCheckout } from '../createPaymentIntent/birthdayCheckout.js';
 // Retry-safe bookkeeping for an already confirmed embedded payment. All inputs
 // are server-held CheckoutSession / Order records and the signed Stripe event.
 export const PAYMENT_BENEFITS_REVISION = '2026-09-08.payment-benefits-replay-v1';
@@ -48,7 +49,7 @@ export async function applyCheckoutCredit(entities, { email, orderId, orderNumbe
 }
 
 export async function settleEmbeddedPaymentBenefits({ entities, postLoyalty, paymentIntent, event,
-  order, checkoutData = {}, skipLoyalty = false, settleReservation }) {
+  order, checkoutData = {}, skipLoyalty = false, settleReservation, settleBirthday }) {
   const email = String(order.customer_email || '').trim().toLowerCase();
   const paymentId = paymentIntent.id;
   if (!paymentId || order.stripe_payment_intent_id !== paymentId
@@ -57,6 +58,14 @@ export async function settleEmbeddedPaymentBenefits({ entities, postLoyalty, pay
   if (!Number.isSafeInteger(paymentIntent.amount_received) || paymentIntent.amount_received < 0
     || paymentIntent.status !== 'succeeded' || paymentIntent.currency !== 'usd') throw new Error('confirmed_payment_required');
   if (!email || skipLoyalty) return { skipped: true };
+  if (paymentIntent.metadata?.birthday_reservation_id || checkoutData.birthday_reservation_id
+    || hasBirthdayCheckout(checkoutData.items) || hasBirthdayCheckout(order.items)) {
+    if (!paymentIntent.metadata?.birthday_reservation_id || typeof settleBirthday !== 'function') {
+      throw new Error('birthday_payment_settlement_unavailable');
+    }
+    const settled = await settleBirthday({ customer_email: email, stripe_payment_intent_id: paymentId });
+    if (settled?.success !== true || settled?.reservation_status !== 'consumed') throw new Error('birthday_payment_settlement_unconfirmed');
+  }
   const pointsUsed = Number(checkoutData.points_used || 0);
   const rewardPoints = Number(checkoutData.active_reward?.points_required || 0);
   if (![pointsUsed, rewardPoints].every(finiteInteger)) throw new Error('invalid_checkout_points');

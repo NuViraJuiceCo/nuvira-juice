@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
+import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -113,6 +114,7 @@ function serve(f) {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => f.db };
       if (name.includes('paymentBenefits')) return benefits;
       if (name.includes('checkoutCredit')) return creditReservation;
+      if (name.includes('birthdayCheckout')) return birthdayCheckout;
       if (name.includes('rewardWebhook')) return rewardWebhook;
       if (name.includes('metaConversions')) return { sendMetaPurchaseConversion: async () => ({ sent: false, reason: 'synthetic' }) };
       if (name.includes('googleMeasurement')) return { sendGooglePurchaseMeasurement: async () => ({ sent: false, reason: 'synthetic' }) };
@@ -324,6 +326,57 @@ test('Actual webhook cannot release credit from an unconfirmed cancellation payl
   f.providerRead = () => ({ ...payment, status: 'processing' });
   const before = structuredClone(f.rows); const result = await serve(f)('payment_intent.canceled', changes);
   assert.ok(result.status >= 400); assert.deepEqual(f.rows, before);
+});
+function birthdayFixture() {
+  const f = fixture(); const orderNumber = `NV-${'A'.repeat(24)}`;
+  const gift = { product_id: 'oasis_synthetic', title: 'OASIS', price: 0, quantity: 1, category: 'juice', size: '12oz',
+    isBirthdayReward: true, birthday_product_id: 'oasis_synthetic', catalog_unit_price: 13, birthday_discount_amount: 13 };
+  Object.assign(f.order, { order_number: orderNumber, total: 29.99,
+    items: [{ ...gift, isBirthdayReward: false, birthday_product_id: undefined, birthday_discount_amount: undefined, price: 13, quantity: 2 }, gift] });
+  const snapshot = { revision: '2026-09-08.birthday-entitlement-v1', product_id: gift.product_id, retail_value_cents: 1300,
+    cycle_year: 2026, month_day: '09-08', window_start: '2026-09-08', window_end: '2026-10-08' };
+  Object.assign(f.provider, { amount: 2999, amount_received: 2999 });
+  Object.assign(f.provider.metadata, { order_number: orderNumber, birthday_reservation_id: `birthday:${'a'.repeat(64)}` });
+  Object.assign(f.checkout, { customer_app_user_id: 'synthetic-user', guest_checkout: false, total: 29.99, subtotal: 26,
+    order_number: orderNumber, checkout_context_hash: 'a'.repeat(64), items: structuredClone(f.order.items),
+    birthday_checkout: snapshot, birthday_reservation_id: f.provider.metadata.birthday_reservation_id, birthday_discount: 13 });
+  Object.assign(f.rows.CheckoutSession[0], { customer_email: email, order_number: orderNumber });
+  f.rows.UserPoints[0].birthday_reservations = [{ ...snapshot, status: 'held', created_at: '2026-09-08T05:01:00Z',
+    reservation_id: f.provider.metadata.birthday_reservation_id, customer_app_user_id: 'synthetic-user',
+    context_hash: 'a'.repeat(64), payment_intent_id: f.provider.id }];
+  f.providerRead = id => { assert.equal(id, f.provider.id); f.calls.push('birthday.provider.read'); return structuredClone(f.provider); };
+  return f;
+}
+test('Actual birthday success consumes annual gift before points and mocked normal handoff, replayed once', async () => {
+  const f = birthdayFixture(); const invoke = serve(f);
+  const result = await invoke('payment_intent.succeeded', f.provider); assert.equal(result.status, 200, JSON.stringify(result));
+  assert.equal(f.rows.UserPoints[0].birthday_reservations[0].status, 'consumed');
+  assert.equal(f.rows.UserPoints[0].total_points, 2299); assert.equal(f.order.payment_captured, true);
+  assert.ok(f.calls.indexOf('UserPoints.CAS') < f.calls.indexOf('loyalty.earned'));
+  assert.ok(f.calls.indexOf('loyalty.earned') < f.calls.indexOf('sendOrderReceivedNotification'));
+  assert.ok(f.calls.includes('syncOrderToHub')); assert.ok(f.calls.includes('pushOrderToShopify'));
+  const sent = f.calls.filter(name => name === 'sendOrderReceivedNotification').length;
+  assert.equal((await invoke('payment_intent.succeeded', f.provider)).status, 200);
+  assert.equal(f.rows.UserPoints[0].total_points, 2299);
+  assert.equal(f.calls.filter(name => name === 'sendOrderReceivedNotification').length, sent);
+});
+test('Birthday consumption survives interrupted points award, then resumes the existing paid handoff', async () => {
+  const f = birthdayFixture(); const invoke = serve(f); f.faults.award = true;
+  assert.equal((await invoke('payment_intent.succeeded', f.provider)).status, 500);
+  assert.equal(f.rows.UserPoints[0].birthday_reservations[0].status, 'consumed');
+  assert.equal(f.order.payment_captured, false); assert.equal(f.calls.includes('sendOrderReceivedNotification'), false);
+  f.faults.award = false; assert.equal((await invoke('payment_intent.succeeded', f.provider)).status, 200);
+  assert.equal(f.order.payment_captured, true); assert.equal(f.rows.UserPoints[0].total_points, 2299);
+});
+test('Missing annual hold or stale provider success cannot fulfill a birthday order or send confirmation', async () => {
+  for (const mode of ['hold', 'provider']) {
+    const f = birthdayFixture(); const eventPayment = structuredClone(f.provider);
+    if (mode === 'hold') f.rows.UserPoints[0].birthday_reservations = [];
+    else { f.provider.status = 'processing'; f.provider.amount_received = 0; }
+    assert.equal((await serve(f)('payment_intent.succeeded', eventPayment)).status, 500);
+    assert.equal(f.order.payment_captured, false); assert.equal(f.rows.UserPoints[0].total_points, 2000);
+    assert.equal(f.calls.includes('sendOrderReceivedNotification'), false); assert.equal(f.calls.includes('syncOrderToHub'), false);
+  }
 });
 let passed = 0;
 for (const [name, fn] of tests) { try { await fn(); passed++; console.log(`PASS ${name}`); }

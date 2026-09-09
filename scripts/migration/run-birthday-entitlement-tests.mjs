@@ -39,7 +39,8 @@ function fixture() {
     birthday_discount: 13, items: q.items };
   const payment = { id: 'pi_a', livemode: true, currency: 'usd', amount: 3000, status: 'requires_payment_method',
     metadata: { customer_email: email, order_number: data.order_number, checkout_mode: 'account',
-      checkout_version: '3.0_embedded', checkout_context_hash: data.checkout_context_hash } };
+      checkout_version: '3.0_embedded', checkout_context_hash: data.checkout_context_hash,
+      birthday_reservation_id: data.birthday_reservation_id } };
   const rows = { UserPoints: [account], UserProfile: [{ id: 'profile-test', customer_email: email, birthday: identity.birthday }],
     Order: [{ id: 'order-test', order_number: data.order_number, customer_email: email, total: 30,
       stripe_payment_intent_id: 'pi_a', status: 'pending_payment', payment_status: 'pending', payment_captured: false, items: structuredClone(q.items) }],
@@ -400,15 +401,17 @@ test('Settlement coordinator defers retryable payments and accepts only fresh ca
   f.rows.Order[0].payment_captured = true;
   assert.equal((await readBirthdayCheckoutEligibility(f.entities, user, now)).eligibility.status, 'birthday_history_review_required');
 });
-test('Gift schema preserves existing admin-only writes; incomplete entrypoint wiring stays disabled', () => {
+test('Gift schema preserves admin-only writes and paid wiring exposes no public reservation action', () => {
   const schema = JSON.parse(fs.readFileSync('base44/entities/UserPoints.jsonc', 'utf8'));
   assert.equal(schema.rls.update.user_condition.role, 'admin'); assert.equal(schema.rls.create.user_condition.role, 'admin');
   assert.ok(schema.properties.birthday_reservations.items.required.includes('payment_intent_id'));
   for (const file of ['base44/functions/createPaymentIntent/entry.ts', 'base44/functions/stripeWebhook/entry.ts',
     'base44/functions/enrollNewCustomerInLoyalty/entry.ts']) {
-    const source = fs.readFileSync(file, 'utf8'); assert.equal(source.includes("from './birthdayCheckout.js'"), false);
+    const source = fs.readFileSync(file, 'utf8');
     assert.equal(source.includes("action === 'reserve_birthday_checkout'"), false);
   }
+  assert.ok(fs.readFileSync('base44/functions/createPaymentIntent/entry.ts', 'utf8').includes('reserveVerifiedBirthdayCheckout'));
+  assert.ok(fs.readFileSync('base44/functions/stripeWebhook/entry.ts', 'utf8').includes('settleVerifiedBirthdayCheckout'));
 });
 
 for (const [name, fn] of tests) { await fn(); console.log(`PASS ${name}`); }

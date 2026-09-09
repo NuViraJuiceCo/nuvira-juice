@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import * as checkoutCredit from '../../base44/shared/checkoutCredit.js';
+import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -24,7 +25,7 @@ function matches(row, query) {
     return row[key] === value;
   });
 }
-function fixture({ role = 'admin', noPayment = false, reward = false, realLedger = false, credit = false, directPoints = false, faults = {} } = {}) {
+function fixture({ role = 'admin', noPayment = false, reward = false, realLedger = false, credit = false, directPoints = false, birthday = false, faults = {} } = {}) {
   const order = { id: 'synthetic-order', order_number: 'NV-SYNTHETIC-CANCEL', customer_email: email,
     status: 'pending_payment', payment_status: 'pending', financial_status: 'pending', payment_captured: false,
     created_date: '2026-09-07T00:00:00Z', updated_date: '2026-09-07T00:00:00Z', status_history: [],
@@ -39,6 +40,13 @@ function fixture({ role = 'admin', noPayment = false, reward = false, realLedger
       checkout_mode: 'account', checkout_context_hash: 'b'.repeat(64),
       ...(credit ? { credit_reservation_id: `credit:${'b'.repeat(64)}`, credit_reservation_cents: '200' } : {}),
       ...(reward ? { reward_reservation_id: directPoints ? `points:${'b'.repeat(64)}` : 'synthetic-reservation' } : {}) } };
+  if (birthday) {
+    order.order_number = `NV-${'B'.repeat(24)}`; order.total = 42;
+    order.items = [{ product_id: 'oasis', title: 'OASIS', price: 0, quantity: 1, category: 'juice', size: '12oz',
+      isBirthdayReward: true, birthday_product_id: 'oasis', catalog_unit_price: 13, birthday_discount_amount: 13 }];
+    provider.metadata.order_number = order.order_number;
+    provider.metadata.birthday_reservation_id = `birthday:${'b'.repeat(64)}`;
+  }
   const effects = []; let releases = 0; let serve;
   const read = async id => {
     effects.push('provider.retrieve'); assert.equal(id, provider.id);
@@ -82,6 +90,18 @@ function fixture({ role = 'admin', noPayment = false, reward = false, realLedger
     NuViraCredit: [{ id: 'credit_synthetic', customer_email: email, balance: 10, reserved_balance: credit ? 2 : 0,
       lifetime_used: 0, history: [], checkout_reservations: credit ? [{ reservation_id: `credit:${'b'.repeat(64)}`,
         context_hash: 'b'.repeat(64), payment_intent_id: 'pi_synthetic', amount_cents: 200, status: 'held' }] : [] }] };
+  if (birthday) {
+    const snapshot = { revision: '2026-09-08.birthday-entitlement-v1', product_id: 'oasis', retail_value_cents: 1300,
+      cycle_year: 2026, month_day: '09-08', window_start: '2026-09-08', window_end: '2026-10-08' };
+    ledgerRows.UserPoints[0].birthday_reservations = [{ reservation_id: provider.metadata.birthday_reservation_id,
+      context_hash: 'b'.repeat(64), customer_app_user_id: 'synthetic-user', payment_intent_id: provider.id,
+      ...snapshot, status: 'held', created_at: '2026-09-08T05:01:00Z' }];
+    ledgerRows.CheckoutSession = [{ id: 'birthday-context', customer_email: email, order_number: order.order_number,
+      stripe_session_id: provider.id, checkout_data: { customer_email: email, order_number: order.order_number,
+        customer_app_user_id: 'synthetic-user', guest_checkout: false, checkout_context_hash: 'b'.repeat(64), total: 42,
+        birthday_checkout: snapshot, birthday_reservation_id: provider.metadata.birthday_reservation_id,
+        birthday_discount: 13, items: structuredClone(order.items) } }];
+  }
   for (const [name, records] of Object.entries(ledgerRows)) entities[name] = {
     filter: async query => structuredClone(records.filter(row => matches(row, query))),
     create: async () => { throw new Error('Cancellation may not create a loyalty transaction'); },
@@ -90,6 +110,7 @@ function fixture({ role = 'admin', noPayment = false, reward = false, realLedger
         effects.push('credit.cas');
         if (faults.creditRelease) throw new Error('SYNTHETIC_ONLY credit release unavailable');
       }
+      if (name === 'UserPoints' && birthday && faults.birthdayRelease) throw new Error('SYNTHETIC_ONLY birthday release outage');
       const selected = records.filter(row => matches(row, query)); assert.ok(selected.length <= 1);
       selected.forEach(row => Object.assign(row, structuredClone(update.$set)));
       return { success: true, has_more: false, updated: selected.length };
@@ -139,6 +160,7 @@ function fixture({ role = 'admin', noPayment = false, reward = false, realLedger
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('checkoutCredit')) return checkoutCredit;
+      if (name.includes('birthdayCheckout')) return birthdayCheckout;
       if (name.includes('stripe')) return class { paymentIntents = { retrieve: read, cancel };
         checkout = { sessions: { retrieve: read, expire: cancel } }; };
       throw new Error(`Unexpected import ${name}`);
@@ -336,6 +358,27 @@ for (const exact of [false, true]) {
     f.faults.creditRelease = false; await f.run(exact);
     assert.equal(f.order.status, 'cancelled'); assert.equal(f.ledgerRows.NuViraCredit[0].reserved_balance, 0);
     assert.equal(f.effects.filter(e => e === 'provider.cancel').length, 1);
+  });
+}
+for (const exact of [false, true]) {
+  test(`${exact ? 'Exact' : 'Batch'} birthday cancellation releases annual hold before hiding the order`, async () => {
+    const f = fixture({ birthday: true }); const result = await f.run(exact);
+    assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(f.order.status, 'cancelled');
+    assert.equal(f.ledgerRows.UserPoints[0].birthday_reservations[0].status, 'released');
+    assert.equal(f.ledgerRows.UserPoints[0].total_points, 2000); assert.equal(f.ledgerRows.LoyaltyTransaction.length, 0);
+    await f.run(exact); assert.equal(f.effects.filter(e => e === 'provider.cancel').length, 1);
+  });
+  test(`${exact ? 'Exact' : 'Batch'} uncertain birthday release leaves an order recoverable`, async () => {
+    const f = fixture({ birthday: true, faults: { birthdayRelease: true } }); await f.run(exact);
+    assert.equal(f.provider.status, 'canceled'); assert.equal(f.order.status, 'pending_payment');
+    assert.equal(f.ledgerRows.UserPoints[0].birthday_reservations[0].status, 'held');
+    f.faults.birthdayRelease = false; await f.run(exact);
+    assert.equal(f.order.status, 'cancelled'); assert.equal(f.ledgerRows.UserPoints[0].birthday_reservations[0].status, 'released');
+  });
+  test(`${exact ? 'Exact' : 'Batch'} unbound birthday marker cannot authorize cleanup`, async () => {
+    const f = fixture({ birthday: true }); delete f.provider.metadata.birthday_reservation_id;
+    await f.run(exact); assert.equal(f.order.status, 'pending_payment'); assert.equal(f.provider.status, 'requires_payment_method');
+    assert.ok(!f.effects.includes('provider.cancel'));
   });
 }
 let passed = 0;

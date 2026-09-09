@@ -288,7 +288,7 @@ function CheckoutFlow() {
     setAddressValidated(false);
 
     addressDebounceRef.current = setTimeout(async () => {
-      let rewardValueUnconfirmed = Boolean(activeReward);
+      let rewardValueUnconfirmed = Boolean(activeReward) || items.some(item => item.isBirthdayReward || item.birthday_product_id);
       try {
         const qualifyingSubtotal = await rewardDeliveryMinimumSubtotal({ subtotal, items, activeReward,
           preview: payload => base44.functions.invoke('createPaymentIntent', payload) });
@@ -1285,7 +1285,8 @@ function CheckoutFlow() {
                   credits_discount: isGuestCheckout ? 0 : creditsDiscount,
                   active_reward: isGuestCheckout ? null : activeReward || null,
                   points_used: isGuestCheckout ? 0 : pointsUsed,
-                  items: items.map(item => ({ product_id: item.product_id, isFreeReward: item.isFreeReward === true })),
+                  items: items.map(item => ({ product_id: item.product_id, isFreeReward: item.isFreeReward === true,
+                    isBirthdayReward: item.isBirthdayReward === true, birthday_product_id: item.birthday_product_id || null })),
                 });
                 const payload = response?.data || response;
                 const resolvedCode = normalizeValidatedCheckoutCode(payload?.discount);

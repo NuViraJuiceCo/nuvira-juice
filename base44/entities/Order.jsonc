@@ -52,6 +52,9 @@
           },
           "reward_type": { "type": "string" },
           "isFreeReward": { "type": "boolean" },
+          "isBirthdayReward": { "type": "boolean" },
+          "birthday_product_id": { "type": "string", "description": "Server-verified real Product ID of the annual birthday gift" },
+          "birthday_discount_amount": { "type": "number", "description": "Catalog retail value of this complimentary birthday bottle; already excluded from line price" },
           "catalog_unit_price": {
             "type": "number",
             "description": "Verified pre-reward unit price in USD at checkout"

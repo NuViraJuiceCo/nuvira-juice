@@ -7,7 +7,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
 import { Star, Gift, ShoppingBag, Users, Cake, Flame, Sparkles, ArrowRight, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
-import { isBirthdayRewardActive } from '@/lib/birthdayReward';
+import { useBirthdayCheckoutEligibility } from '@/lib/useBirthdayCheckoutEligibility';
+import { birthdayEligibilityMessage } from '@/lib/birthdayCheckoutEligibility';
 import { validateActiveReward, getStoredActiveReward, selectActiveReward } from '@/lib/rewardManager';
 import { earnedRewardCartItems, rewardSelectionCount } from '@/lib/rewardSelection';
 
@@ -359,7 +360,8 @@ export default function Rewards() {
   const lifetimePoints = pointsData?.lifetime_points || 0;
   const redeemedPoints = pointsData?.redeemed_points || 0;
   const birthday       = userProfile?.birthday || user?.birthday;
-  const birthdayActive = isBirthdayRewardActive(birthday, user?.created_date);
+  const birthdayEligibility = useBirthdayCheckoutEligibility(user);
+  const birthdayActive = birthdayEligibility.eligible;
   const rewards        = rewardTiers.length > 0 ? rewardTiers : DEFAULT_REWARDS;
   const tier           = getTier(totalPoints);
   const activationConfirmed = searchParams.get('activated') === '1';
@@ -562,7 +564,7 @@ export default function Rewards() {
           {birthdayActive ? (
             <p className="text-xs" style={{ color: '#C0325A' }}>🎂 Your free 12oz juice is ready!</p>
           ) : (
-            <p className="text-xs text-muted-foreground">{birthday ? 'Free juice valid 30 days after your birthday' : 'Add your birthday in Settings to unlock'}</p>
+            <p className="text-xs text-muted-foreground">{birthdayEligibilityMessage(birthdayEligibility)}</p>
           )}
         </div>
         {birthdayActive ? (

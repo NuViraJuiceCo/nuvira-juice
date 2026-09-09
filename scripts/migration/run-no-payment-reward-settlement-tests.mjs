@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
+import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -369,6 +370,7 @@ function actualWebhook(f, { missingSecret = false, staging = false, invalidSigna
       if (name.includes('rewardWebhook')) return rewardWebhook;
       if (name.includes('paymentBenefits')) return benefits;
       if (name.includes('checkoutCredit')) return creditReservation;
+      if (name.includes('birthdayCheckout')) return birthdayCheckout;
       if (name.includes('metaConversions')) return { sendMetaPurchaseConversion: () => { throw new Error('No advertising Purchase'); } };
       if (name.includes('googleMeasurement')) return { sendGooglePurchaseMeasurement: () => { throw new Error('No advertising Purchase'); } };
       if (name.includes('stripe')) return class { checkout = f.options.stripe.checkout;

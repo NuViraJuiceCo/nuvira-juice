@@ -23,10 +23,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
 import Stripe from 'npm:stripe@14.21.0';
 import { settleCheckoutCredit } from '../../shared/checkoutCredit.js';
+import { hasBirthdayCheckout, settleVerifiedBirthdayCheckout } from '../createPaymentIntent/birthdayCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const EXACT_CANCEL_CONFIRMATION = 'cancel_unpaid_checkout';
-const CANCELLATION_REVISION = '2026-09-08.confirmed-credit-cancellation-v3';
+const CANCELLATION_REVISION = '2026-09-08.confirmed-birthday-cancellation-v4';
 
 function safeId(value, maxLength = 180) {
   const normalized = String(value ?? '').trim();
@@ -46,6 +47,9 @@ async function cancelPendingPaymentIntent(order, internalSecret = '') {
   }
   const payment = noPayment ? await stripe.checkout.sessions.retrieve(id) : await stripe.paymentIntents.retrieve(id);
   const meta = payment.metadata || {};
+  if (hasBirthdayCheckout(order.items) && !meta.birthday_reservation_id) {
+    return { blocked: true, provider_cancelled: false, provider_status: 'birthday_binding_unconfirmed' };
+  }
   if (payment.id !== id || payment.livemode !== true || payment.currency !== 'usd'
     || meta.order_number !== order.order_number
     || String(meta.customer_email || '').trim().toLowerCase() !== String(order.customer_email || '').trim().toLowerCase()
@@ -74,6 +78,7 @@ async function cancelPendingPaymentIntent(order, internalSecret = '') {
   return { provider_cancelled: payment.status !== terminalStatus, provider_status: terminalStatus,
     idempotent: payment.status === terminalStatus, reward_reservation_id: meta.reward_reservation_id || null,
     credit_reservation_id: meta.credit_reservation_id || null,
+    birthday_reservation_id: meta.birthday_reservation_id || null,
     provider_id: id, checkout_session: noPayment };
 }
 
@@ -102,6 +107,12 @@ async function markOrderAbandoned(base44, order, message) {
 }
 
 async function releaseCanceledReward(base44, order, provider, internalSecret) {
+  if (provider.birthday_reservation_id) {
+    if (provider.checkout_session) throw new Error('birthday_checkout_session_unsupported');
+    const released = await settleVerifiedBirthdayCheckout({ entities: base44.asServiceRole.entities, stripe,
+      customerEmail: order.customer_email, paymentIntentId: provider.provider_id });
+    if (released.reservation_status !== 'released') throw new Error('birthday_release_unconfirmed');
+  }
   if (provider.credit_reservation_id) {
     if (provider.checkout_session) throw new Error('credit_checkout_session_unsupported');
     const latest = await stripe.paymentIntents.retrieve(provider.provider_id);
@@ -171,7 +182,7 @@ Deno.serve(async (req) => {
         provider_cancelled: provider.provider_cancelled,
         provider_status: provider.provider_status,
         order_cancelled: marked, revision: CANCELLATION_REVISION,
-        writes_performed: provider.provider_cancelled || marked || Boolean(provider.reward_reservation_id || provider.credit_reservation_id),
+        writes_performed: provider.provider_cancelled || marked || Boolean(provider.reward_reservation_id || provider.credit_reservation_id || provider.birthday_reservation_id),
       });
     }
 

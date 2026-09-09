@@ -28,5 +28,20 @@ export async function verifyCheckoutCatalog(invoke, items, { timeoutMs = 10000 }
     || Math.round(data.quote.subtotal * 100) !== data.quote.items.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0)) {
     throw new Error(FALLBACK);
   }
+  const birthdays = items.filter(item => item?.isBirthdayReward === true || item?.birthday_product_id || item?.product_id === '__birthday_reward__');
+  const pricedBirthdays = data.quote.items.filter(item => item?.isBirthdayReward === true || item?.birthday_product_id);
+  if (birthdays.length) {
+    const gift = pricedBirthdays[0]; const snapshot = data.quote.birthday_checkout;
+    if (birthdays.length !== 1 || pricedBirthdays.length !== 1
+      || snapshot?.revision !== '2026-09-08.birthday-entitlement-v1'
+      || snapshot.product_id !== birthdays[0].birthday_product_id || gift.product_id !== snapshot.product_id
+      || gift.birthday_product_id !== snapshot.product_id || gift.isBirthdayReward !== true
+      || gift.quantity !== 1 || gift.price !== 0 || !Number.isSafeInteger(snapshot.retail_value_cents)
+      || snapshot.retail_value_cents <= 0
+      || Math.round(data.quote.birthday_discount * 100) !== snapshot.retail_value_cents
+      || Math.round(data.quote.catalog_subtotal * 100) !== Math.round(data.quote.subtotal * 100) + snapshot.retail_value_cents) {
+      throw new Error(FALLBACK);
+    }
+  } else if (pricedBirthdays.length || data.quote.birthday_checkout) throw new Error(FALLBACK);
   return data.quote;
 }

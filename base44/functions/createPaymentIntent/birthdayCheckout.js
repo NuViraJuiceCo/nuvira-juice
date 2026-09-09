@@ -2,12 +2,13 @@ import { birthdayAvailability, birthdayReservationState, assertBirthdayWindow, b
 import { readPointsAccount, reserveBirthdayGift, settleBirthdayGift } from '../enrollNewCustomerInLoyalty/pointsAccount.js';
 import { quoteCatalogCheckout } from './rewardCheckout.js';
 
-// Not routed by an entrypoint yet. Callers must use authenticated server identity,
-// and integrate reservation, cancellation, webhook, recovery and UI together.
+// Server-only: the entrypoint supplies authenticated identity and service-role
+// entities. Client DOB, annual claim flags and payment status are never trusted.
 const fail = code => { throw new BirthdayEntitlementError(code); };
 const assert = (value, code = 'birthday_checkout_context_unconfirmed') => { if (!value) fail(code); };
 const marked = item => item?.isBirthdayReward === true || Boolean(item?.birthday_product_id)
   || item?.product_id === '__birthday_reward__';
+export const hasBirthdayCheckout = items => Array.isArray(items) && items.some(marked);
 const money = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
   && Number.isSafeInteger(Math.round(value * 100)) && Math.abs(value * 100 - Math.round(value * 100)) < 0.00001
   ? Math.round(value * 100) : NaN;
@@ -97,6 +98,33 @@ export function quoteBirthdayCatalogCheckout({ items, products, eligibility, res
       birthday_discount_amount: product.price, cart_line_key: `birthday:${product.id}` } : item) };
 }
 
+export async function loadBirthdayCheckoutQuote({ base44, stripe, authenticatedUser, body,
+  retryReservationId = null, catalogOptions = {}, now = Date.now() }) {
+  assert(!body.guest_checkout && authenticatedUser?.id && authenticatedUser?.email, 'birthday_sign_in_required');
+  // Combining two selected merchandise rewards needs its own reconciled quote;
+  // do not silently discard either selection or grant two unbound gifts.
+  assert(!body.active_reward, 'birthday_reward_combination_unavailable');
+  const entities = base44.asServiceRole.entities;
+  let { eligibility } = await readBirthdayCheckoutEligibility(entities, authenticatedUser, now);
+  if (!eligibility.eligible && retryReservationId) {
+    const email = authenticatedUser.email.trim().toLowerCase();
+    const account = await readPointsAccount(entities, email);
+    const hold = birthdayReservationState(account).holds.find(row => row.reservation_id === retryReservationId);
+    if (hold && ['held', 'consumed'].includes(hold.status)) {
+      const verified = await readVerifiedBirthdayPayment({ entities, stripe, customerEmail: email,
+        paymentIntentId: hold.payment_intent_id });
+      assert(hold.customer_app_user_id === authenticatedUser.id
+        && Object.entries(birthdayReservationBinding(verified.request)).every(([key, value]) => hold[key] === value)
+        && ['requires_payment_method', 'requires_confirmation', 'requires_action', 'succeeded'].includes(verified.payment.status),
+      'birthday_retry_unconfirmed');
+      eligibility = { ...hold, eligible: true, status: 'available' };
+    }
+  }
+  const products = await entities.Product.filter({ is_available: true }, 'sort_order', 250);
+  assert(Array.isArray(products) && products.length < 250, 'birthday_catalog_read_unconfirmed');
+  return quoteBirthdayCatalogCheckout({ items: body.items, products, eligibility, ...catalogOptions });
+}
+
 // Fresh provider retrieval plus protected snapshot proof, not request-body
 // payment status or an email-only lookup. No confirm/capture/refund/cancel call.
 // Paid-PI support only: cashless/route-review integration remains a release gate.
@@ -134,6 +162,7 @@ export async function readVerifiedBirthdayPayment({ entities, stripe, customerEm
     && /^birthday:[a-f0-9]{64}$/.test(data.birthday_reservation_id || '')
     && Number.isSafeInteger(snapshot.retail_value_cents) && snapshot.retail_value_cents > 0
     && money(data.birthday_discount) === snapshot.retail_value_cents);
+  assert(meta.birthday_reservation_id === data.birthday_reservation_id);
   for (const items of [data.items, order.items]) {
     assert(Array.isArray(items) && items.length > 0 && items.length <= 50);
     const gifts = items.filter(marked);
@@ -157,8 +186,8 @@ export async function readVerifiedBirthdayPayment({ entities, stripe, customerEm
   return { payment, request };
 }
 
-// These coordinators are internal helpers, not HTTP actions. Their eventual
-// entrypoint callers must retain existing authenticated/internal-secret checks.
+// These coordinators are internal helpers, not HTTP actions. Existing payment,
+// signed-webhook and authorized recovery entrypoints retain their own checks.
 export async function reserveVerifiedBirthdayCheckout({ entities, stripe, authenticatedUser, paymentIntentId, now = Date.now() }) {
   const customerEmail = String(authenticatedUser?.email || '').trim().toLowerCase();
   assert(authenticatedUser?.id && customerEmail.includes('@'), 'birthday_sign_in_required');
@@ -188,4 +217,12 @@ export async function settleVerifiedBirthdayCheckout({ entities, stripe, custome
   const result = await settleBirthdayGift(entities, customerEmail, verified.request, now);
   return { success: true, revision: BIRTHDAY_ENTITLEMENT_REVISION,
     reservation_status: result.reservation.status, idempotent: result.idempotent };
+}
+
+export async function verifyBirthdayCheckoutHold(options) {
+  const verified = await readVerifiedBirthdayPayment(options);
+  const account = await readPointsAccount(options.entities, options.customerEmail);
+  const hold = birthdayReservationState(account).holds.find(row => row.reservation_id === verified.request.reservation_id);
+  assert(hold?.status === 'held' && Object.entries(birthdayReservationBinding(verified.request))
+    .every(([key, value]) => hold[key] === value), 'birthday_hold_unconfirmed');
 }

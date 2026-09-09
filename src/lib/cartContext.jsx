@@ -94,6 +94,10 @@ export function CartProvider({ children }) {
   const addItem = (product, quantity = 1, extra = {}) => {
     // Earned items must use the validated reward selection path, never addItem.
     if (isEarnedRewardItem({ ...extra, product_id: product.id })) return;
+    if (extra.isBirthdayReward === true) {
+      if (product.id !== '__birthday_reward__' || !extra.birthday_product_id || product.price !== 0) return;
+      quantity = 1;
+    }
     void trackGoogleAddToCart({ ...product, ...extra }, quantity);
     void trackMetaAddToCart({ ...product, ...extra }, quantity);
     void trackSnapAddToCart({ ...product, ...extra }, quantity);
@@ -103,7 +107,9 @@ export function CartProvider({ children }) {
       if (existing) {
         return prev.map(i =>
           (i.cart_line_key || i.product_id) === nextLineKey
-            ? { ...i, quantity: i.quantity + quantity }
+            ? (extra.isBirthdayReward === true ? { ...i, title: product.title, image_url: product.image_url,
+              category: product.category, size: product.size, price: 0, quantity: 1, ...extra }
+              : { ...i, quantity: i.quantity + quantity })
             : i
         );
       }
@@ -136,7 +142,8 @@ export function CartProvider({ children }) {
       return;
     }
     const existing = items.find(i => (i.cart_line_key || i.product_id) === lineKey);
-    if (isEarnedRewardItem(existing)) return; // One awarded unit; removal remains available.
+    if (isEarnedRewardItem(existing)) return; // Awarded quantity is fixed; removal remains available.
+    if (existing?.isBirthdayReward) return;
     if (existing && quantity < existing.quantity) {
       void trackGoogleRemoveFromCart(existing, existing.quantity - quantity);
     }

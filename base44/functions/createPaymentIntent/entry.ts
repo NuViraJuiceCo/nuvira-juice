@@ -5,9 +5,11 @@ import { loadRewardCheckoutQuote, loadCatalogCheckoutQuote, priceRewardPayment, 
 import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, readNoPaymentCheckoutRecovery } from './noPaymentCheckout.js';
 import { recoverPaidCheckout, cancelPaidCheckout, PAID_RECOVERY_REVISION } from './paidCheckoutRecovery.js';
 import { creditCents, availableCheckoutCredit, reserveCheckoutCredit, settleCheckoutCredit, CHECKOUT_CREDIT_REVISION, CheckoutCreditError } from '../../shared/checkoutCredit.js';
+import { hasBirthdayCheckout, loadBirthdayCheckoutQuote, readBirthdayCheckoutEligibility, reserveVerifiedBirthdayCheckout, settleVerifiedBirthdayCheckout } from './birthdayCheckout.js';
+import { BirthdayEntitlementError, BIRTHDAY_ENTITLEMENT_REVISION } from '../../shared/birthdayEntitlement.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const CHECKOUT_RECORD_REVISION = '2026-09-08.catalog-authoritative-payment-v3';
+const CHECKOUT_RECORD_REVISION = '2026-09-08.birthday-bound-payment-v4';
 const SCHEDULE_FAILURE_MESSAGE = 'We’re having trouble confirming your delivery window right now. Please try again in a few minutes or contact NuVira support.';
 const STALE_DELIVERY_SELECTION_MESSAGE = 'That delivery window is no longer available. Please select a new delivery window.';
 const GOOGLE_PAY_REQUIRED_DOMAINS = Object.freeze([
@@ -255,10 +257,8 @@ function guestAccountBenefitsRequested(body) {
     || Boolean(String(body?.bag_return_request_id || '').trim());
 }
 
-async function authoritativeGuestCheckoutItems(base44, requestedItems) {
-  // Shared by guests and ordinary members; the historical helper name is kept
-  // for compatibility with existing guest checkout contract coverage.
-  const quote = await loadCatalogCheckoutQuote(base44, requestedItems, {
+function checkoutCatalogOptions() {
+  return {
     resolveProgram: item => {
       const match = String(item?.product_id || '').match(/^program[_-](hydration|radiance|reset)(?:[_-]([23])day)?$/);
       if (!match) return null;
@@ -273,7 +273,13 @@ async function authoritativeGuestCheckoutItems(base44, requestedItems) {
     },
     decorateItem: (priced, requested) => normalizeCheckoutItem({ ...priced,
       program_addon_for: requested.program_addon_for, program_addon_days: requested.program_addon_days }),
-  });
+  };
+}
+
+async function authoritativeGuestCheckoutItems(base44, requestedItems) {
+  // Shared by guests and ordinary members; the historical helper name is kept
+  // for compatibility with existing guest checkout contract coverage.
+  const quote = await loadCatalogCheckoutQuote(base44, requestedItems, checkoutCatalogOptions());
   return quote.items;
 }
 
@@ -957,6 +963,7 @@ Deno.serve(async (req) => {
       if (authenticatedUser?.role !== 'admin') return Response.json({ error: 'forbidden' }, { status: 403 });
       return Response.json({ ok: true, mode, checkout_record_revision: CHECKOUT_RECORD_REVISION,
         paid_recovery_revision: PAID_RECOVERY_REVISION,
+        birthday_entitlement_revision: BIRTHDAY_ENTITLEMENT_REVISION, birthday_payment_integration_complete: false,
         catalog_quote_revision: CATALOG_CHECKOUT_REVISION,
         reward_quote_revision: REWARD_CHECKOUT_REVISION, reward_payment_integration_complete: false,
         writes_performed: false, provider_calls_performed: false, payment_intent_created: false, order_created: false });
@@ -1007,10 +1014,25 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (mode === 'birthday_checkout_eligibility') {
+      if (!authenticatedUser?.email || internalSandboxCheckout) return Response.json({ error: 'forbidden' }, { status: 403 });
+      try {
+        const { eligibility } = await readBirthdayCheckoutEligibility(base44.asServiceRole.entities, authenticatedUser, Date.now());
+        return Response.json({ ok: true, revision: BIRTHDAY_ENTITLEMENT_REVISION, eligibility,
+          writes_performed: false, provider_calls_performed: false });
+      } catch {
+        return Response.json({ ok: false, error_code: 'BIRTHDAY_ELIGIBILITY_UNCONFIRMED',
+          error: 'We could not confirm your birthday reward. Please try again or contact NuVira support.',
+          writes_performed: false, provider_calls_performed: false }, { status: 409 });
+      }
+    }
+
     if (mode === 'preview_catalog_checkout') {
       try {
-        const pricedItems = await authoritativeGuestCheckoutItems(base44, items);
-        return Response.json({ ok: true, quote: { revision: CATALOG_CHECKOUT_REVISION, items: pricedItems,
+        const birthday = hasBirthdayCheckout(items) ? await loadBirthdayCheckoutQuote({ base44, stripe,
+          authenticatedUser, body: requestBody, catalogOptions: checkoutCatalogOptions(), now: Date.now() }) : null;
+        const pricedItems = birthday?.items || await authoritativeGuestCheckoutItems(base44, items);
+        return Response.json({ ok: true, quote: birthday || { revision: CATALOG_CHECKOUT_REVISION, items: pricedItems,
           subtotal: pricedItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0) / 100 },
           preview_only: true, writes_performed: false, provider_calls_performed: false,
           payment_intent_created: false, order_created: false });
@@ -1175,6 +1197,16 @@ Deno.serve(async (req) => {
     const checkoutAttemptDigest = checkout_idempotency_key
       ? await sha256Hex(`${normalizedCustomerEmail}:${checkout_idempotency_key}`)
       : null;
+    const birthdayRequested = hasBirthdayCheckout(items);
+    if (birthdayRequested && (isGuestCheckout || internalSandboxCheckout || !isValidGuestSecret(checkout_idempotency_key))) {
+      return Response.json({ ok: false, error_code: 'BIRTHDAY_CHECKOUT_NOT_READY',
+        error: 'Sign in and refresh your cart before using a birthday reward.',
+        writes_performed: false, payment_intent_created: false }, { status: 409 });
+    }
+    const birthdayReservationId = birthdayRequested ? `birthday:${checkoutAttemptDigest}` : null;
+    const birthdayQuote = birthdayRequested ? await loadBirthdayCheckoutQuote({ base44, stripe,
+      authenticatedUser, body: requestBody, retryReservationId: birthdayReservationId,
+      catalogOptions: checkoutCatalogOptions(), now: Date.now() }) : null;
     const requestedCreditCents = isGuestCheckout ? 0 : creditCents(credits_discount ?? 0);
     const creditReservationId = requestedCreditCents && checkoutAttemptDigest ? `credit:${checkoutAttemptDigest}` : null;
     if (requestedCreditCents) {
@@ -1226,7 +1258,7 @@ Deno.serve(async (req) => {
           program_addon_schedule_version: addon.program_addon_schedule_version } : item;
       });
     }
-    const normalizedItems = rewardQuote ? rewardQuote.items : await authoritativeGuestCheckoutItems(base44, items);
+    const normalizedItems = birthdayQuote?.items || (rewardQuote ? rewardQuote.items : await authoritativeGuestCheckoutItems(base44, items));
     if (!normalizedItems) {
       return Response.json({
         error: 'A product in your cart changed or is unavailable. Please return to your cart and try again.',
@@ -1236,12 +1268,12 @@ Deno.serve(async (req) => {
         order_created: false,
       }, { status: 409 });
     }
-    const authoritativeSubtotal = rewardQuote ? rewardQuote.subtotal
+    const authoritativeSubtotal = birthdayQuote ? birthdayQuote.subtotal : rewardQuote ? rewardQuote.subtotal
       : normalizedItems.reduce((sum, item) => sum + Math.round(item.price * 100) * item.quantity, 0) / 100;
     // Owner-approved: earned items count at normal catalog retail value toward
     // the delivery-area dollar minimum. This never changes what is charged or
     // waives the zone fee, taxes, bottle minimum, or route-review requirement.
-    const deliveryQualificationSubtotal = rewardQuote ? rewardQuote.catalog_subtotal : authoritativeSubtotal;
+    const deliveryQualificationSubtotal = birthdayQuote?.catalog_subtotal ?? (rewardQuote ? rewardQuote.catalog_subtotal : authoritativeSubtotal);
     if (normalizedPhone.replace(/\D/g, '').length < 10) {
       return Response.json({
         error: 'A valid phone number is required for fulfillment.',
@@ -1498,6 +1530,7 @@ Deno.serve(async (req) => {
       health_advisory_version: HEALTH_ADVISORY_VERSION,
       analytics_measurement_consent: analytics_measurement_consent === 'granted' ? 'granted' : 'denied',
       marketing_measurement_consent: marketing_measurement_consent === 'granted' ? 'granted' : 'denied',
+      ...(birthdayQuote ? { birthday_checkout: birthdayQuote.birthday_checkout } : {}),
     }));
 
     // Metadata — centralized schedule fields from calculateNuViraFulfillmentSchedule
@@ -1557,6 +1590,7 @@ Deno.serve(async (req) => {
       ...(rewardReservationId ? { reward_reservation_id: rewardReservationId } : {}),
       ...(creditReservationId ? { credit_reservation_id: creditReservationId,
         credit_reservation_cents: String(requestedCreditCents) } : {}),
+      ...(birthdayReservationId ? { birthday_reservation_id: birthdayReservationId } : {}),
     };
 
     if (Object.keys(intentMetadata).length > 50) {
@@ -1907,6 +1941,9 @@ Deno.serve(async (req) => {
             points_reservation_revision: '2026-09-08.direct-points-v1' } : {}),
           ...(creditReservationId ? { credit_reservation_id: creditReservationId,
             credit_reservation_revision: CHECKOUT_CREDIT_REVISION, checkout_context_hash: checkoutContextHash } : {}),
+          ...(birthdayQuote ? { birthday_checkout: birthdayQuote.birthday_checkout,
+            birthday_reservation_id: birthdayReservationId, birthday_discount: birthdayQuote.birthday_discount,
+            catalog_subtotal: birthdayQuote.catalog_subtotal } : {}),
           guest_checkout:            isGuestCheckout,
           guest_order_token_hash:    isGuestCheckout ? await sha256Hex(guest_order_token) : null,
           internal_sandbox_checkout: internalSandboxCheckout,
@@ -2001,6 +2038,43 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (birthdayQuote) {
+      // Last hold, after both protected records and any points/credits exist.
+      // Never expose a payment secret until annual entitlement CAS reads back.
+      try {
+        const held = await reserveVerifiedBirthdayCheckout({ entities: base44.asServiceRole.entities,
+          stripe: checkoutStripe, authenticatedUser, paymentIntentId: paymentIntent.id, now: Date.now() });
+        if (!['held', 'consumed'].includes(held.reservation_status)) throw new Error('birthday_hold_unconfirmed');
+      } catch {
+        let canceled = false; let released = false;
+        try {
+          let latest = await checkoutStripe.paymentIntents.retrieve(paymentIntent.id);
+          if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(latest.status)) {
+            await checkoutStripe.paymentIntents.cancel(paymentIntent.id);
+          }
+          latest = await checkoutStripe.paymentIntents.retrieve(paymentIntent.id);
+          canceled = latest.id === paymentIntent.id && latest.status === 'canceled';
+          if (canceled) {
+            const settled = await settleVerifiedBirthdayCheckout({ entities: base44.asServiceRole.entities,
+              stripe: checkoutStripe, customerEmail: normalizedCustomerEmail, paymentIntentId: paymentIntent.id, now: Date.now() });
+            released = settled.reservation_status === 'released';
+            if (creditReservationId) await settleCheckoutCredit({ entities: base44.asServiceRole.entities,
+              payment: latest, email: normalizedCustomerEmail });
+            if (rewardReservationId) {
+              const result = await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+                action: 'settle_reward_checkout', customer_email: normalizedCustomerEmail,
+                stripe_payment_intent_id: paymentIntent.id, internal_secret: rewardInternalSecret });
+              if ((result?.data || result)?.reservation_status !== 'released') throw new Error('points_release_unconfirmed');
+            }
+          }
+        } catch { /* Unknown outcome keeps the secret withheld for recovery. */ }
+        return Response.json({ ok: false, error_code: 'BIRTHDAY_PAYMENT_NOT_READY',
+          error: 'We could not confirm your birthday reward reservation. Check your checkout status before trying again, or contact NuVira support.',
+          payment_confirmation_attempted: false, payment_attempt_canceled: canceled,
+          birthday_reservation_released: released }, { status: 503 });
+      }
+    }
+
     if (internalSandboxCheckout) {
       if (!sandboxOrderReady || !sandboxSessionReady) {
         return Response.json({
@@ -2079,6 +2153,7 @@ Deno.serve(async (req) => {
       idempotent_replay: idempotentReplay,
       checkout_record_revision: CHECKOUT_RECORD_REVISION,
       ...(rewardQuote ? { rewardQuote, rewardPricing } : {}),
+      ...(birthdayQuote ? { birthdayQuote } : {}),
       confirmedDeliverySchedule: {
         delivery_date: deliveryDate,
         production_date: resolvedProdDate,
@@ -2090,6 +2165,11 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
+    if (error instanceof BirthdayEntitlementError) {
+      return Response.json({ ok: false, error_code: error.code.toUpperCase(),
+        error: 'Your birthday reward could not be confirmed. Please review your cart or contact NuVira support.',
+        payment_confirmation_attempted: false }, { status: 409 });
+    }
     if (error instanceof CheckoutCreditError) {
       return Response.json({ ok: false,
         error_code: error.code === 'checkout_credit_account_unavailable' ? 'CREDIT_BALANCE_UNAVAILABLE' : error.code.toUpperCase(),

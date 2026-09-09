@@ -1,5 +1,6 @@
 import { creditAccountState, creditCents, settleCheckoutCredit } from '../../shared/checkoutCredit.js';
 import { readPointsAccount } from '../enrollNewCustomerInLoyalty/pointsAccount.js';
+import { hasBirthdayCheckout, verifyBirthdayCheckoutHold, settleVerifiedBirthdayCheckout } from './birthdayCheckout.js';
 
 export const PAID_RECOVERY_REVISION = '2026-09-08.paid-checkout-recovery-v1';
 const keyPattern = /^[A-Za-z0-9_-]{20,200}$/;
@@ -73,14 +74,18 @@ async function proof({ base44, stripe, user, body, now = Date.now() }) {
     && data.items.every(item => typeof item.title === 'string' && item.title.trim()
       && Number.isSafeInteger(item.quantity) && item.quantity > 0 && item.quantity <= 100
       && Number.isFinite(item.price) && item.price >= 0));
-  return { entities, session, data, order, payment, email, guest, orderNumber, now };
+  return { entities, stripe, session, data, order, payment, email, guest, orderNumber, now };
 }
 
 async function verifyHolds(ctx) {
   const { entities, payment, data, email, guest } = ctx;
   const meta = payment.metadata;
-  for (const field of ['reward_reservation_id', 'credit_reservation_id']) assert((meta[field] || null) === (data[field] || null));
-  if (guest) assert(!meta.reward_reservation_id && !meta.credit_reservation_id);
+  for (const field of ['reward_reservation_id', 'credit_reservation_id', 'birthday_reservation_id']) assert((meta[field] || null) === (data[field] || null));
+  if (guest) assert(!meta.reward_reservation_id && !meta.credit_reservation_id && !meta.birthday_reservation_id && !hasBirthdayCheckout(data.items));
+  if (meta.birthday_reservation_id || hasBirthdayCheckout(data.items)) {
+    assert(meta.birthday_reservation_id);
+    await verifyBirthdayCheckoutHold({ entities, stripe: ctx.stripe, customerEmail: email, paymentIntentId: payment.id });
+  }
   if (meta.reward_reservation_id) {
     const account = await readPointsAccount(entities, email);
     const hold = account.reward_reservations.find(row => row.reservation_id === meta.reward_reservation_id);
@@ -132,6 +137,12 @@ export async function cancelPaidCheckout(options) {
   // A lost acknowledgment, capture race, or processing state is never success.
   ctx = await proof(options);
   assert(ctx.payment.status === 'canceled');
+  if (ctx.payment.metadata.birthday_reservation_id || hasBirthdayCheckout(ctx.data.items)) {
+    assert(ctx.payment.metadata.birthday_reservation_id);
+    const result = await settleVerifiedBirthdayCheckout({ entities: ctx.entities, stripe: options.stripe,
+      customerEmail: ctx.email, paymentIntentId: ctx.payment.id, now: ctx.now });
+    assert(result.reservation_status === 'released');
+  }
   if (ctx.payment.metadata.reward_reservation_id) {
     const response = await options.base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
       action: 'settle_reward_checkout', customer_email: ctx.email,

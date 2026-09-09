@@ -84,7 +84,9 @@ export function firstOrderStackingBlock(promotion, discounts = [], checkout = {}
   if (promotion?.first_order_only !== true) return null;
   const selectedReward = Boolean(checkout.active_reward) || Number(checkout.points_used || 0) > 0 ||
     (Array.isArray(checkout.items) && checkout.items.some(item =>
-      item?.isFreeReward === true || String(item?.product_id || item?.id || '').startsWith('__free_reward_')));
+      item?.isFreeReward === true || item?.isBirthdayReward === true || Boolean(item?.birthday_product_id)
+      || String(item?.product_id || item?.id || '') === '__birthday_reward__'
+      || String(item?.product_id || item?.id || '').startsWith('__free_reward_')));
   if (!selectedReward && !discounts.some(value => Number(value || 0) > 0)) return null;
   return Response.json({ ok: false, error_code: 'FIRST_ORDER_OFFER_NOT_COMBINABLE',
     error: 'Use this first-order offer without other discounts or rewards.' }, { status: 400 });

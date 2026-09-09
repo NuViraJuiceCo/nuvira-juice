@@ -13,7 +13,9 @@ import { getProductionInfo, getEligibleDeliveryOptions } from '@/lib/deliveryUti
 import { motion, AnimatePresence } from 'framer-motion';
 import BundleComposer from '@/components/cart/BundleComposer';
 import { useAuth } from '@/lib/AuthContext';
-import { isBirthdayRewardActive, useBirthdayReward } from '@/lib/birthdayReward';
+import { useBirthdayReward } from '@/lib/birthdayReward';
+import { useBirthdayCheckoutEligibility } from '@/lib/useBirthdayCheckoutEligibility';
+import { birthdayEligibilityMessage } from '@/lib/birthdayCheckoutEligibility';
 import FreeProductPicker from '@/components/FreeProductPicker';
 import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewCart } from '@/lib/googleAnalytics';
@@ -44,15 +46,6 @@ export default function Cart() {
     return () => window.removeEventListener(ANALYTICS_CONSENT_EVENT, onConsent);
   }, [items, subtotal]);
 
-  const { data: userProfile } = useQuery({
-    queryKey: ['user-profile-cart', user?.email],
-    queryFn: async () => {
-      const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
-      return profiles[0] || null;
-    },
-    enabled: !!user?.email,
-  });
-
   const { data: activeSubscription } = useQuery({
     queryKey: ['active-subscription-cart', user?.email],
     queryFn: async () => {
@@ -71,14 +64,14 @@ export default function Cart() {
   // Show "from $3.99" for non-subscribers (Zone 1A is the lowest possible fee).
   const effectiveDeliveryFee = subFreeDelivery ? 0 : null; // null = show estimated range
 
-  const birthday = userProfile?.birthday || user?.birthday;
-  const birthdayActive = isBirthdayRewardActive(birthday, user?.created_date);
+  const birthdayEligibility = useBirthdayCheckoutEligibility(user);
+  const birthdayActive = birthdayEligibility.eligible;
 
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [activeReward, setActiveReward] = useState(null);
   const [isValidatingReward, setIsValidatingReward] = useState(false);
   const rewardMutationRef = React.useRef(0);
-  const { rewardInCart, addBirthdayReward, removeBirthdayReward } = useBirthdayReward(items, addItem, removeItem);
+  const { rewardInCart, removeBirthdayReward } = useBirthdayReward(items, addItem, removeItem);
 
   // On mount and user change, validate active reward against backend
   useEffect(() => {
@@ -131,8 +124,10 @@ export default function Cart() {
   };
 
   const handleBirthdayProductSelect = (product) => {
+    if (!birthdayActive || activeReward) return;
     addItem({ ...product, id: '__birthday_reward__', price: 0, title: `🎂 ${product.title} (Free)` }, 1,
       { isBirthdayReward: true, birthday_product_id: product.id });
+    setShowBirthdayPicker(false);
   };
 
   const { data: schedules = [] } = useQuery({
@@ -222,20 +217,22 @@ export default function Cart() {
         )}
 
         {/* Birthday Reward Banner */}
-        {birthdayActive && containsJuiceOrderItems && meetsMinimum && (
+        {(birthdayActive || rewardInCart || birthdayEligibility.status === 'checkout_in_progress') && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-pink-500/10 border border-pink-500/30 rounded-2xl p-3.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <Gift className="w-4 h-4 text-pink-500 shrink-0" />
                 <div className="min-w-0">
                   <p className="text-xs font-semibold">🎂 Birthday Reward</p>
-                  <p className="text-[10px] text-muted-foreground">Free 12oz juice (30 days valid)</p>
+                  <p className="text-[10px] text-muted-foreground">{activeReward
+                    ? 'Remove your selected tier reward to choose your birthday juice instead.'
+                    : birthdayEligibilityMessage(birthdayEligibility)}</p>
                 </div>
               </div>
               {rewardInCart ? (
                 <button onClick={removeBirthdayReward} className="text-[10px] font-semibold text-pink-500 shrink-0">Remove</button>
               ) : (
-                <button onClick={() => setShowBirthdayPicker(true)} className="text-[10px] font-semibold bg-pink-500 text-white px-2.5 py-1 rounded-lg shrink-0">Choose</button>
+                <button disabled={!birthdayActive || Boolean(activeReward)} onClick={() => setShowBirthdayPicker(true)} className="text-[10px] font-semibold bg-pink-500 text-white px-2.5 py-1 rounded-lg shrink-0 disabled:opacity-50">Choose</button>
               )}
             </div>
           </motion.div>
@@ -303,7 +300,9 @@ export default function Cart() {
                       <button type="button" onClick={() => handleRemoveCartItem(item)} aria-label={`Remove ${item.title} from cart`} className="p-1 hover:opacity-60 transition-opacity">
                         <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
                       </button>
-                      {isEarnedRewardItem(item) ? (
+                      {item.isBirthdayReward ? (
+                        <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-1.5 rounded-lg">1 birthday juice</span>
+                      ) : isEarnedRewardItem(item) ? (
                         <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-1.5 rounded-lg">{item.quantity} earned {item.quantity === 1 ? 'item' : 'items'}{item.reward_type === 'bundle_upgrade' ? ' · half price' : ''}</span>
                       ) : <div className="flex items-center gap-1.5 bg-secondary rounded-lg px-2 py-1.5">
                         <button type="button" onClick={() => updateQuantity(item.cart_line_key || item.product_id, item.quantity - 1)} aria-label={`Decrease ${item.title} quantity`} className="hover:opacity-60">
