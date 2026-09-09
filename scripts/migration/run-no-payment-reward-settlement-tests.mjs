@@ -8,7 +8,8 @@ import { transformSync } from 'esbuild';
 import { finalizeNoPaymentRewardOrder, expireNoPaymentRewardOrder, isVerifiedNoPaymentOrder } from '../../base44/functions/stripeWebhook/rewardSettlement.js';
 import * as rewardWebhook from '../../base44/functions/stripeWebhook/rewardWebhook.js';
 import * as rewardHandoffRuntime from '../../base44/functions/stripeWebhook/rewardHandoffRuntime.js';
-import * as refundLoyalty from '../../base44/functions/stripeWebhook/refundLoyalty.js';
+import * as refundRecovery from '../../base44/functions/stripeWebhook/refundRecovery.js';
+import * as refundProof from '../../base44/functions/stripeWebhook/refundProof.js';
 import * as benefits from '../../base44/functions/stripeWebhook/paymentBenefits.js';
 import * as ledger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 
@@ -372,7 +373,8 @@ function actualWebhook(f, { missingSecret = false, staging = false, invalidSigna
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('rewardWebhook')) return rewardWebhook;
       if (name.includes('rewardHandoffRuntime')) return rewardHandoffRuntime;
-      if (name.includes('refundLoyalty')) return refundLoyalty;
+      if (name.includes('refundRecovery')) return refundRecovery;
+      if (name.includes('refundProof')) return refundProof;
       if (name.includes('paymentBenefits')) return benefits;
       if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('birthdayCheckout')) return birthdayCheckout;

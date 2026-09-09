@@ -30,13 +30,14 @@ export async function createRefundFixture({ amount = 4299, multiplier = 1 } = {}
     metadata: { customer_email: customerEmail, order_number: order.order_number, checkout_mode: 'account' } };
   const charge = { id: 'ch_synthetic_refund', payment_intent: paymentId, amount, amount_refunded: amount,
     currency: 'usd', paid: true, captured: true, refunded: true, livemode: true,
-    refunds: { data: [{ id: 're_synthetic_full', amount, status: 'succeeded' }] } };
+    refunds: { data: [{ id: 're_synthetic_full', amount, status: 'succeeded', currency: 'usd',
+      charge: 'ch_synthetic_refund', payment_intent: paymentId, created: 1788883200 }] } };
   const rows = { Order: [order], UserPoints: [{ id: 'points_synthetic_refund', customer_email: customerEmail,
     total_points: 2000, lifetime_points: 2000, redeemed_points: 0, reserved_points: 0, points_history: [],
     reward_reservations: [], birthday_reservations: [] }],
     LoyaltyMember: [{ id: 'member_synthetic_refund', email: customerEmail, total_points: 2000 }],
     LoyaltyTransaction: [], NuViraCredit: [{ id: 'credit_synthetic', customer_email: customerEmail, balance: 12 }],
-    OrderSyncLog: [], OrderReviewQueue: [], Subscription: [] };
+    OrderSyncLog: [], OrderReviewQueue: [], Subscription: [], CustomerMessageDeliveryLog: [], Notification: [] };
   const effects = []; const faults = {}; const entities = {};
   for (const [name, list] of Object.entries(rows)) entities[name] = {
     list: async (_sort, limit) => copy(list.slice(0, limit)),
@@ -75,11 +76,24 @@ export async function createRefundFixture({ amount = 4299, multiplier = 1 } = {}
     if (faults.provider) throw new Error('Synthetic provider outage'); return copy(charge);
   } }, paymentIntents: { retrieve: async id => {
     effects.push('stripe.payment.read'); assert.equal(id, payment.id); return copy(payment);
-  } } };
+  } }, refunds: {
+    retrieve: async id => { effects.push('stripe.refund.read');
+      const row = charge.refunds.data.find(row => row.id === id); assert.ok(row); return copy(row); },
+    list: async args => { effects.push('stripe.refund.list'); assert.equal(args.charge, charge.id);
+      if (faults.refundList) throw new Error('Synthetic refund list unavailable');
+      return { data: copy(charge.refunds.data), has_more: false }; },
+  } };
   let ledgerHandler;
   const quiet = { log() {}, warn() {}, error() {} };
-  const env = { get: key => ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'LOYALTY_LEDGER_SECRET', 'CUSTOMER_APP_SYNC_SECRET'].includes(key)
-    ? 'synthetic-private-placeholder' : '' };
+  const env = { get: key => {
+    if (faults.communicationConfig) return ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'LOYALTY_LEDGER_SECRET', 'CUSTOMER_APP_SYNC_SECRET'].includes(key)
+      ? 'synthetic-private-placeholder' : '';
+    if (['ENABLE_ELEVATED_TRANSACTIONAL_COMMUNICATIONS', 'ENABLE_ELEVATED_TRANSACTIONAL_EMAILS'].includes(key)) return 'true';
+    if (key === 'TRANSACTIONAL_COMMUNICATIONS_KILL_SWITCH') return 'false';
+    if (key === 'TRANSACTIONAL_COMMUNICATIONS_MODE') return 'production';
+    return ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'LOYALTY_LEDGER_SECRET', 'CUSTOMER_APP_SYNC_SECRET',
+      'TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN', 'RESEND_API_KEY'].includes(key) ? 'synthetic-private-placeholder' : '';
+  } };
   const invokeLedger = async payload => {
     effects.push(`ledger.${payload.transaction_type}`);
     if (payload.transaction_type === 'reversal' && faults.post) throw new Error('Synthetic ledger unavailable');
@@ -94,12 +108,28 @@ export async function createRefundFixture({ amount = 4299, multiplier = 1 } = {}
   const base44 = { auth: { me: async () => null }, asServiceRole: { entities, functions: {
     invoke: async (name, payload) => {
       if (name === 'enrollNewCustomerInLoyalty') return { data: await invokeLedger(payload) };
-      assert.equal(name, 'sendOrderReceivedNotification'); assert.equal(payload.refund_notification, true);
-      effects.push(name); return { data: { success: false, skipped: true, reason: 'refund_customer_email_disabled' } };
+      assert.equal(name, 'sendOrderStatusNotification'); assert.equal(payload.event, 'refunded');
+      assert.equal(payload.refund_amount, order.refund_amount);
+      effects.push(name);
+      if (faults.communication) throw new Error('Synthetic unknown communication outcome');
+      const notification = await entities.Notification.create({ order_id: order.id, customer_email: customerEmail,
+        notification_subtype: 'order_refunded', idempotency_key: `elevated_order:${order.id}:refunded:${payload.event_id}` });
+      for (const channel of ['email', 'push']) await entities.CustomerMessageDeliveryLog.create({
+        idempotency_key: `txn:${order.id}:refunded:${channel}:${payload.event_id}`, order_id: order.id,
+        customer_email: customerEmail, channel, provider: channel === 'email' ? 'resend' : 'internal',
+        status: channel === 'email' ? 'sent' : 'skipped', provider_message_id: channel === 'email' ? 'synthetic-resend-id' : null,
+        error_message: channel === 'push' ? 'no_active_push_subscription' : null,
+        metadata: { event: 'refunded', event_id: payload.event_id, notification_id: notification.id },
+      });
+      if (faults.lostCommunication) throw new Error('Synthetic lost communication reply');
+      return { data: { success: true } };
     },
     fetch: async (path, options) => {
       assert.equal(path, '/syncRefundToHub'); assert.equal(JSON.parse(options.body).order_id, order.id);
-      effects.push('syncRefundToHub'); return new Response(JSON.stringify({ success: true }));
+      effects.push('syncRefundToHub');
+      if (faults.native) throw new Error('Synthetic native unavailable');
+      return new Response(JSON.stringify({ success: !faults.nativeFalse, native_authoritative: true,
+        external_calls_performed: false, native_order_ops: { success: true, dry_run: false, action: 'refund_mirrored' } }));
     },
   } } };
   const module = { exports: {} };
@@ -127,7 +157,7 @@ export async function createRefundFixture({ amount = 4299, multiplier = 1 } = {}
     fetch: async () => { throw new Error('External network forbidden'); },
     Deno: { env, serve: fn => { handler = fn; } }, require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => base44 };
-      if (name.includes('stripe')) return class { charges = provider.charges; paymentIntents = provider.paymentIntents;
+      if (name.includes('stripe')) return class { charges = provider.charges; paymentIntents = provider.paymentIntents; refunds = provider.refunds;
         webhooks = { constructEventAsync: async raw => { if (faults.signature) throw new Error('Invalid synthetic signature'); return JSON.parse(raw); } }; };
       throw new Error(`Unexpected webhook import ${name}`);
     } });
@@ -138,7 +168,7 @@ export async function createRefundFixture({ amount = 4299, multiplier = 1 } = {}
       headers: { 'stripe-signature': 'synthetic-only' }, body: JSON.stringify({ ...event, ...patch }) }));
     return { status: response.status, body: await response.json() };
   };
-  return { rows, order, entities, payment, charge, provider, event, run, effects, faults, award, customerEmail,
+  return { rows, order, entities, payment, charge, provider, event, run, effects, faults, award, customerEmail, base44, env,
     post: invokeLedger,
     reviewInbox: () => reviewModule.exports.loadNativeReviewQueue(base44, { status: 'open', search: '', limit: 150 }),
     reconcile: () => reconcileFullRefundLoyalty({ entities, stripe: provider, event, order, postLoyalty: invokeLedger }) };
@@ -361,8 +391,10 @@ test('a corrupt posted reversal receipt cannot be accepted on replay', async () 
 });
 test('partial refund never calls the full-refund reconciler or terminalizes an order', async () => {
   const f = await createRefundFixture(); f.event.data.object.amount_refunded = 100;
+  f.charge.amount_refunded = 100; f.charge.refunded = false; f.charge.refunds.data[0].amount = 100;
   assert.equal((await f.run()).status, 200); assert.equal(f.order.status, 'scheduled_for_juicing');
-  assert.equal(reversals(f).length, 0); assert.ok(!f.effects.includes('stripe.charge.read'));
+  assert.equal(reversals(f).length, 0); assert.ok(f.effects.includes('stripe.charge.read'));
+  assert.ok(!f.effects.includes('syncRefundToHub'));
 });
 if (process.argv[1]?.endsWith('run-full-refund-loyalty-recovery-tests.mjs')) {
   let passed = 0;

@@ -111,7 +111,8 @@ function orderContext(order: AnyRecord, body: AnyRecord): AnyRecord {
     order_number: order.order_number || order.id,
     delivery_date_label: text(body.delivery_date_label || order.assigned_delivery_date || order.estimated_delivery_date, 120),
     delivery_window_label: text(body.delivery_window_label || order.delivery_window_label, 120),
-    refund_amount: Number(body.refund_amount || 0),
+    // Entity automations may omit the amount; the persisted refund is canonical.
+    refund_amount: Number(order.refund_amount ?? body.refund_amount ?? 0),
     order_created_at: order.created_date || order.created_at || null,
   };
 }
@@ -406,6 +407,43 @@ async function deliverEvent(base44: any, body: AnyRecord, scheduledLog: AnyRecor
       return { success: true, skipped: true, reason: 'order_no_longer_eligible', blockers, provider_calls_performed: false };
     }
     return { success: false, error: 'authoritative_order_validation_failed', blockers, provider_calls_performed: false };
+  }
+
+  if (event === 'refunded' && order.refund_processing) {
+    const receipt = order.refund_processing;
+    const claim = receipt.communication;
+    // A replayed entity event, sweep or direct call cannot bypass the
+    // webhook coordinator's persistent single-dispatch claim.
+    if (receipt.revision !== '2026-09-09.refund-recovery-v1' || receipt.native_confirmed !== true
+      || receipt.payment_intent_id !== order.stripe_payment_intent_id
+      || receipt.amount_cents !== Math.round(Number(order.refund_amount) * 100)
+      || order.refund_status !== 'fully_refunded' || order.payment_status !== 'refunded'
+      || claim?.state !== 'dispatching' || !claim.attempt_id
+      || body.source !== 'stripe_refund_webhook' || body.refund_dispatch_attempt !== claim.attempt_id
+      || claim.provider_dispatch_claimed === true) {
+      return { success: true, skipped: true, reason: 'refund_recovery_owns_communications', provider_calls_performed: false };
+    }
+    if (!Number.isSafeInteger(order.refund_processing_revision) || order.refund_processing_revision < 1
+      || typeof base44.asServiceRole.entities.Order.updateMany !== 'function') {
+      return { success: false, error: 'refund_dispatch_conditional_write_required', provider_calls_performed: false };
+    }
+    const revision = order.refund_processing_revision + 1;
+    const nextReceipt = { ...receipt, communication: { ...claim, provider_dispatch_claimed: true } };
+    const result = await base44.asServiceRole.entities.Order.updateMany({ id: order.id,
+      customer_email: order.customer_email, stripe_payment_intent_id: order.stripe_payment_intent_id,
+      status: order.status, payment_status: 'refunded', refund_processing_revision: order.refund_processing_revision,
+      ...(order.updated_date ? { updated_date: order.updated_date } : {}),
+    }, { $set: { refund_processing: nextReceipt, refund_processing_revision: revision } });
+    if (result?.success !== true || result.updated !== 1 || result.has_more !== false) {
+      return { success: false, error: 'refund_dispatch_claim_unconfirmed', provider_calls_performed: false };
+    }
+    const rows = await base44.asServiceRole.entities.Order.filter({ id: order.id }, undefined, 2);
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0].refund_processing_revision !== revision
+      || JSON.stringify(rows[0].refund_processing) !== JSON.stringify(nextReceipt)
+      || rows[0].customer_email !== order.customer_email || rows[0].stripe_payment_intent_id !== order.stripe_payment_intent_id
+      || rows[0].payment_status !== 'refunded') {
+      return { success: false, error: 'refund_dispatch_claim_readback_unconfirmed', provider_calls_performed: false };
+    }
   }
 
   const scheduledPushesCancelled = await closeScheduledPushesForTerminalOrder(

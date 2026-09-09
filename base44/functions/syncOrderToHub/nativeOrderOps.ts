@@ -298,7 +298,24 @@ async function findExistingOrderForIncoming(base44, order) {
     shopify_order_id: sanitizeText(order?.shopify_order_id, 140),
     shopify_order_number: sanitizeText(normalizeOrderNumber(order), 120),
   };
-  return findExistingOrder(base44, record);
+  const found = new Map();
+  for (const [key, value] of Object.entries(record).filter(([, value]) => Boolean(value))) {
+    const matches = await base44.asServiceRole.entities.ShopifyOrder.filter({ [key]: value }, undefined, 5);
+    if (!Array.isArray(matches) || matches.length >= 5) throw new Error('refund_mirror_read_incomplete');
+    for (const row of matches) {
+      if (!row.id) throw new Error('refund_mirror_identity_invalid');
+      found.set(row.id, row);
+    }
+  }
+  if (found.size > 1) throw new Error('refund_mirror_identity_ambiguous');
+  const existing: any = [...found.values()][0] || null;
+  if (existing && ((existing.base44_order_id && existing.base44_order_id !== record.base44_order_id)
+    || existing.shopify_order_number !== record.shopify_order_number
+    || (existing.stripe_payment_intent_id && existing.stripe_payment_intent_id !== order.stripe_payment_intent_id)
+    || (existing.customer_email && normalizeLower(existing.customer_email) !== normalizeLower(order.customer_email)))) {
+    throw new Error('refund_mirror_identity_mismatch');
+  }
+  return existing;
 }
 
 function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus }) {
@@ -589,6 +606,10 @@ async function createCommandLog({ base44, record, action, status, idempotencyKey
 
 async function handleNativeRefundMirror({ base44, source, eventType, order, idempotencyKey, requestId, mode }) {
   const orderNumber = normalizeOrderNumber(order);
+  if (order?.is_partial_refund === true || order?.is_full_refund === false || order?.refund_type === 'partial') {
+    return Response.json({ success: false, action: 'queued_for_review',
+      error_code: 'partial_refund_cannot_cancel_fulfillment', dry_run: mode !== 'live' }, { status: 409 });
+  }
   if (!SUPPORTED_SOURCES.has(source)) {
     return Response.json({
       success: false,
@@ -613,7 +634,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
 
   const existing = await findExistingOrderForIncoming(base44, order);
   const now = new Date().toISOString();
-  const refundId = sanitizeText(order?.refund_id, 160) || sanitizeText(order?.stripe_charge_id, 160) || 'stripe_refund';
+  const refundId = sanitizeText(order?.stripe_refund_id || order?.refund_id, 160) || 'stripe_refund';
   const refundAmount = order?.refund_amount === undefined || order?.refund_amount === null ? null : safeNumber(order.refund_amount, 0);
 
   if (!existing) {
@@ -658,13 +679,29 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
     }, { status: 202 });
   }
 
-  const alreadyRefunded = normalizeLower(existing.payment_status) === 'refunded' &&
-    ['canceled', 'cancelled', 'refunded'].includes(normalizeLower(existing.production_status || existing.order_status));
-  const existingLogs = mode === 'live'
-    ? await base44.asServiceRole.entities.OrderSyncLog.filter({ idempotency_key: idempotencyKey }, '-created_date', 1).catch(() => [])
-    : [];
+  const isTerminalTask = task => ['cancelled', 'canceled', 'delivered'].includes(normalizeLower(task.status));
+  const readTasks = async () => {
+    const found = new Map();
+    for (const query of [{ order_id: existing.id }, ...(order.id ? [{ base44_order_id: order.id }, { order_id: order.id }] : [])]) {
+      const tasks = await base44.asServiceRole.entities.FulfillmentTask.filter(query, '-created_date', 501);
+      if (!Array.isArray(tasks) || tasks.length >= 501 || tasks.some(task => !task.id
+        || (task.order_id && ![existing.id, order.id].includes(task.order_id))
+        || (task.base44_order_id && task.base44_order_id !== order.id))) {
+        throw new Error('refund_fulfillment_read_incomplete');
+      }
+      for (const task of tasks) found.set(task.id, task);
+    }
+    return [...found.values()];
+  };
+  const isRefundedMirror = row => row?.payment_status === 'refunded' && row.financial_status === 'refunded'
+    && ['canceled', 'cancelled'].includes(row.production_status) && row.order_status === 'refunded'
+    && row.excluded_from_production === true && row.operational_visibility === 'archived';
+  const alreadyRefunded = isRefundedMirror(existing);
+  const tasksBefore = mode === 'live' ? await readTasks() : [];
 
-  if (alreadyRefunded && existingLogs.length > 0) {
+  // A status or old log is not proof that every task was canceled. Failed
+  // reads must be retried, never converted to an empty successful projection.
+  if (mode === 'live' && alreadyRefunded && tasksBefore.every(isTerminalTask)) {
     return Response.json({
       success: true,
       skipped: true,
@@ -688,7 +725,8 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
     refund_id: refundId,
   };
   const fulfillments = Array.isArray(existing.fulfillments)
-    ? existing.fulfillments.map(fulfillment => ({ ...fulfillment, status: 'cancelled', payment_status: 'refunded' }))
+    ? existing.fulfillments.map(fulfillment => ({ ...fulfillment,
+      status: normalizeLower(fulfillment.status) === 'delivered' ? fulfillment.status : 'cancelled', payment_status: 'refunded' }))
     : existing.fulfillments;
   const patch = compactObject({
     payment_status: 'refunded',
@@ -702,7 +740,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
     excluded_from_production: true,
     refunded_at: sanitizeText(order?.refunded_at, 80) || now,
     cancel_type: 'stripe_refund',
-    stripe_charge_id: sanitizeText(order?.refund_id, 160) || existing.stripe_charge_id,
+    stripe_charge_id: sanitizeText(order?.stripe_charge_id, 160) || existing.stripe_charge_id,
     stripe_payment_intent_id: sanitizeText(order?.stripe_payment_intent_id, 160) || existing.stripe_payment_intent_id,
     tags,
     fulfillments,
@@ -715,18 +753,31 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
   let taskUpdateResult = { action: mode === 'live' ? 'not_run' : 'would_cancel', count: 0 };
 
   if (mode === 'live') {
-    writtenRecord = await base44.asServiceRole.entities.ShopifyOrder.update(existing.id, patch);
-    const tasks = await base44.asServiceRole.entities.FulfillmentTask.filter({ order_id: existing.id }, '-created_date', 20).catch(() => []);
+    const conditionalWrite = async (entity, row, fields, changes) => {
+      if (typeof entity.updateMany !== 'function') throw new Error('refund_native_conditional_update_required');
+      const query = { id: row.id };
+      for (const field of [...fields, 'updated_date']) query[field] = row[field] === undefined ? { $exists: false } : row[field];
+      const result = await entity.updateMany(query, { $set: changes });
+      if (result?.success !== true || result.has_more !== false || result.updated !== 1) {
+        throw new Error('refund_native_write_raced_or_unconfirmed');
+      }
+    };
+    if (!alreadyRefunded) await conditionalWrite(base44.asServiceRole.entities.ShopifyOrder, existing,
+      ['payment_status', 'production_status', 'fulfillment_status'], patch);
     let cancelledCount = 0;
-    for (const task of tasks || []) {
-      if (normalizeLower(task.status) === 'cancelled' || normalizeLower(task.status) === 'delivered') continue;
-      await base44.asServiceRole.entities.FulfillmentTask.update(task.id, {
+    for (const task of tasksBefore) {
+      if (isTerminalTask(task)) continue;
+      await conditionalWrite(base44.asServiceRole.entities.FulfillmentTask, task, ['status'], {
         status: 'cancelled',
         notes: sanitizeText(`${task.notes || ''}\nCancelled by native refund mirror for ${orderNumber || existing.shopify_order_number}.`, 500),
       });
       cancelledCount += 1;
     }
     taskUpdateResult = { action: 'cancelled', count: cancelledCount };
+    const mirrors = await base44.asServiceRole.entities.ShopifyOrder.filter({ id: existing.id }, undefined, 2);
+    if (!Array.isArray(mirrors) || mirrors.length !== 1 || !isRefundedMirror(mirrors[0])
+      || !(await readTasks()).every(isTerminalTask)) throw new Error('refund_native_projection_readback_failed');
+    writtenRecord = mirrors[0];
 
     await createOrderSyncLog({
       base44,

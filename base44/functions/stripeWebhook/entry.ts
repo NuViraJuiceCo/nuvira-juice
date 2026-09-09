@@ -6,12 +6,13 @@ import { sendMetaPurchaseConversion } from './metaConversions.js';
 import { settleEmbeddedPaymentBenefits, applyCheckoutCredit } from './paymentBenefits.js';
 import { handleRewardCheckoutEvent } from './rewardWebhook.js';
 import { runVerifiedRewardHandoff } from './rewardHandoffRuntime.js';
-import { reconcileFullRefundLoyalty, verifyFullRefundPayment } from './refundLoyalty.js';
+import { recoverOrderRefund } from './refundRecovery.js';
+import { stripeObjectId } from './refundProof.js';
 import { settleCheckoutCredit } from '../../shared/checkoutCredit.js';
 import { settleVerifiedBirthdayCheckout } from '../createPaymentIntent/birthdayCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260908-refund-review-v5';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260909-refund-recovery-v6';
 const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
@@ -22,6 +23,33 @@ const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
   'legacy_migration',
   'unknown',
 ]);
+
+async function recoverStripeOrderRefund(base44, stripeClient, event, order, stagingSafeMode) {
+  return recoverOrderRefund({ entities: base44.asServiceRole.entities, stripe: stripeClient, event, order,
+    skipLoyalty: skipLoyaltyWrite(stagingSafeMode),
+    postLoyalty: payload => postLoyaltyTransaction(base44, payload),
+    communicationsReady: Deno.env.get('ENABLE_ELEVATED_TRANSACTIONAL_COMMUNICATIONS') === 'true'
+      && Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_KILL_SWITCH') === 'false'
+      && Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_MODE') === 'production'
+      && Deno.env.get('ENABLE_ELEVATED_TRANSACTIONAL_EMAILS') === 'true'
+      && Boolean(Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN'))
+      && Boolean(Deno.env.get('RESEND_API_KEY')),
+    projectNative: async current => {
+      const response = await invokeInternalFunction(base44, 'syncRefundToHub', {
+        order_id: current.id, stripe_session: { id: current.stripe_refund_id },
+        triggered_by: 'stripe_refund_webhook',
+      }, Deno.env.get('HUB_SYNC_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '');
+      return response?.data || response;
+    },
+    notifyCustomer: current => base44.asServiceRole.functions.invoke('sendOrderStatusNotification', {
+      action: 'elevated_deliver_event',
+      internal_token: Deno.env.get('TRANSACTIONAL_COMMUNICATIONS_INTERNAL_TOKEN') || '',
+      order_id: current.id, event: 'refunded', event_id: current.stripe_refund_id,
+      refund_amount: current.refund_amount, source: 'stripe_refund_webhook',
+      refund_dispatch_attempt: current.refund_processing?.communication?.attempt_id,
+    }),
+  });
+}
 
 async function attemptMetaPurchaseConversion(args: Record<string, any>) {
   try {
@@ -2234,176 +2262,7 @@ Deno.serve(async (req) => {
         return Response.json({ received: true });
       }
 
-      const order = orders[0];
-      const orderNumber = order.order_number;
-      const refundObjects = Array.isArray(charge.refunds?.data) ? charge.refunds.data : [];
-      const latestRefund = refundObjects.find((refund) => refund?.id && Number(refund?.amount || 0) > 0) || null;
-      const stripeRefundId = latestRefund?.id || charge.id;
-
-      if (isFullRefund && !skipLoyaltyWrite(stagingSafeMode)) {
-        // Verify current provider truth before changing order lifecycle too.
-        await verifyFullRefundPayment({ entities: base44.asServiceRole.entities, stripe, event, order });
-      }
-
-      // IDEMPOTENCY: Check if already refunded
-      if (order.payment_status === 'refunded' || order.status === 'refunded' || order.status === 'cancelled') {
-        // Terminal order state is not proof that its loyalty reversal finished.
-        // Recover it from the original award using one payment-level key.
-        let loyaltyOutcome = null;
-        if (isFullRefund && !skipLoyaltyWrite(stagingSafeMode)) {
-          loyaltyOutcome = await reconcileFullRefundLoyalty({ entities: base44.asServiceRole.entities, stripe, event, order,
-            postLoyalty: payload => postLoyaltyTransaction(base44, payload) });
-        }
-        console.log(`[charge.refunded] Order ${orderNumber} already refunded/cancelled, skipping`);
-        return Response.json({ received: true, action: 'already_refunded',
-          ...(loyaltyOutcome ? { loyalty_outcome: loyaltyOutcome.outcome } : {}) });
-      }
-
-      console.log(`[charge.refunded] Processing refund for Order ${orderNumber} (${order.id}), customer ${order.customer_email}`);
-
-      // Partial refunds must never terminalize the paid order or enter the full-refund
-      // Hub cascade. The order-adjustment workflow independently updates fulfillment
-      // demand; this branch records Stripe provider truth and remains idempotent.
-      if (!isFullRefund) {
-        if (order.refund_event_id === stripeEventId || order.stripe_refund_id === stripeRefundId) {
-          return Response.json({ received: true, action: 'partial_refund_already_recorded' });
-        }
-        const approvedCustomerAdjustment = latestRefund?.metadata?.operation === 'customer_order_adjustment_oasis_refund';
-        await base44.asServiceRole.entities.Order.update(order.id, {
-          refund_status: 'partially_refunded',
-          refund_type: 'partial',
-          refund_amount: refundAmount,
-          refund_currency: String(charge.currency || 'usd').toUpperCase(),
-          refunded_at: new Date().toISOString(),
-          refund_source: 'stripe_webhook',
-          refund_event_id: stripeEventId,
-          stripe_refund_id: stripeRefundId,
-          refund_reason: approvedCustomerAdjustment
-            ? 'Customer requested refund for the OASIS portion only.'
-            : 'Stripe partial refund received; operational review required.',
-          refund_review_required: !approvedCustomerAdjustment,
-          refund_review_status: approvedCustomerAdjustment ? 'resolved' : 'pending',
-          is_partial_refund: true,
-          sync_status: approvedCustomerAdjustment ? 'customer_adjustment_hub_pending' : 'partial_refund_review_required',
-          status_history: [...(order.status_history || []), {
-            status: order.status,
-            timestamp: new Date().toISOString(),
-            message: `Stripe partial refund recorded: $${refundAmount}. Order lifecycle remains active.`,
-          }],
-        });
-        await base44.asServiceRole.entities.OrderSyncLog.create({
-          order_number: orderNumber,
-          status: 'success',
-          hub_action: approvedCustomerAdjustment ? 'customer_adjustment_partial_refund_recorded' : 'partial_refund_review_required',
-          description: `Stripe partial refund recorded without terminalizing the paid order. event=${stripeEventId}`,
-          started_at: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
-          triggered_by: 'stripe_webhook',
-        }).catch(() => {});
-        return Response.json({
-          received: true,
-          action: approvedCustomerAdjustment ? 'customer_adjustment_partial_refund_recorded' : 'partial_refund_review_required',
-          refund_amount: refundAmount,
-        });
-      }
-
-      // Determine refund type and action
-      let newStatus = 'refunded';
-      let action = 'full_refund_processed';
-
-      // Update Customer App Order
-      const statusHistory = [...(order.status_history || []), {
-        status: newStatus,
-        timestamp: new Date().toISOString(),
-        message: `Stripe refund received: $${refundAmount} (${isFullRefund ? 'full' : 'partial'} refund). Refund ID: ${charge.id}`,
-      }];
-
-      await base44.asServiceRole.entities.Order.update(order.id, {
-        status: newStatus,
-        payment_status: 'refunded',
-        financial_status: 'refunded',
-        payment_captured: false,
-        refunded_at: new Date().toISOString(),
-        refund_id: stripeRefundId,
-        refund_amount: refundAmount,
-        is_partial_refund: false,
-        sync_status: 'refund_pending_native_projection',
-        status_history: statusHistory,
-      });
-
-      console.log(`[charge.refunded] Order ${orderNumber} updated: payment_status=refunded, status=${newStatus}`);
-
-      // Create RefundSyncLog for audit trail
-      try {
-        await base44.asServiceRole.entities.OrderSyncLog.create({
-          order_number: orderNumber,
-          status: 'success',
-          hub_action: 'refund_received',
-          description: `💰 Stripe refund received: $${refundAmount} (${isFullRefund ? 'FULL' : 'PARTIAL'}). Refund ID: ${charge.id}. Customer App order updated. Projecting to native operations...`,
-          started_at: new Date().toISOString(),
-          completed_at: new Date().toISOString(),
-          triggered_by: 'stripe_webhook',
-        });
-      } catch (logErr) {
-        console.warn(`[charge.refunded] Failed to log refund: ${logErr.message}`);
-      }
-
-      // Project the refund to native operations via the retained compatibility helper.
-      try {
-        const refundSyncResponse = await invokeInternalFunction(base44, 'syncRefundToHub', {
-          order_id: order.id,
-          stripe_session: { id: charge.id },
-          triggered_by: 'stripe_refund_webhook',
-        }, Deno.env.get('HUB_SYNC_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || '');
-        const refundSyncResult = refundSyncResponse?.data || refundSyncResponse;
-        if (refundSyncResult?.success) {
-          console.log(`[charge.refunded] ✅ Order ${orderNumber} refund projected to native operations`);
-        } else {
-          console.error(`[charge.refunded] ⚠️ Order ${orderNumber} refund sync returned: ${refundSyncResult?.error}`);
-        }
-      } catch (syncErr) {
-        console.error(`[charge.refunded] ❌ Native refund projection failed for ${orderNumber}: ${syncErr.message}`);
-        try {
-          await base44.asServiceRole.entities.OrderSyncLog.create({
-            order_number: orderNumber,
-            status: 'error',
-            description: `Native operational refund projection failed: ${syncErr.message}. Manual review required.`,
-            started_at: new Date().toISOString(),
-            completed_at: new Date().toISOString(),
-            triggered_by: 'stripe_refund_webhook',
-          });
-        } catch {}
-      }
-
-      // Reverse points earned on a fully refunded order. Refunds must never
-      // increase a customer's available or lifetime points.
-      let refundLoyaltyOutcome = null;
-      if (skipLoyaltyWrite(stagingSafeMode)) {
-        // Loyalty is intentionally suppressed in isolated staging smoke tests.
-      } else if (isFullRefund && order.customer_email) {
-        refundLoyaltyOutcome = await reconcileFullRefundLoyalty({ entities: base44.asServiceRole.entities, stripe, event, order,
-          postLoyalty: payload => postLoyaltyTransaction(base44, payload) });
-      }
-
-      // Send refund notification email
-      base44.asServiceRole.functions.invoke('sendOrderReceivedNotification', {
-        order_id: order.id,
-        customer_email: order.customer_email,
-        customer_name: order.customer_name,
-        order_number: orderNumber,
-        items: order.items,
-        total: order.total,
-        delivery_address: order.delivery_address,
-        estimated_delivery_date: order.estimated_delivery_date,
-        assigned_delivery_date: order.assigned_delivery_date,
-        delivery_window_label: order.delivery_window_label,
-        refund_notification: true,
-        refund_amount: refundAmount,
-        is_full_refund: isFullRefund,
-      }).catch(err => console.error('[charge.refunded] Email failed:', err.message));
-
-      return Response.json({ received: true, action, refund_amount: refundAmount,
-        ...(refundLoyaltyOutcome ? { loyalty_outcome: refundLoyaltyOutcome.outcome } : {}) });
+      return Response.json(await recoverStripeOrderRefund(base44, stripe, event, orders[0], stagingSafeMode));
     }
 
     // ── invoice.payment_failed — subscription payment failed ─────────────────
@@ -2438,76 +2297,14 @@ Deno.serve(async (req) => {
       return Response.json({ received: true });
     }
 
-    // ── REFUND UPDATE: refund.updated (for status changes) ───────────────────
-    // Optional: Handle refund status updates if needed
-    if (event.type === 'refund.updated') {
-      const refund = event.data.object;
-      const paymentIntentId = refund.payment_intent;
-      
-      console.log(`[refund.updated] Refund ${refund.id} for PI ${paymentIntentId} updated to status: ${refund.status}`);
-      
-      if (!paymentIntentId) {
-        return Response.json({ received: true });
-      }
-
-      const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId });
-      if (orders.length > 0) {
-        const order = orders[0];
-        console.log(`[refund.updated] Order ${order.order_number} linked to refund ${refund.id}, status: ${refund.status}`);
-
-        const refundAmount = Number(refund.amount || 0) / 100;
-        const isKnownPartial = refund.metadata?.operation === 'customer_order_adjustment_oasis_refund'
-          || order.refund_type === 'partial'
-          || order.refund_status === 'partially_refunded'
-          || order.is_partial_refund === true
-          || (Number(order.total || 0) > 0 && refundAmount > 0 && refundAmount < Number(order.total));
-        if (refund.status === 'succeeded' && isKnownPartial) {
-          await base44.asServiceRole.entities.Order.update(order.id, {
-            refund_status: 'partially_refunded',
-            refund_type: 'partial',
-            refund_amount: Math.max(Number(order.refund_amount || 0), refundAmount),
-            refund_currency: String(refund.currency || order.refund_currency || 'usd').toUpperCase(),
-            refunded_at: new Date().toISOString(),
-            refund_source: 'stripe_webhook',
-            refund_event_id: event.id,
-            stripe_refund_id: refund.id,
-            refund_reason: refund.metadata?.operation === 'customer_order_adjustment_oasis_refund'
-              ? 'Customer requested refund for the OASIS portion only.'
-              : (order.refund_reason || 'Stripe partial refund received.'),
-            refund_review_required: refund.metadata?.operation === 'customer_order_adjustment_oasis_refund'
-              ? false
-              : order.refund_review_required !== false,
-            refund_review_status: refund.metadata?.operation === 'customer_order_adjustment_oasis_refund'
-              ? 'resolved'
-              : (order.refund_review_status || 'pending'),
-            is_partial_refund: true,
-          });
-          return Response.json({ received: true, action: 'partial_refund_status_recorded' });
-        }
-        
-        // REPAIR GUARD: If refund is 'succeeded' but order is NOT in terminal state, repair it now.
-        // This catches cases where charge.refunded was missed but refund.updated arrives later.
-        if (refund.status === 'succeeded') {
-          const isAlreadyTerminal = order.status === 'refunded' || order.status === 'cancelled' || order.do_not_recover === true;
-          if (!isAlreadyTerminal) {
-            console.warn(`[refund.updated] Order ${order.order_number} is NOT in terminal state (status=${order.status}) but refund succeeded. Repairing to refunded.`);
-            await base44.asServiceRole.entities.Order.update(order.id, {
-              status: 'refunded',
-              payment_status: 'refunded',
-              financial_status: 'refunded',
-              do_not_recover: true,
-              status_history: [...(order.status_history || []), {
-                status: 'refunded',
-                timestamp: new Date().toISOString(),
-                message: `Repaired to terminal state by refund.updated webhook. Refund ${refund.id} succeeded.`,
-              }],
-            });
-            console.log(`[refund.updated] ✅ Repaired Order ${order.order_number} to terminal refunded state.`);
-          }
-        }
-      }
-      
-      return Response.json({ received: true });
+    // Refund object callbacks recover through the same fresh charge-level proof.
+    if (['refund.created', 'refund.updated', 'charge.refund.updated'].includes(event.type)) {
+      const paymentIntentId = stripeObjectId(event.data.object?.payment_intent);
+      if (!paymentIntentId) return Response.json({ received: true });
+      const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId }, undefined, 2);
+      if (!Array.isArray(orders) || orders.length > 1) return Response.json({ error: 'refund_order_identity_ambiguous' }, { status: 503 });
+      if (orders.length === 0) return Response.json({ received: true });
+      return Response.json(await recoverStripeOrderRefund(base44, stripe, event, orders[0], stagingSafeMode));
     }
 
     return Response.json({ received: true });

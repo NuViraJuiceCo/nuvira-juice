@@ -437,6 +437,15 @@
       ],
       "description": "Optional refund/payment reversal state. Does not replace lifecycle Order.status."
     },
+    "refund_processing_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Server-only conditional revision for verified refund projection/recovery."
+    },
+    "refund_processing": {
+      "type": "object",
+      "description": "Server-only bounded refund stage receipts and dispatch claim; never raw provider payloads or secrets."
+    },
     "refund_type": {
       "type": "string",
       "enum": [

@@ -3,6 +3,8 @@ import { handleElevatedTransactionalAction } from './elevatedTransactionalCommun
 import { buildOrderCommunicationCopy } from './orderCommunicationPolicy.js';
 import { buildOrderEmailHtml } from './orderEmailTemplate.js';
 
+// Bundle revision: refund-owned-dispatch-20260909 (unreleased).
+
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
 const TRANSACTIONAL_FROM = Deno.env.get('TRANSACTIONAL_EMAIL_FROM') || 'NuVira Juice Co <orders@nuvirajuice.com>';
 const TRANSACTIONAL_REPLY_TO = Deno.env.get('TRANSACTIONAL_EMAIL_REPLY_TO') || 'support@nuvirajuice.com';
@@ -359,6 +361,19 @@ Deno.serve(async (req) => {
         skipped: true,
         reason: 'test_order_customer_communications_suppressed',
       });
+    }
+
+    if (['refunded', 'partially_refunded'].includes(String(new_status))) {
+      // Re-read instead of trusting an old entity payload. The webhook's
+      // durable claim owns new refund communications, including legacy-mode
+      // fallback paths, so entity retries cannot become a second sender.
+      const currentRows = await base44.asServiceRole.entities.Order.filter({ id: order_id }, undefined, 2);
+      if (!Array.isArray(currentRows) || currentRows.length !== 1) {
+        return Response.json({ error: 'refund_order_read_unconfirmed' }, { status: 409 });
+      }
+      if (currentRows[0].refund_processing) {
+        return Response.json({ success: true, skipped: true, reason: 'refund_recovery_owns_communications' });
+      }
     }
 
     if (entityUpdate) {

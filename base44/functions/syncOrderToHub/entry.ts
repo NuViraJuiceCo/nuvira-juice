@@ -22,6 +22,7 @@ import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
 import productionMaterializationHandler from './productionMaterializer/handler.ts';
 import { readRewardNativeOrder } from './rewardNativeGuard.js';
 
+// Bundle revision: refund-native-recovery-20260909 (unreleased).
 // Bundle revision: reward-native-item-snapshots-20260908 (unreleased).
 // Bundle revision: g115h-local-production-materializer-20260812.
 // Bundle revision: g115g-bundle-safe-signed-production-materializer-20260812.
