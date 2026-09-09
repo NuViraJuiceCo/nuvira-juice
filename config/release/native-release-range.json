@@ -12,6 +12,11 @@
       "number": 655,
       "merge_commit": "cef28666a1e56a73f1fa5d419a54700e985eed28",
       "title": "Represent the internal main-branch sync performed during PR #655"
+    },
+    {
+      "number": 788,
+      "merge_commit": "0eaff654fb83c076705c085d2148b614e83b97cf",
+      "title": "Represent the internal main-branch sync performed during PR #788"
     }
   ],
   "allow_empty_included_prs_when_no_merge_commits": true

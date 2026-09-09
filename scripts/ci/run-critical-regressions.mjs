@@ -43,6 +43,8 @@ const harnesses = [
   'scripts/migration/run-reward-selection-safety-tests.mjs',
   'scripts/migration/run-reward-order-minimum-tests.mjs',
   'scripts/migration/run-first-order-offer-tests.mjs',
+  'scripts/migration/run-shopify-legacy-sync-auth-tests.mjs',
+  'scripts/migration/run-admin-package-promotion-tests.mjs',
   'scripts/migration/run-auth-startup-performance-tests.mjs',
   'scripts/migration/run-g183-auth-return-state-tests.mjs',
   'scripts/migration/run-g184-auth-transport-consent-tests.mjs',
