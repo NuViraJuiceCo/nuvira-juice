@@ -80,7 +80,7 @@ export function quoteBirthdayCatalogCheckout({ items, products, eligibility, res
   assert(matches.length === 1, 'birthday_product_unavailable');
   const product = matches[0];
   assert(product.is_available === true && product.category === 'juice'
-    && /^(12oz|12floz|355ml)$/.test(String(product.size || '').toLowerCase().replace(/\s+/g, ''))
+    && /^(?:(?:12oz|12floz)(?:\/355ml)?|355ml)$/.test(String(product.size || '').toLowerCase().replace(/\s+/g, ''))
     && money(product.price) > 0, 'birthday_product_ineligible');
   const giftIndex = items.indexOf(gift);
   // The ordinary catalog validator still verifies every paid/program item and
@@ -174,7 +174,7 @@ export async function readVerifiedBirthdayPayment({ entities, stripe, customerEm
     assert(gift.product_id === snapshot.product_id && gift.birthday_product_id === snapshot.product_id
       && gift.isBirthdayReward === true && gift.quantity === 1 && gift.price === 0
       && gift.category === 'juice' && typeof gift.title === 'string' && gift.title.trim()
-      && /^(12oz|12floz|355ml)$/.test(String(gift.size || '').toLowerCase().replace(/\s+/g, ''))
+      && /^(?:(?:12oz|12floz)(?:\/355ml)?|355ml)$/.test(String(gift.size || '').toLowerCase().replace(/\s+/g, ''))
       && money(gift.catalog_unit_price) === snapshot.retail_value_cents
       && money(gift.birthday_discount_amount) === snapshot.retail_value_cents
       && !gift.isFreeReward && !gift.reward_id);

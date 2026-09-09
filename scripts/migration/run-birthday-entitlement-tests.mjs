@@ -9,12 +9,12 @@ import { reserveBirthdayGift, settleBirthdayGift, applyPointsTransaction, reserv
 // No network, real account, provider event, payment, email, inventory or deploy.
 const email = 'birthday-checkout@example.test';
 const now = Date.parse('2026-09-08T18:00:00Z');
-const identity = { userId: 'synthetic-user', birthday: '1990-09-08', signupDate: '2025-10-01T18:00:00Z' };
+const identity = { userId: 'synthetic-user', birthday: '1990-09-08', signupDate: '2025-10-01T18:00:00.123456Z' };
 const user = { id: identity.userId, email, birthday: identity.birthday, created_date: identity.signupDate };
 const window = birthdayWindow({ ...identity, now });
-const products = [{ id: 'oasis', title: 'OASIS', category: 'juice', size: '12oz', price: 13, is_available: true,
+const products = [{ id: 'oasis', title: 'OASIS', category: 'juice', size: '12oz / 355ml', price: 13, is_available: true,
   image_url: 'https://example.test/oasis.png', shopify_variant_id: 'synthetic-oasis' },
-{ id: 'aura', title: 'AURA', category: 'juice', size: '12oz', price: 13, is_available: true },
+{ id: 'aura', title: 'AURA', category: 'juice', size: '12oz / 355ml', price: 13, is_available: true },
 { id: 'trio', title: 'NuVira Trio', category: 'bundle', bottles_per_unit: 3, price: 36, is_available: true }];
 const cart = () => [{ product_id: 'aura', price: 13, quantity: 2 },
   { product_id: '__birthday_reward__', birthday_product_id: 'oasis', isBirthdayReward: true, price: 0, quantity: 1 }];

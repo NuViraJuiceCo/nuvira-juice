@@ -92,7 +92,7 @@ function fixture({ directPoints = false, mixedPoints = false, creditMode = null,
     const birth = `1990-${today.slice(5)}`;
     const window = birthdayWindow({ birthday: birth, signupDate: authenticatedUser.created_date });
     const gift = { product_id: 'birthday-OASIS', title: 'OASIS', quantity: 1, price: 0,
-      size: '12 oz', category: 'juice', isBirthdayReward: true, birthday_product_id: 'birthday-OASIS',
+      size: '12oz / 355ml', category: 'juice', isBirthdayReward: true, birthday_product_id: 'birthday-OASIS',
       catalog_unit_price: 13, birthday_discount_amount: 13 };
     data.items.push(gift);
     Object.assign(data, { customer_app_user_id: authenticatedUser.id, birthday_discount: 13, catalog_subtotal: 91,
