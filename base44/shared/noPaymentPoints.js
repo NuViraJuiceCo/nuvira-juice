@@ -1,5 +1,6 @@
 // Pure proof helpers. Provider metadata is trusted only after the caller's
 // independent authenticated Stripe retrieval; a client request is never proof.
+import { verifiedNoPaymentCreditMetadata, verifiedNoPaymentCreditSnapshot } from './noPaymentCredit.js';
 export const NO_PAYMENT_POINTS_REVISION = '2026-09-09.no-payment-points-v1';
 const check = value => { if (!value) throw new Error('no_payment_points_context_unconfirmed'); };
 const cents = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -7,6 +8,12 @@ const cents = value => typeof value === 'number' && Number.isFinite(value) && va
   ? Math.round(value * 100) : NaN;
 
 export function verifiedNoPaymentPointsMetadata(metadata) {
+  if (metadata?.credit_reservation_id) {
+    verifiedNoPaymentCreditMetadata(metadata);
+    check(/^points:[a-f0-9]{64}$/.test(metadata.reward_reservation_id || '')
+      && /^[1-9][0-9]*$/.test(metadata.no_payment_points || '') && Number.isSafeInteger(Number(metadata.no_payment_points)));
+    return Number(metadata.no_payment_points);
+  }
   check(metadata?.checkout_version === '4.0_reward_no_payment' && metadata.checkout_mode === 'account'
     && /^points:[a-f0-9]{64}$/.test(metadata.reward_reservation_id || '')
     && /^[a-f0-9]{64}$/.test(metadata.checkout_context_hash || '')
@@ -19,6 +26,7 @@ export function verifiedNoPaymentPointsMetadata(metadata) {
 }
 
 export function verifiedNoPaymentPointsSnapshot(data, metadata) {
+  if (metadata?.credit_reservation_id) return verifiedNoPaymentCreditSnapshot(data, metadata).points;
   const points = verifiedNoPaymentPointsMetadata(metadata);
   check(data?.no_payment_points_revision === NO_PAYMENT_POINTS_REVISION
     && data.points_reservation_revision === '2026-09-08.direct-points-v1'
@@ -49,6 +57,7 @@ export function verifiedNoPaymentPointsSnapshot(data, metadata) {
 // A selected tier can cover its earned items while points cover additional
 // merchandise. Both costs belong to one consumed reservation, not two debits.
 export function verifiedNoPaymentTierPointsSnapshot(data, metadata) {
+  if (metadata?.credit_reservation_id) return verifiedNoPaymentCreditSnapshot(data, metadata).points;
   const quote = data?.reward_checkout;
   check(metadata?.checkout_version === '4.0_reward_no_payment' && metadata.checkout_mode === 'account'
     && /^reward:[a-f0-9]{64}$/.test(metadata.reward_reservation_id || '')

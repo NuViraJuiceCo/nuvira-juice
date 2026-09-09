@@ -22,7 +22,9 @@ const matches = (row, query) => Object.entries(query).every(([key, value]) => {
   }
   return row[key] === value;
 });
-function fixture({ directPoints = false, mixedPoints = false } = {}) {
+function fixture({ directPoints = false, mixedPoints = false, creditMode = null } = {}) {
+  directPoints ||= creditMode === 'only' || creditMode === 'points';
+  mixedPoints ||= creditMode === 'tier';
   const schedule = { assigned_delivery_date: '2026-09-12', assigned_production_day: '2026-09-11',
     assigned_delivery_window_start: '12:00', assigned_delivery_window_end: '15:00', delivery_window_label: 'Saturday 12 PM - 3 PM' };
   const tier = { id: 'vip-test', is_active: true, reward_type: 'vip_box', points_required: 6000, title: 'VIP Box' };
@@ -61,7 +63,23 @@ function fixture({ directPoints = false, mixedPoints = false } = {}) {
       reward_discount: 0, subscription_discount: 0, reward_reservation_points: 7300 });
     Object.assign(pricing, { points_used: 1300, points_discount: 13, reservation_points: 7300 });
   }
+  if (creditMode) {
+    const amount = creditMode === 'only' ? 78 : creditMode === 'points' ? 65 : 13;
+    const points = creditMode === 'points' ? 1300 : 0;
+    const rid = `credit:${'a'.repeat(64)}`;
+    Object.assign(data, { credits_discount: amount, points_used: points, points_discount: points / 100,
+      reward_reservation_points: (creditMode === 'tier' ? tier.points_required : 0) + points,
+      credit_reservation_id: rid, credit_reservation_revision: '2026-09-08.credit-reservation-v1',
+      no_payment_credit_revision: '2026-09-09.no-payment-credit-v1' });
+    Object.assign(pricing, { credits_discount: amount, points_used: points, points_discount: points / 100,
+      reservation_points: data.reward_reservation_points });
+    if (creditMode === 'only') data.reward_reservation_id = rid;
+    Object.assign(metadata, { credit_reservation_id: rid, credit_reservation_cents: String(amount * 100),
+      reward_reservation_id: data.reward_reservation_id });
+  }
   const rows = { Order: [], CheckoutSession: [], RewardTier: [tier],
+    NuViraCredit: [{ id: 'synthetic_credit', customer_email: email, balance: 100, reserved_balance: 0,
+      lifetime_used: 0, history: [], checkout_reservations: [] }],
     BagReturn: [{ id: 'synthetic-bag', customer_email: email, order_id: 'pending', verification_status: 'requested' }],
     UserPoints: [{ id: 'points', customer_email: email, total_points: 7000, lifetime_points: 7000,
       redeemed_points: 0, reserved_points: 0, points_history: [], reward_reservations: [] }],
@@ -437,5 +455,83 @@ for (const [name, change] of [
 ]) await test(`mixed tier and points ${name} stops before provider or ledger writes`, async () => {
   const f = fixture({ mixedPoints: true }); change(f); await assert.rejects(f.run);
   assert.deepEqual(f.effects, []); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+});
+for (const creditMode of ['only', 'points', 'tier']) {
+  await test(`credit ${creditMode} prepares, settles and replays both ledgers once`, async () => {
+    const f = fixture({ creditMode }); const result = await f.run();
+    assert.ok(result.clientSecret, JSON.stringify(result));
+    const amount = f.data.credits_discount; const points = f.data.reward_reservation_points;
+    assert.equal(f.rows.NuViraCredit[0].reserved_balance, amount);
+    assert.equal(f.rows.NuViraCredit[0].balance, 100);
+    assert.equal(f.rows.UserPoints[0].reserved_points, points);
+    assert.equal((await f.run()).clientSecret, result.clientSecret);
+    f.complete(); await f.webhook('checkout.session.completed');
+    assert.equal(f.rows.NuViraCredit[0].balance, 100 - amount);
+    assert.equal(f.rows.NuViraCredit[0].reserved_balance, 0);
+    assert.equal(f.rows.UserPoints[0].total_points, 9000 - points);
+    assert.equal(f.rows.Order[0].reward_settlement.credit_redeemed_cents, amount * 100);
+    assert.equal(f.rows.Order[0].reward_settlement.points_redeemed, points);
+    assert.equal((await f.run()).checkoutCompleted, true);
+    await f.webhook('checkout.session.completed');
+    assert.equal(f.rows.NuViraCredit[0].history.length, 1);
+    assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, points ? 1 : 0);
+  });
+  await test(`credit ${creditMode} cancel releases credit and points with no debit`, async () => {
+    const f = fixture({ creditMode }); await f.run();
+    assert.equal((await f.cancel()).ok, true); assert.equal((await f.cancel()).ok, true);
+    assert.equal(f.rows.NuViraCredit[0].balance, 100);
+    assert.equal(f.rows.NuViraCredit[0].reserved_balance, 0); assert.equal(f.rows.NuViraCredit[0].history.length, 0);
+    assert.equal(f.rows.UserPoints[0].total_points, 9000); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+  });
+  await test(`credit ${creditMode} Session expiry releases both ledgers`, async () => {
+    const f = fixture({ creditMode }); await f.run(); f.session().status = 'expired';
+    await f.webhook('checkout.session.expired'); await f.webhook('checkout.session.expired');
+    assert.equal(f.rows.NuViraCredit[0].reserved_balance, 0); assert.equal(f.rows.NuViraCredit[0].balance, 100);
+    assert.equal(f.rows.UserPoints[0].reserved_points, 0); assert.equal(f.rows.UserPoints[0].total_points, 9000);
+  });
+  for (const target of ['Order.create', 'CheckoutSession.create']) {
+    await test(`credit ${creditMode} ${target} failure withholds secret and releases owner holds`, async () => {
+      const f = fixture({ creditMode }); f.faults[target] = true;
+      const result = await f.run(); assert.equal(result.clientSecret, undefined); assert.equal(result.error_code, 'REWARD_CHECKOUT_NOT_READY');
+      assert.equal(f.session().status, 'expired');
+      assert.equal(f.rows.NuViraCredit[0].reserved_balance, 0); assert.equal(f.rows.NuViraCredit[0].balance, 100);
+      assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+    });
+  }
+  await test(`credit ${creditMode} expiry ambiguity retains holds and never cancels completed Session`, async () => {
+    const f = fixture({ creditMode }); await f.run(); f.faults.expireRace = true;
+    await assert.rejects(f.cancel, /reward_expiration_not_confirmed/);
+    assert.equal(f.session().status, 'complete');
+    assert.equal(f.rows.NuViraCredit[0].reserved_balance, f.data.credits_discount);
+    assert.equal(f.rows.UserPoints[0].reserved_points, f.data.reward_reservation_points);
+    await f.webhook('checkout.session.completed');
+    assert.equal(f.rows.NuViraCredit[0].balance, 100 - f.data.credits_discount);
+  });
+}
+await test('credit-only checkout does not require an unrelated points account', async () => {
+  const f = fixture({ creditMode: 'only' }); f.rows.UserPoints.length = 0; f.rows.LoyaltyMember.length = 0;
+  const result = await f.run(); assert.ok(result.clientSecret, JSON.stringify(result));
+  assert.equal(f.reserveCalls(), 0); f.complete(); await f.webhook('checkout.session.completed');
+  assert.equal(f.rows.NuViraCredit[0].balance, 22); assert.equal(f.rows.LoyaltyTransaction.length, 0);
+});
+await test('credit insufficiency after points hold cannot expose checkout or strand the points', async () => {
+  const f = fixture({ creditMode: 'points' }); f.rows.NuViraCredit[0].balance = 1;
+  const result = await f.run(); assert.equal(result.clientSecret, undefined);
+  assert.equal(f.session().status, 'expired'); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
+  assert.equal(f.rows.NuViraCredit[0].balance, 1);
+});
+await test('points settlement followed by credit outage retries without another points debit', async () => {
+  const f = fixture({ creditMode: 'points' }); await f.run(); f.complete();
+  f.faults['NuViraCredit.cas'] = true;
+  await f.webhook('checkout.session.completed');
+  assert.equal(f.rows.UserPoints[0].total_points, 7700);
+  assert.equal(f.rows.NuViraCredit[0].balance, 100); assert.equal(f.rows.NuViraCredit[0].reserved_balance, 65);
+  assert.equal(f.rows.Order[0].payment_status, 'pending');
+  f.faults['NuViraCredit.cas'] = false;
+  await f.webhook('checkout.session.completed'); await f.webhook('checkout.session.completed');
+  assert.equal(f.rows.NuViraCredit[0].balance, 35); assert.equal(f.rows.NuViraCredit[0].history.length, 1);
+  assert.equal(f.rows.UserPoints[0].total_points, 7700);
+  assert.equal(f.rows.LoyaltyTransaction.filter(row => row.status === 'posted').length, 1);
+  assert.equal(f.rows.Order[0].payment_status, 'paid');
 });
 console.log(`No-payment checkout start: ${count}/${count} passed. Local synthetic I/O only; not live/provider-release evidence.`);

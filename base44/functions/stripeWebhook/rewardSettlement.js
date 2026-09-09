@@ -1,6 +1,8 @@
 // A zero-cash order is not a captured card payment. This receipt is created only
 // after Stripe completion and the existing central points ledger both confirm it.
 import { verifiedNoPaymentPointsSnapshot, verifiedNoPaymentTierPointsSnapshot } from '../../shared/noPaymentPoints.js';
+import { verifiedNoPaymentCreditSnapshot } from '../../shared/noPaymentCredit.js';
+import { settleNoPaymentCheckoutCredit } from '../../shared/checkoutCredit.js';
 export const REWARD_SETTLEMENT_REVISION = '2026-09-08.reward-settlement-v1';
 
 export function isVerifiedNoPaymentOrder(order) {
@@ -11,12 +13,18 @@ export function isVerifiedNoPaymentOrder(order) {
     && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
     && !['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
     && !order.stripe_payment_intent_id && !(Number(order.amount_refunded || 0) > 0)
-    && receipt?.revision === '2026-09-08.reward-settlement-v1'
+    && (receipt?.revision === '2026-09-08.reward-settlement-v1'
+    || (receipt?.revision === '2026-09-09.credit-settlement-v2'
+      && /^credit:[a-f0-9]{64}$/.test(receipt.credit_reservation_id || '')
+      && Number.isSafeInteger(receipt.credit_redeemed_cents) && receipt.credit_redeemed_cents > 0
+      && (receipt.points_redeemed === 0 ? receipt.reservation_id === receipt.credit_reservation_id
+        : /^(points|reward):[a-f0-9]{64}$/.test(receipt.reservation_id || ''))))
     && /^cs_[A-Za-z0-9_]+$/.test(order.stripe_checkout_session_id || '')
     && receipt.checkout_session_id === order.stripe_checkout_session_id
     && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
     && typeof receipt.reservation_id === 'string' && receipt.reservation_id.length > 0
-    && Number.isSafeInteger(receipt.points_redeemed) && receipt.points_redeemed > 0
+    && Number.isSafeInteger(receipt.points_redeemed)
+    && receipt.points_redeemed >= (receipt.revision === '2026-09-09.credit-settlement-v2' ? 0 : 1)
     && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
     && typeof receipt.settled_at === 'string' && Number.isFinite(Date.parse(receipt.settled_at)));
 }
@@ -56,7 +64,7 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
     && /^[a-f0-9]{64}$/.test(metadata.checkout_context_hash || '')
     && metadata.reward_reservation_id && metadata.order_number, 'reward_provider_identity_invalid');
   // A signed event from another revision/context cannot settle the latest record.
-  for (const key of ['checkout_version', 'checkout_context_hash', 'reward_reservation_id', 'order_number', 'customer_email', 'no_payment_points']) {
+  for (const key of ['checkout_version', 'checkout_context_hash', 'reward_reservation_id', 'order_number', 'customer_email', 'no_payment_points', 'credit_reservation_id', 'credit_reservation_cents']) {
     requireExact(eventSession.metadata[key] === metadata[key], 'reward_event_context_mismatch');
   }
   const orders = await entities.Order.filter({ stripe_checkout_session_id: session.id }, '-created_date', 2);
@@ -67,25 +75,28 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
   const context = contexts[0];
   const data = context.checkout_data;
   const directOnly = /^points:[a-f0-9]{64}$/.test(metadata.reward_reservation_id || '');
-  if (directOnly) verifiedNoPaymentPointsSnapshot(data, metadata);
+  const creditCovered = Boolean(metadata.credit_reservation_id);
+  const benefits = creditCovered ? verifiedNoPaymentCreditSnapshot(data, metadata) : null;
+  if (creditCovered) { /* Complete private priced proof was checked above. */ }
+  else if (directOnly) verifiedNoPaymentPointsSnapshot(data, metadata);
   else if (data?.points_used > 0) verifiedNoPaymentTierPointsSnapshot(data, metadata);
   requireExact(data && normalizedEmail(order.customer_email) === email && normalizedEmail(context.customer_email) === email
     && normalizedEmail(data.customer_email) === email && order.order_number === metadata.order_number
     && context.order_number === order.order_number && data.order_number === order.order_number
     && data.checkout_context_hash === metadata.checkout_context_hash
     && data.reward_reservation_id === metadata.reward_reservation_id
-    && (directOnly || (data.reward_checkout?.revision === '2026-09-08.reward-checkout-v1'
+    && (creditCovered || directOnly || (data.reward_checkout?.revision === '2026-09-08.reward-checkout-v1'
       && data.reward_checkout.active_reward?.id === data.active_reward?.id))
-    && Number.isSafeInteger(data.reward_reservation_points) && data.reward_reservation_points > 0
-    && data.reward_reservation_points === (directOnly ? 0 : Number(data.active_reward?.points_required)) + Number(data.points_used || 0)
+    && Number.isSafeInteger(data.reward_reservation_points) && data.reward_reservation_points >= (creditCovered ? 0 : 1)
+    && data.reward_reservation_points === Number(data.active_reward?.points_required || 0) + Number(data.points_used || 0)
     && data.total === 0 && order.total === 0 && order.payment_captured === false && !order.stripe_payment_intent_id
     && (data.bag_return_request_id || null) === (order.bag_return_request_id || null)
     && (data.bag_return_request_id || null) === (metadata.bag_return_request_id || null)
     && data.guest_checkout !== true && data.internal_sandbox_checkout !== true && order.is_test_order !== true
     && Array.isArray(data.items) && data.items.length > 0 && same(data.items, order.items), 'reward_checkout_snapshot_mismatch');
-  // Credit reservation is a separate unfinished contract. Never debit an
-  // unreserved credit or silently allow it to cover this no-cash order.
-  requireExact(Number(data.credits_discount || 0) === 0, 'reward_credit_reservation_required');
+  // Credit coverage must carry its protected Session-bound reservation proof.
+  // Never silently allow an unreserved credit to cover this no-cash order.
+  requireExact(creditCovered || Number(data.credits_discount || 0) === 0, 'reward_credit_reservation_required');
   requireExact(!terminal(order), 'reward_order_terminal');
   const schedule = verifySchedule(data, metadata);
   requireExact(schedule && schedule.assigned_delivery_date === order.assigned_delivery_date
@@ -97,16 +108,26 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
     requireExact(isVerifiedNoPaymentOrder(order)
       && order.reward_settlement.context_hash === metadata.checkout_context_hash
       && order.reward_settlement.reservation_id === metadata.reward_reservation_id
-      && order.reward_settlement.points_redeemed === data.reward_reservation_points, 'reward_settlement_receipt_conflict');
+      && order.reward_settlement.points_redeemed === data.reward_reservation_points
+      && (!creditCovered || (order.reward_settlement.credit_redeemed_cents === benefits.credit_cents
+        && order.reward_settlement.credit_reservation_id === metadata.credit_reservation_id)), 'reward_settlement_receipt_conflict');
   } else {
     requireExact(order.status === 'pending_payment' && order.payment_status === 'pending'
       && order.financial_status === 'pending', 'reward_order_not_pending');
   }
-  const settled = await settleReservation({ customer_email: email, stripe_checkout_session_id: session.id });
+  const settled = data.reward_reservation_points > 0
+    ? await settleReservation({ customer_email: email, stripe_checkout_session_id: session.id })
+    : { success: true, reservation_status: 'consumed' };
   requireExact(settled?.success === true && settled.reservation_status === 'consumed', 'reward_reservation_not_consumed');
+  if (creditCovered) {
+    const credit = await settleNoPaymentCheckoutCredit({ entities, stripe, email, sessionId: session.id });
+    requireExact(credit.reservation_status === 'consumed', 'checkout_credit_not_consumed');
+  }
   if (order.reward_settlement) return { order, checkoutData: data, idempotent: true };
 
-  const receipt = { revision: REWARD_SETTLEMENT_REVISION, checkout_session_id: session.id,
+  const receipt = { revision: creditCovered ? '2026-09-09.credit-settlement-v2' : REWARD_SETTLEMENT_REVISION,
+    ...(creditCovered ? { credit_redeemed_cents: benefits.credit_cents, credit_reservation_id: metadata.credit_reservation_id } : {}),
+    checkout_session_id: session.id,
     context_hash: metadata.checkout_context_hash, reservation_id: metadata.reward_reservation_id,
     points_redeemed: data.reward_reservation_points, provider_event_id: event.id,
     settled_at: new Date(event.created * 1000).toISOString() };
@@ -155,7 +176,7 @@ export async function expireNoPaymentRewardOrder({ entities, stripe, event, sett
     && email && normalizedEmail(session.customer_email) === email
     && metadata.order_number && metadata.reward_reservation_id
     && /^[a-f0-9]{64}$/.test(metadata.checkout_context_hash || ''), 'reward_provider_expiration_unconfirmed');
-  for (const key of ['checkout_version', 'checkout_context_hash', 'reward_reservation_id', 'order_number', 'customer_email', 'no_payment_points']) {
+  for (const key of ['checkout_version', 'checkout_context_hash', 'reward_reservation_id', 'order_number', 'customer_email', 'no_payment_points', 'credit_reservation_id', 'credit_reservation_cents']) {
     requireExact(eventSession.metadata[key] === metadata[key], 'reward_event_context_mismatch');
   }
   const orders = await entities.Order.filter({ stripe_checkout_session_id: session.id }, '-created_date', 2);
@@ -172,7 +193,12 @@ export async function expireNoPaymentRewardOrder({ entities, stripe, event, sett
     requireExact(alreadyExpired(order) || (order.status === 'pending_payment' && !terminal(order)
       && order.payment_status === 'pending' && order.financial_status === 'pending'), 'reward_expiration_order_not_pending');
   }
-  const released = await settleReservation({ customer_email: email, stripe_checkout_session_id: session.id });
+  if (metadata.credit_reservation_id) {
+    const credit = await settleNoPaymentCheckoutCredit({ entities, stripe, email, sessionId: session.id });
+    requireExact(credit.reservation_status === 'released', 'checkout_credit_not_released');
+  }
+  const released = metadata.reward_reservation_id.startsWith('credit:') ? { success: true, reservation_status: 'released' }
+    : await settleReservation({ customer_email: email, stripe_checkout_session_id: session.id });
   requireExact(released?.success === true && released.reservation_status === 'released', 'reward_reservation_not_released');
   if (!order || alreadyExpired(order)) return { order, expired: true, idempotent: true };
   const timestamp = new Date(event.created * 1000).toISOString();

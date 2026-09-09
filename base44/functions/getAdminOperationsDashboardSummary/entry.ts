@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: credit-settlement-receipt-20260909 (unreleased).
 // Bundle revision: reward-native-snapshot-planning-20260908 (unreleased).
 // Bundle revision: reward-communications-20260908 (staff reward email and consented SMS; unreleased).
 // Bundle revision: reward-settlement-20260908 (no-cash eligibility; unreleased).

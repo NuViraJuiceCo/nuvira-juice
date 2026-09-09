@@ -847,7 +847,7 @@ function CheckoutFlow() {
       // Persist before the request can reach Stripe. Only the fully covered
       // reward candidate uses this no-payment recovery contract. Storage
       // failure stops preparation; no secret, contact data or cart is saved.
-      if (!isGuestCheckout && (activeReward || pointsUsed > 0) && totalBeforePromotion === 0) {
+      if (!isGuestCheckout && (activeReward || pointsUsed > 0 || creditsDiscount > 0) && totalBeforePromotion === 0) {
         saveRewardCheckoutAttempt(localStorage, user.id, checkoutIdempotencyKey.current);
         rewardAttemptTrackedRef.current = true;
       } else {
@@ -1745,7 +1745,7 @@ function CheckoutFlow() {
             const isBlocked = fulfillmentType === 'delivery' && (
               !addressValidated || needsMinimum || isWaitlist
             );
-            let label = (activeReward || pointsUsed > 0) && total === 0 ? 'Review reward order' : `Review Payment · $${total.toFixed(2)}`;
+            let label = (activeReward || pointsUsed > 0 || creditsDiscount > 0) && total === 0 ? 'Review covered order' : `Review Payment · $${total.toFixed(2)}`;
             if (checkoutStartStage === CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN) label = 'Checkout status unknown';
             else if (checkoutStartStage === CHECKOUT_START_STAGES.SLOW_PROCESSING) label = 'Still checking...';
             else if (isSubmitting) label = 'Processing...';

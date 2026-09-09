@@ -24,13 +24,19 @@ export async function readRewardNativeOrder(entities, body) {
     && order.status === 'scheduled_for_juicing' && !order.stripe_payment_intent_id
     && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
     && !(Number(order.amount_refunded || 0) > 0)
-    && receipt?.revision === '2026-09-08.reward-settlement-v1'
+    && (receipt?.revision === '2026-09-08.reward-settlement-v1'
+    || (receipt?.revision === '2026-09-09.credit-settlement-v2'
+      && /^credit:[a-f0-9]{64}$/.test(receipt.credit_reservation_id || '')
+      && Number.isSafeInteger(receipt.credit_redeemed_cents) && receipt.credit_redeemed_cents > 0
+      && (receipt.points_redeemed === 0 ? receipt.reservation_id === receipt.credit_reservation_id
+        : /^(points|reward):[a-f0-9]{64}$/.test(receipt.reservation_id || ''))))
     && /^cs_[A-Za-z0-9_]+$/.test(order.stripe_checkout_session_id || '')
     && receipt.checkout_session_id === order.stripe_checkout_session_id
     && claim.checkout_session_id === order.stripe_checkout_session_id
     && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
     && claim.context_hash === receipt.context_hash && receipt.reservation_id
-    && Number.isSafeInteger(receipt.points_redeemed) && receipt.points_redeemed > 0
+    && Number.isSafeInteger(receipt.points_redeemed)
+    && receipt.points_redeemed >= (receipt.revision === '2026-09-09.credit-settlement-v2' ? 0 : 1)
     && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
     && Number.isFinite(Date.parse(receipt.settled_at || '')), 'reward_native_order_unsettled');
   const progress = order.reward_handoff; const step = progress?.steps?.native_operations;

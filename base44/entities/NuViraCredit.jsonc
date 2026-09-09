@@ -25,12 +25,14 @@
           "reservation_id": { "type": "string" },
           "context_hash": { "type": "string" },
           "payment_intent_id": { "type": "string" },
+          "checkout_session_id": { "type": "string" },
+          "preparation_attempt_id": { "type": "string" },
           "amount_cents": { "type": "integer", "minimum": 1 },
           "status": { "type": "string", "enum": ["held", "consumed", "released"] },
           "created_at": { "type": "string" },
           "settled_at": { "type": "string" }
         },
-        "required": ["reservation_id", "context_hash", "payment_intent_id", "amount_cents", "status"]
+        "required": ["reservation_id", "context_hash", "amount_cents", "status"]
       }
     },
     "lifetime_issued": {
@@ -69,6 +71,7 @@
             "type": "string"
           },
           "payment_intent_id": { "type": "string" },
+          "checkout_session_id": { "type": "string" },
           "idempotency_key": { "type": "string" },
           "timestamp": {
             "type": "string"

@@ -70,7 +70,8 @@ await test('corrupted or unavailable storage cannot masquerade as no prior attem
 const compiled = transformSync(fs.readFileSync('base44/functions/createPaymentIntent/entry.ts', 'utf8'), { loader: 'ts', format: 'cjs' }).code;
 function backendFixture({ user = { id: owner, email }, balancePatch = {}, holdPatch = {}, sessionPatch = {},
   metadataPatch = {}, duplicateBalance = false, duplicateHold = false, missingHold = false,
-  readFailure = false, providerFailure = false } = {}) {
+  readFailure = false, providerFailure = false, creditOnly = false, noPointsAccount = false,
+  creditPatch = {}, creditHoldPatch = {}, missingCreditHold = false, duplicateCredit = false } = {}) {
   const calls = [];
   const hold = { reservation_id: `reward:${hash}`, context_hash: 'a'.repeat(64), checkout_session_id: sessionId,
     status: 'held', points: 6000, ...holdPatch };
@@ -79,6 +80,8 @@ function backendFixture({ user = { id: owner, email }, balancePatch = {}, holdPa
     client_secret: 'SYNTHETIC_ONLY', metadata: { checkout_version: noPayment.NO_PAYMENT_CHECKOUT_VERSION,
       checkout_mode: 'account', customer_email: email, reward_reservation_id: `reward:${hash}`,
       checkout_context_hash: 'a'.repeat(64), order_number: orderNumber, ...metadataPatch }, ...sessionPatch };
+  if (creditOnly) Object.assign(session.metadata, { reward_reservation_id: `credit:${hash}`,
+    credit_reservation_id: `credit:${hash}`, credit_reservation_cents: '600', ...metadataPatch });
   const stripe = { checkout: { sessions: { retrieve: async id => {
     calls.push('provider.read'); assert.equal(id, sessionId); if (providerFailure) throw new Error('PRIVATE PROVIDER');
     return structuredClone(session);
@@ -89,8 +92,16 @@ function backendFixture({ user = { id: owner, email }, balancePatch = {}, holdPa
       calls.push('ledger.read'); assert.equal(query.customer_email, user.email.trim().toLowerCase());
       if (readFailure) throw new Error('PRIVATE DATABASE');
       const row = { id: 'points-synthetic', customer_email: email,
-        reward_reservations: missingHold ? [] : duplicateHold ? [hold, hold] : [hold], ...balancePatch };
-      return duplicateBalance ? [row, row] : [row];
+        reward_reservations: missingHold || creditOnly ? [] : duplicateHold ? [hold, hold] : [hold], ...balancePatch };
+      return noPointsAccount ? [] : duplicateBalance ? [row, row] : [row];
+    }, updateMany: forbidden, create: forbidden, update: forbidden },
+    NuViraCredit: { filter: async () => {
+      calls.push('credit.read');
+      const row = { id: 'synthetic-credit', customer_email: email, checkout_reservations: missingCreditHold ? [] : [{
+        reservation_id: `credit:${hash}`, context_hash: 'a'.repeat(64), checkout_session_id: sessionId,
+        amount_cents: 600, status: 'held', preparation_attempt_id: 'synthetic-preparation', ...creditHoldPatch,
+      }], ...creditPatch };
+      return duplicateCredit ? [row, row] : [row];
     }, updateMany: forbidden, create: forbidden, update: forbidden },
   } } };
   let served; const module = { exports: {} };
@@ -291,17 +302,19 @@ await test('actual pre-request recovery selection covers both tier rewards and d
   const tree = ts.createSourceFile('Checkout.jsx', checkoutSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
   let selection;
   function visit(node) {
-    if (ts.isIfStatement(node) && node.expression.getText(tree) === '!isGuestCheckout && (activeReward || pointsUsed > 0) && totalBeforePromotion === 0') selection = node.getText(tree);
+    if (ts.isIfStatement(node) && node.expression.getText(tree) === '!isGuestCheckout && (activeReward || pointsUsed > 0 || creditsDiscount > 0) && totalBeforePromotion === 0') selection = node.getText(tree);
     ts.forEachChild(node, visit);
   }
   visit(tree); assert.ok(selection);
-  for (const [activeReward, pointsUsed, totalBeforePromotion, isGuestCheckout, expected] of [
+  for (const [activeReward, pointsUsed, totalBeforePromotion, isGuestCheckout, expected, creditsDiscount = 0] of [
     [null, 3900, 0, false, 'reward'], [{ id: 'tier' }, 0, 0, false, 'reward'],
     [null, 3900, 3.99, false, 'paid'], [null, 0, 0, false, 'paid'], [null, 3900, 0, true, 'paid'],
+    [null, 0, 0, false, 'reward', 39], [null, 1300, 0, false, 'reward', 26],
+    [null, 0, 3.99, false, 'paid', 39], [null, 0, 0, true, 'paid', 39],
   ]) {
     const calls = []; const inFlight = { current: true }; const user = { id: owner, email };
     await vm.runInNewContext(`(async () => { ${selection} })()`, {
-      activeReward, pointsUsed, totalBeforePromotion, isGuestCheckout, user, normalizedCustomerEmail: email,
+      activeReward, pointsUsed, creditsDiscount, totalBeforePromotion, isGuestCheckout, user, normalizedCustomerEmail: email,
       checkoutIdempotencyKey: { current: attemptKey }, localStorage: storage(), guestOrderToken: { current: null },
       rewardAttemptTrackedRef: { current: false }, paidAttemptRef: { current: null }, checkoutAttemptInFlightRef: inFlight,
       checkoutCustomerIdentityRef: { current: `${owner}:${email}` },
@@ -310,5 +323,30 @@ await test('actual pre-request recovery selection covers both tier rewards and d
     });
     assert.deepEqual(calls, [expected]);
   }
+});
+for (const state of ['open', 'complete', 'expired']) await test(`credit-only ${state} recovery works with no points account`, async () => {
+  const f = backendFixture({ creditOnly: true, noPointsAccount: true,
+    sessionPatch: { status: state, payment_status: state === 'complete' ? 'no_payment_required' : 'unpaid' } });
+  const response = await f.handle(); const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result)); assert.equal(result.state, state);
+  assert.deepEqual(result.reward_checkout_recovery, hint); assert.equal(result.writes_performed, false);
+  assert.deepEqual(f.calls, ['ledger.read', 'credit.read', 'provider.read']);
+  assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC_ONLY|buyer@|600|a{64}|secret/);
+});
+await test('credit recovery allows legacy points account with no reservation field', async () => {
+  const f = backendFixture({ creditOnly: true, balancePatch: { reward_reservations: undefined } });
+  assert.equal((await f.handle()).status, 200);
+});
+for (const [name, options] of [
+  ['no hold', { missingCreditHold: true }], ['duplicate account', { duplicateCredit: true }],
+  ['wrong owner', { creditPatch: { customer_email: 'other@example.test' } }],
+  ['malformed holds', { creditPatch: { checkout_reservations: {} } }],
+  ['mismatched amount', { creditHoldPatch: { amount_cents: 1 } }],
+  ['mismatched context', { creditHoldPatch: { context_hash: 'b'.repeat(64) } }],
+  ['card hold', { creditHoldPatch: { payment_intent_id: 'pi_synthetic' } }],
+  ['wrong metadata amount', { metadataPatch: { credit_reservation_cents: '1' } }],
+]) await test(`credit recovery refuses ${name} without returning a hint`, async () => {
+  const f = backendFixture({ creditOnly: true, ...options }); const response = await f.handle();
+  assert.notEqual(response.status, 200); assert.equal((await response.json()).reward_checkout_recovery, undefined);
 });
 console.log(`Reward reload recovery: ${count}/${count} passed; actual handlers/effect, simulated storage/provider, no production writes.`);

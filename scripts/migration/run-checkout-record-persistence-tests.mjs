@@ -607,11 +607,33 @@ await test('unsecured, malformed and excessive credit selections fail before pro
     assert.equal(response.status, 409); assert.equal((await response.json()).clientSecret, undefined); assert.equal(ctx.effects.length, 0);
   }
 });
-await test('credits reducing the provider charge below its minimum are not silently charged extra', async () => {
-  const ctx = fixture({ distanceMiles: 2, seed: { NuViraCredit: [{ ...creditSeed.NuViraCredit[0], balance: 50 }],
+await test('credits covering the entire balance reserve and consume once without any card charge', async () => {
+  const ctx = fixture({ realLedger: true, distanceMiles: 2, seed: { NuViraCredit: [{ ...creditSeed.NuViraCredit[0], balance: 50 }],
     Subscription: [{ customer_email: email, status: 'active', plan_id: 'plan' }], SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }] } });
   const result = await (await ctx.handle({ credits_discount: 35.1 })).json();
-  assert.equal(result.error_code, 'CREDIT_BALANCE_REQUIRES_REVIEW'); assert.equal(ctx.effects.length, 0);
+  assert.equal(result.checkoutKind, 'reward_no_payment', JSON.stringify(result));
+  assert.equal(ctx.effects.includes('PI.create'), false); assert.ok(result.clientSecret);
+  assert.ok(Object.keys(ctx.session().metadata).length <= 50);
+  assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 35.1); assert.equal(ctx.rows.NuViraCredit[0].balance, 50);
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 0);
+  const replay = await (await ctx.handle({ credits_discount: 35.1 })).json(); assert.equal(replay.clientSecret, result.clientSecret);
+  Object.assign(ctx.session(), { status: 'complete', payment_status: 'no_payment_required' });
+  const event = { type: 'checkout.session.completed', id: 'evt_CREDIT_ZERO', created: 1788901200,
+    livemode: true, data: { object: ctx.session() } };
+  const completed = await ctx.runWebhook(event); assert.equal(completed.status, 503); // No provider handoff configured here.
+  assert.equal(ctx.rows.Order[0].reward_settlement.credit_redeemed_cents, 3510);
+  assert.equal(ctx.rows.Order[0].reward_settlement.points_redeemed, 0);
+  assert.equal(ctx.rows.NuViraCredit[0].balance, 14.9); assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 0);
+  await ctx.runWebhook(event); assert.equal(ctx.rows.NuViraCredit[0].history.filter(row => row.type === 'used').length, 1);
+  assert.equal(ctx.rows.LoyaltyTransaction.length, 0);
+  const recovery = await (await ctx.handle({ mode: 'read_reward_checkout_recovery' })).json();
+  assert.equal(recovery.state, 'complete'); assert.equal(recovery.writes_performed, false);
+});
+await test('a nonzero sub-fifty-cent credit balance is never rounded up or waived', async () => {
+  const ctx = fixture({ seed: { NuViraCredit: [{ ...creditSeed.NuViraCredit[0], balance: 50 }],
+    Subscription: [{ customer_email: email, status: 'active', plan_id: 'plan' }], SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }] } });
+  const result = await (await ctx.handle({ credits_discount: 35 })).json();
+  assert.equal(result.error_code, 'REWARD_BALANCE_REQUIRES_REVIEW'); assert.equal(ctx.effects.length, 0);
 });
 await test('direct-point checkout connects actual preparation, ledger CAS and mirror before exposing secret', async () => {
   const ctx = fixture({ realLedger: true });

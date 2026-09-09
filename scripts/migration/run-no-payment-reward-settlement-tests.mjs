@@ -32,6 +32,9 @@ const consumers = [
   'getCustomerOrderDetail/entry.ts',
   'getCustomerAccountDashboardData/handlers/getCustomerOrderDetail/entry.ts',
   'getCustomerAccountDashboardData/handlers/getCustomerAccountDashboardData/entry.ts',
+  'getAdminOperationsDashboardSummary/handlers/notifyOrderProcessed/entry.ts',
+  'getAdminOperationsDashboardSummary/handlers/sendOrderSms/entry.ts',
+  'sendAdminOrderProcessedNotification/entry.ts',
 ];
 const tests = []; const test = (name, fn) => tests.push([name, fn]);
 function matches(row, query) {
@@ -234,6 +237,20 @@ test('No-cash qualification requires the entire receipt, not a bare paid or zero
   }
   for (const total of [null, undefined, '', '0', -1, 0.01, NaN]) assert.equal(isVerifiedNoPaymentOrder({ ...f.order, total }), false);
   for (const status of ['pending_payment', 'cancelled', 'refunded', 'failed']) assert.equal(isVerifiedNoPaymentOrder({ ...f.order, status }), false);
+});
+test('credit settlement receipt accepts exact identities and rejects weak or conflicting proof', async () => {
+  const f = fixture(); await finalizeNoPaymentRewardOrder(f.options);
+  const order = structuredClone(f.order); const r = order.reward_settlement;
+  Object.assign(r, { revision: '2026-09-09.credit-settlement-v2', reservation_id: `credit:${'a'.repeat(64)}`,
+    points_redeemed: 0, credit_reservation_id: `credit:${'a'.repeat(64)}`, credit_redeemed_cents: 7800 });
+  assert.equal(isVerifiedNoPaymentOrder(order), true);
+  for (const patch of [{ points_redeemed: -1 }, { points_redeemed: '0' }, { credit_redeemed_cents: 0 },
+    { credit_redeemed_cents: '7800' }, { credit_reservation_id: 'credit:bad' }, { reservation_id: `credit:${'b'.repeat(64)}` },
+    { points_redeemed: 1300 }, { provider_event_id: '' }, { revision: 'unreviewed' }]) {
+    assert.equal(isVerifiedNoPaymentOrder({ ...order, reward_settlement: { ...r, ...patch } }), false, JSON.stringify(patch));
+  }
+  for (const prefix of ['points', 'reward']) assert.equal(isVerifiedNoPaymentOrder({ ...order,
+    reward_settlement: { ...r, points_redeemed: 1300, reservation_id: `${prefix}:${'c'.repeat(64)}` } }), true);
 });
 for (const file of consumers) test(`Bundle-local receipt predicate parity: ${file}`, () => {
   assert.equal(declaration(read(root + file), 'isVerifiedNoPaymentOrder'), canonical);

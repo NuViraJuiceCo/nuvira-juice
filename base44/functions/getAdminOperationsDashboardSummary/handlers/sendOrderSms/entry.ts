@@ -1,5 +1,30 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+function isVerifiedNoPaymentOrder(order) {
+  const receipt = order?.reward_settlement;
+  return Boolean(order?.id && order?.customer_email && order?.order_number
+    && order.total === 0 && order.payment_captured === false
+    && order.payment_status === 'paid' && order.financial_status === 'paid'
+    && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
+    && !['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+    && !order.stripe_payment_intent_id && !(Number(order.amount_refunded || 0) > 0)
+    && (receipt?.revision === '2026-09-08.reward-settlement-v1'
+    || (receipt?.revision === '2026-09-09.credit-settlement-v2'
+      && /^credit:[a-f0-9]{64}$/.test(receipt.credit_reservation_id || '')
+      && Number.isSafeInteger(receipt.credit_redeemed_cents) && receipt.credit_redeemed_cents > 0
+      && (receipt.points_redeemed === 0 ? receipt.reservation_id === receipt.credit_reservation_id
+        : /^(points|reward):[a-f0-9]{64}$/.test(receipt.reservation_id || ''))))
+    && /^cs_[A-Za-z0-9_]+$/.test(order.stripe_checkout_session_id || '')
+    && receipt.checkout_session_id === order.stripe_checkout_session_id
+    && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
+    && typeof receipt.reservation_id === 'string' && receipt.reservation_id.length > 0
+    && Number.isSafeInteger(receipt.points_redeemed)
+    && receipt.points_redeemed >= (receipt.revision === '2026-09-09.credit-settlement-v2' ? 0 : 1)
+    && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
+    && typeof receipt.settled_at === 'string' && Number.isFinite(Date.parse(receipt.settled_at)));
+}
+
+
 const SENDBLUE_API_KEY = Deno.env.get('SENDBLUE_API_KEY');
 const SENDBLUE_API_SECRET = Deno.env.get('SENDBLUE_API_SECRET');
 const SENDBLUE_PHONE_NUMBER = Deno.env.get('SENDBLUE_PHONE_NUMBER');
@@ -90,7 +115,7 @@ export default async (req: Request) => {
       const order = orders.length === 1 ? orders[0] : null;
       if (!order || order.stripe_checkout_session_id !== reward_checkout_session_id
         || order.reward_settlement?.checkout_session_id !== reward_checkout_session_id
-        || order.reward_settlement?.revision !== '2026-09-08.reward-settlement-v1'
+        || !isVerifiedNoPaymentOrder(order)
         || order.total !== 0 || total !== 0 || order.payment_captured !== false || order.payment_status !== 'paid'
         || order.financial_status !== 'paid' || order.stripe_payment_intent_id || order.is_test_order === true
         || order.is_abandoned_checkout === true || order.do_not_recover === true || Number(order.amount_refunded || 0) > 0

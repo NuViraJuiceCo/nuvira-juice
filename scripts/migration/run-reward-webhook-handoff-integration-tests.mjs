@@ -13,7 +13,9 @@ const source = buildSync({ entryPoints: ['base44/functions/stripeWebhook/entry.t
   write: false, format: 'cjs', platform: 'node', target: 'es2022', external: ['npm:*'] }).outputFiles[0].text;
 globalThis.fetch = async () => { throw new Error('External network forbidden'); };
 const copy = value => structuredClone(value);
-function fixture({ directPoints = false, mixedPoints = false } = {}) {
+function fixture({ directPoints = false, mixedPoints = false, creditMode = null } = {}) {
+  directPoints ||= creditMode === 'points' || creditMode === 'only';
+  mixedPoints ||= creditMode === 'tier';
   const handoff = createCompleteRewardHandoffFixture(); const c = handoff.communication;
   const settled = createRewardSettlementFixture({ connected: true });
   const s = settled.session; const order = c.order;
@@ -76,6 +78,35 @@ function fixture({ directPoints = false, mixedPoints = false } = {}) {
   if (mixedPoints) {
     Object.assign(account, { total_points: 9000, lifetime_points: 9000, reserved_points: 3300 });
     account.reward_reservations[0].points = 3300;
+  }
+  if (creditMode) {
+    const points = creditMode === 'only' ? 0 : creditMode === 'points' ? 1300 : 2000;
+    const credit = creditMode === 'only' ? 78 : creditMode === 'points' ? 65 : 13;
+    const rid = `credit:${'a'.repeat(64)}`;
+    Object.assign(data, { no_payment_credit_revision: '2026-09-09.no-payment-credit-v1',
+      credit_reservation_revision: '2026-09-08.credit-reservation-v1', credit_reservation_id: rid,
+      credits_discount: credit, points_used: creditMode === 'points' ? 1300 : 0,
+      points_discount: creditMode === 'points' ? 13 : 0, reward_reservation_points: points });
+    Object.assign(s.metadata, { credit_reservation_id: rid, credit_reservation_cents: String(credit * 100) });
+    if (creditMode === 'points') s.metadata.no_payment_points = '1300';
+    else delete s.metadata.no_payment_points;
+    if (!points) { data.reward_reservation_id = rid; s.metadata.reward_reservation_id = rid; account.reward_reservations = []; }
+    else account.reward_reservations[0].points = points;
+    account.reserved_points = points;
+    c.rows.NuViraCredit = [{ id: 'synthetic_credit', customer_email: order.customer_email, balance: 100,
+      reserved_balance: credit, lifetime_used: 0, history: [], checkout_reservations: [{
+        reservation_id: rid, context_hash: data.checkout_context_hash, checkout_session_id: s.id,
+        amount_cents: credit * 100, preparation_attempt_id: 'synthetic-credit-preparation', status: 'held',
+      }] }];
+    const matches = (row, query) => Object.entries(query).every(([key, value]) => key === '$or'
+      ? value.some(q => matches(row, q)) : value && typeof value === 'object' && '$exists' in value
+        ? (row[key] !== undefined) === value.$exists : row[key] === value);
+    c.entities.NuViraCredit = {
+      filter: async query => copy(c.rows.NuViraCredit.filter(row => matches(row, query))),
+      updateMany: async (query, patch) => { const rows = c.rows.NuViraCredit.filter(row => matches(row, query));
+        rows.forEach(row => Object.assign(row, copy(patch.$set)));
+        return { success: true, has_more: false, updated: rows.length }; },
+    };
   }
   settled.rows.LoyaltyMember[0].email = order.customer_email;
   const invoke = c.base44.asServiceRole.functions.invoke;
@@ -203,6 +234,40 @@ for (const [name, mutate] of [
   assert.notEqual(result.status, 200); assert.equal(f.settled.rows.UserPoints[0].total_points, 9000);
   assert.equal(f.settled.rows.UserPoints[0].reserved_points, 3300);
   assert.equal(f.shopify.state.creates.length, 0); assert.equal(count(f, 'provider:send'), 0);
+});
+for (const creditMode of ['only', 'points', 'tier']) test(`credit ${creditMode} completes every downstream stage without a card charge or duplicate credit spend`, async () => {
+  const f = fixture({ creditMode }); const start = f.settled.rows.UserPoints[0].total_points;
+  const points = f.data.reward_reservation_points; const used = f.data.credits_discount;
+  const result = await f.run(); assert.equal(result.status, 200, JSON.stringify({ result, handoff: f.order.reward_handoff }));
+  assert.ok(REWARD_HANDOFF_STAGES.every(stage => f.order.reward_handoff.steps[stage].state === 'complete'));
+  assert.equal(f.order.reward_settlement.revision, '2026-09-09.credit-settlement-v2');
+  assert.equal(f.order.reward_settlement.points_redeemed, points);
+  assert.equal(f.order.reward_settlement.credit_redeemed_cents, used * 100);
+  assert.equal(f.c.rows.NuViraCredit[0].balance, 100 - used); assert.equal(f.c.rows.NuViraCredit[0].reserved_balance, 0);
+  assert.equal(f.settled.rows.UserPoints[0].total_points, start - points);
+  assert.equal(f.native.rows.FulfillmentTask.length, 1); assert.equal(f.shopify.state.creates.length, 1);
+  assert.equal(f.native.rows.ProductionBatch.reduce((sum, row) => sum + row.planned_units, 0), creditMode === 'tier' ? 7 : 6);
+  assert.equal(f.shopify.state.creates[0].order.transactions, undefined);
+  assert.equal(count(f, 'provider:send'), 1); assert.equal(count(f, 'operations:send'), 1);
+  assert.equal((await f.run()).status, 200); assert.equal(f.c.rows.NuViraCredit[0].history.length, 1);
+  assert.equal(f.c.rows.NuViraCredit[0].balance, 100 - used); assert.equal(f.shopify.state.creates.length, 1);
+  assert.equal(count(f, 'provider:send'), 1);
+});
+for (const creditMode of ['only', 'points', 'tier']) test(`credit ${creditMode} reaches eligible customer/staff push and opted-in SMS exactly once`, async () => {
+  const f = fixture({ creditMode });
+  f.order.contact_phone = '+12025550123'; f.data.contact_phone = f.order.contact_phone;
+  f.c.rows.UserProfile.push({ id: 'synthetic_profile', customer_email: f.order.customer_email,
+    phone: f.order.contact_phone, sms_consent: true, sms_consent_date: '2026-09-01T12:00:00Z' });
+  for (const [i, email] of [f.order.customer_email, 'operations@example.test'].entries()) f.c.rows.PushSubscription.push({
+    id: `synthetic_credit_device_${i}`, customer_email: email, token_type: 'web_push', enabled: true,
+    endpoint: `https://synthetic.invalid/push/${i}`, p256dh: 'synthetic-key', auth: 'synthetic-auth' });
+  for (let retry = 0; retry < 2; retry++) {
+    const result = await f.run(); assert.equal(result.status, 200, JSON.stringify(result));
+    assert.ok(REWARD_HANDOFF_STAGES.every(stage => f.order.reward_handoff.steps[stage].state === 'complete'));
+    assert.equal(count(f, 'push:accept'), 2); assert.equal(count(f, 'sms:send'), 1);
+    assert.equal(f.c.rows.NuViraCredit[0].history.length, 1);
+  }
+  assert.ok(f.c.rows.CustomerMessageDeliveryLog.filter(row => row.channel === 'push').every(row => !row.delivered_at));
 });
 test('duplicate same and different event IDs do not repeat fulfillment or communication', async () => {
   const f = fixture(); complete(f, await f.run());

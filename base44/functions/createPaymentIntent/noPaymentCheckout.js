@@ -2,7 +2,10 @@
 // validated delivery and the selected schedule. Never confirms an order here.
 import { NO_PAYMENT_POINTS_REVISION, verifiedNoPaymentPointsSnapshot, verifiedNoPaymentPointsMetadata,
   verifiedNoPaymentTierPointsSnapshot } from '../../shared/noPaymentPoints.js';
+import { NO_PAYMENT_CREDIT_REVISION, verifiedNoPaymentCreditSnapshot, verifiedNoPaymentCreditMetadata } from '../../shared/noPaymentCredit.js';
+import { reserveNoPaymentCheckoutCredit, settleNoPaymentCheckoutCredit } from '../../shared/checkoutCredit.js';
 export { NO_PAYMENT_POINTS_REVISION };
+export { NO_PAYMENT_CREDIT_REVISION };
 export const NO_PAYMENT_CHECKOUT_VERSION = '4.0_reward_no_payment';
 const hashPattern = /^[a-f0-9]{64}$/;
 const sessionPattern = /^cs_[A-Za-z0-9_]+$/;
@@ -53,7 +56,7 @@ function verifyRecords(orders, contexts, data, session) {
     && stored?.reward_reservation_id === data.reward_reservation_id
     && stored?.reward_reservation_points === data.reward_reservation_points
     && stored?.customer_email === data.customer_email && stored?.order_number === data.order_number
-    && stored?.total === 0 && stored?.credits_discount === 0
+    && stored?.total === 0 && stored?.credits_discount === data.credits_discount
     && (order.bag_return_request_id || null) === (data.bag_return_request_id || null)
     && same(stored?.items, data.items) && same(order.items, data.items)
     && same(stored?.active_reward, data.active_reward), 'reward_checkout_records_mismatch');
@@ -119,7 +122,12 @@ export async function cancelNoPaymentCheckout({ base44, stripe, sessionId, custo
     && order.total === 0 && order.payment_captured === false && !order.stripe_payment_intent_id
     && !order.reward_settlement && order.payment_status === 'pending' && order.financial_status === 'pending'
     && (order.status === 'pending_payment' || cancelled(order)), 'reward_cancel_order_not_pending');
-  const released = body(await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+  if (metadata.credit_reservation_id) {
+    const released = await settleNoPaymentCheckoutCredit({ entities, stripe, email: email(customerEmail), sessionId: session.id });
+    assert(released.reservation_status === 'released', 'credit_release_unconfirmed');
+  }
+  const released = metadata.reward_reservation_id.startsWith('credit:') ? { success: true, reservation_status: 'released' }
+    : body(await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
     action: 'settle_reward_checkout', customer_email: email(customerEmail),
     stripe_checkout_session_id: session.id, internal_secret: secret,
   }));
@@ -143,18 +151,29 @@ export async function cancelNoPaymentCheckout({ base44, stripe, sessionId, custo
 }
 
 // A lost preparation response can be recovered using the account-bound attempt
-// hash already stored in the central points ledger. This reads only; it does
-// not create/retry a provider Session, release points, or expose client secrets.
+// hash already stored in the central points or credit ledger. This reads only;
+// it does not create/retry a Session, release value, or expose client secrets.
 export async function readNoPaymentCheckoutRecovery({ base44, stripe, customerEmail, attemptKey }) {
   const owner = email(customerEmail);
   assert(owner && /^[A-Za-z0-9_-]{20,200}$/.test(attemptKey || ''), 'reward_recovery_identity_required');
   const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256',
     new TextEncoder().encode(`${owner}:${attemptKey}`)))].map(value => value.toString(16).padStart(2, '0')).join('');
   const reservationIds = [`reward:${digest}`, `points:${digest}`];
-  const rows = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: owner }, undefined, 2);
-  assert(Array.isArray(rows) && rows.length === 1 && email(rows[0]?.customer_email) === owner
-    && Array.isArray(rows[0].reward_reservations), 'reward_recovery_balance_unconfirmed');
-  const holds = rows[0].reward_reservations.filter(hold => reservationIds.includes(hold?.reservation_id));
+  const entities = base44.asServiceRole.entities;
+  const rows = await entities.UserPoints.filter({ customer_email: owner }, undefined, 2);
+  assert(Array.isArray(rows) && rows.length <= 1 && rows.every(row => email(row.customer_email) === owner
+    && (row.reward_reservations === undefined || Array.isArray(row.reward_reservations))), 'reward_recovery_balance_unconfirmed');
+  const holds = (rows[0]?.reward_reservations || []).filter(hold => reservationIds.includes(hold?.reservation_id));
+  let creditHold = null;
+  if (!holds.length) {
+    assert(typeof entities.NuViraCredit?.filter === 'function', 'credit_recovery_balance_unconfirmed');
+    const credits = await entities.NuViraCredit.filter({ customer_email: owner }, undefined, 2);
+    assert(Array.isArray(credits) && credits.length <= 1
+      && credits.every(row => Array.isArray(row.checkout_reservations)), 'credit_recovery_balance_unconfirmed');
+    const matches = (credits[0]?.checkout_reservations || []).filter(row => row.reservation_id === `credit:${digest}`);
+    assert(matches.length === 1 && credits[0]?.customer_email === owner, 'reward_recovery_attempt_unconfirmed');
+    creditHold = matches[0]; holds.push(creditHold);
+  }
   // No record does not prove a concurrent request never reached the provider.
   assert(holds.length === 1, 'reward_recovery_attempt_unconfirmed');
   const hold = holds[0];
@@ -173,6 +192,8 @@ export async function readNoPaymentCheckoutRecovery({ base44, stripe, customerEm
   verifySession(session, metadata);
   if (reservationId.startsWith('points:')) assert(verifiedNoPaymentPointsMetadata(metadata) === hold.points,
     'reward_recovery_provider_mismatch');
+  if (creditHold) assert(verifiedNoPaymentCreditMetadata(metadata) === creditHold.amount_cents
+    && metadata.credit_reservation_id === reservationId, 'reward_recovery_provider_mismatch');
   return { ok: true, state: session.status, writes_performed: false,
     payment_confirmation_attempted: false, reward_reservation_released: false,
     reward_checkout_recovery: { kind: 'reward_no_payment', checkout_session_id: session.id,
@@ -180,20 +201,24 @@ export async function readNoPaymentCheckoutRecovery({ base44, stripe, customerEm
 }
 
 export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata, quote, pricing, secret }) {
+  const creditCovered = Boolean(data?.credit_reservation_id);
+  const hasPoints = Number(pricing?.reservation_points) > 0;
   const directOnly = /^points:[a-f0-9]{64}$/.test(data?.reward_reservation_id || '');
   const sessionMetadata = { ...metadata, checkout_version: NO_PAYMENT_CHECKOUT_VERSION,
     ...(directOnly ? { no_payment_points: String(pricing?.points_used) } : {}) };
-  if (directOnly) {
+  if (creditCovered) verifiedNoPaymentCreditSnapshot(data, sessionMetadata);
+  else if (directOnly) {
     assert(!quote && pricing?.reservation_points === pricing?.points_used, 'reward_zero_checkout_invalid');
     verifiedNoPaymentPointsSnapshot(data, sessionMetadata);
   } else if (data?.points_used > 0) verifiedNoPaymentTierPointsSnapshot(data, sessionMetadata);
   // This is not a way to waive a nonzero balance, delivery charge or unreserved credit.
   assert(secret && data?.total === 0 && data.delivery_fee === 0 && pricing?.merchandise_total === 0
-    && data.credits_discount === 0 && pricing.credits_discount === 0
+    && (creditCovered ? data.credits_discount === pricing.credits_discount && data.credits_discount > 0
+      : data.credits_discount === 0 && pricing.credits_discount === 0)
     && data.guest_checkout === false && data.internal_sandbox_checkout === false
-    && (directOnly || (quote?.revision === '2026-09-08.reward-checkout-v1' && quote.active_reward?.id))
-    && Number.isSafeInteger(pricing.reservation_points) && pricing.reservation_points > 0
-    && pricing.reservation_points === (directOnly ? 0 : quote.points_required) + pricing.points_used
+    && (directOnly || (creditCovered && !hasPoints && !quote) || (quote?.revision === '2026-09-08.reward-checkout-v1' && quote.active_reward?.id))
+    && Number.isSafeInteger(pricing.reservation_points) && pricing.reservation_points >= (creditCovered ? 0 : 1)
+    && pricing.reservation_points === (quote ? quote.points_required : 0) + pricing.points_used
     && data.reward_reservation_points === pricing.reservation_points
     && data.reward_reservation_id === metadata.reward_reservation_id
     && hashPattern.test(data.checkout_context_hash || '') && data.checkout_context_hash === metadata.checkout_context_hash
@@ -232,7 +257,10 @@ export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata,
     verifySession(session, sessionMetadata);
     verifiedSessionId = session.id;
     assert(session.status !== 'expired' && Number.isSafeInteger(session.expires_at), 'reward_checkout_expired');
-    const reserved = body(await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
+    const entities = base44.asServiceRole.entities;
+    const reserved = !hasPoints ? { success: true, ...await reserveNoPaymentCheckoutCredit({
+      entities, stripe, email: data.customer_email, sessionId: session.id, preparationAttemptId,
+    }) } : body(await base44.asServiceRole.functions.invoke('enrollNewCustomerInLoyalty', {
       action: 'reserve_reward_checkout', customer_email: data.customer_email,
       stripe_checkout_session_id: session.id, reward_id: quote?.active_reward?.id || null,
       points: pricing.reservation_points, direct_points: pricing.points_used, internal_secret: secret,
@@ -240,7 +268,6 @@ export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata,
     }));
     assert(reserved?.success === true && ['held', 'consumed'].includes(reserved.reservation_status), 'reward_reservation_unconfirmed');
     ownsPreparation = reserved.preparation_attempt_id === preparationAttemptId;
-    const entities = base44.asServiceRole.entities;
     let orders = await entities.Order.filter({ stripe_checkout_session_id: session.id }, '-created_date', 2);
     let contexts = await entities.CheckoutSession.filter({ stripe_session_id: session.id }, '-created_date', 2);
     assert(Array.isArray(orders) && orders.length <= 1 && Array.isArray(contexts) && contexts.length <= 1,
@@ -265,6 +292,11 @@ export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata,
     verifySession(session, sessionMetadata);
     assert(session.status !== 'expired', 'reward_checkout_expired');
     verifyRecords(orders, contexts, data, session);
+    if (creditCovered && hasPoints) {
+      const credit = await reserveNoPaymentCheckoutCredit({ entities, stripe, email: data.customer_email,
+        sessionId: session.id, preparationAttemptId });
+      assert(['held', 'consumed'].includes(credit.reservation_status), 'credit_reservation_unconfirmed');
+    }
     if (session.status === 'complete') return { checkoutCompleted: true, checkoutSessionId: session.id,
       checkoutKind: 'reward_no_payment', effectiveTotal: 0, orderNumber: data.order_number, idempotent_replay: true };
     assert(typeof session.client_secret === 'string' && session.client_secret.startsWith(`${session.id}_secret_`),

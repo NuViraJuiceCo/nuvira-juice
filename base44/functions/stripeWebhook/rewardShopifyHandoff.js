@@ -1,6 +1,7 @@
 import { readCurrentRewardHandoffOrder } from './rewardCustomerHandoff.js';
 import { nativeItemSnapshot } from '../syncOrderToHub/nativeItemSnapshot.js';
 import { verifiedNoPaymentPointsSnapshot, verifiedNoPaymentTierPointsSnapshot } from '../../shared/noPaymentPoints.js';
+import { verifiedNoPaymentCreditSnapshot } from '../../shared/noPaymentCredit.js';
 
 export const REWARD_SHOPIFY_REVISION = '2026-09-08.reward-shopify-mirror-v1';
 const check = (ok, code) => { if (!ok) throw new Error(code); };
@@ -41,26 +42,30 @@ export function createRewardShopifyHandoffAdapter({ base44, fetchShopify, shopif
       && data.reward_reservation_id === order.reward_settlement.reservation_id
       && data.total === 0 && same(data.items, order.items), 'reward_shopify_checkout_context_mismatch');
     const directOnly = /^points:[a-f0-9]{64}$/.test(order.reward_settlement.reservation_id);
+    const creditCovered = order.reward_settlement.revision === '2026-09-09.credit-settlement-v2';
     const mixedPoints = !directOnly && data.points_used > 0;
-    if (directOnly || mixedPoints) {
+    if (directOnly || mixedPoints || creditCovered) {
       // The signed-settlement receipt binds the consumed points to this private
       // snapshot. Retain original item values in attributes; the provider mirror
       // records net-zero lines, never a fabricated card transaction or sale.
-      const verify = directOnly ? verifiedNoPaymentPointsSnapshot : verifiedNoPaymentTierPointsSnapshot;
+      const verify = creditCovered ? verifiedNoPaymentCreditSnapshot : directOnly ? verifiedNoPaymentPointsSnapshot : verifiedNoPaymentTierPointsSnapshot;
       const redeemed = verify(data, { checkout_version: '4.0_reward_no_payment', checkout_mode: 'account',
         customer_email: order.customer_email, order_number: order.order_number,
         checkout_context_hash: order.reward_settlement.context_hash,
         reward_reservation_id: order.reward_settlement.reservation_id,
-        ...(directOnly ? { no_payment_points: String(order.reward_settlement.points_redeemed) } : {}) });
-      check(redeemed === order.reward_settlement.points_redeemed
+        ...(directOnly ? { no_payment_points: String(data.points_used) } : {}),
+        ...(creditCovered ? { credit_reservation_id: order.reward_settlement.credit_reservation_id,
+          credit_reservation_cents: String(order.reward_settlement.credit_redeemed_cents) } : {}) });
+      check((creditCovered ? redeemed.points : redeemed) === order.reward_settlement.points_redeemed
+        && (!creditCovered || redeemed.credit_cents === order.reward_settlement.credit_redeemed_cents)
         && order.subtotal === data.subtotal && order.total_discounts === data.total_discounts,
         'reward_shopify_checkout_context_mismatch');
     }
-    check(['delivery_fee', 'tax', 'tax_amount', 'credits_discount', 'promotion_discount_amount',
-      ...(!directOnly && !mixedPoints ? ['points_discount'] : [])]
+    check(['delivery_fee', 'tax', 'tax_amount', 'promotion_discount_amount',
+      ...(!creditCovered ? ['credits_discount'] : []), ...(!directOnly && !mixedPoints && !creditCovered ? ['points_discount'] : [])]
       .every(field => Number(data[field] || 0) === 0 && Number(order[field] || 0) === 0), 'reward_shopify_nonzero_adjustment_unhandled');
     check(Array.isArray(order.items) && order.items.length > 0 && order.items.length <= 50
-      && (directOnly || mixedPoints || order.items.every(item => item.price === 0)), 'reward_shopify_net_zero_lines_required');
+      && (directOnly || mixedPoints || creditCovered || order.items.every(item => item.price === 0)), 'reward_shopify_net_zero_lines_required');
     for (const item of order.items) nativeItemSnapshot(item, true);
     check(['address_line1', 'address_city', 'address_state', 'address_postal_code', 'assigned_delivery_date',
       'delivery_window_label'].every(field => typeof order[field] === 'string' && order[field].trim()),

@@ -17,7 +17,7 @@ function match(row, query) {
 function fixture() {
   const rows = { NuViraCredit: [{ id: 'credit_synthetic', customer_email: email, balance: 10,
     lifetime_used: 0, lifetime_issued: 10, history: [] }], Order: [], CheckoutSession: [] };
-  const payments = new Map(); const calls = [];
+  const payments = new Map(); const sessions = new Map(); const calls = [];
   const fault = { lost: false, ignored: false, outage: false, provider: false, beforeCAS: null };
   const entities = {};
   for (const [name, list] of Object.entries(rows)) entities[name] = {
@@ -31,7 +31,10 @@ function fixture() {
       return { success: true, updated: found.length, has_more: false };
     },
   };
-  const stripe = { paymentIntents: { retrieve: async id => {
+  const stripe = { checkout: { sessions: { retrieve: async id => {
+    calls.push('session.retrieve'); if (fault.provider) throw new Error('SYNTHETIC_ONLY provider outage');
+    return copy(sessions.get(id));
+  } } }, paymentIntents: { retrieve: async id => {
     calls.push('provider.retrieve'); if (fault.provider) throw new Error('SYNTHETIC_ONLY provider outage');
     return copy(payments.get(id));
   } } };
@@ -50,7 +53,32 @@ function fixture() {
     payments.set(id, payment); rows.Order.push(order); rows.CheckoutSession.push(session);
     return { payment, data, order, session };
   }
-  return { rows, entities, stripe, payments, calls, fault, add, wallet: () => rows.NuViraCredit[0],
+  function addNoPayment(suffix = 'c', amount = 6) {
+    const id = `cs_synthetic_${suffix}`; const hash = suffix.repeat(64);
+    const rid = `credit:${hash}`;
+    const metadata = { checkout_version: '4.0_reward_no_payment', checkout_mode: 'account', customer_email: email,
+      order_number: `SYNTHETIC-${suffix}`, credit_reservation_id: rid, reward_reservation_id: rid,
+      credit_reservation_cents: String(amount * 100), checkout_context_hash: hash };
+    const session = { id, metadata, customer_email: email, currency: 'usd', livemode: true, mode: 'payment',
+      status: 'open', payment_status: 'unpaid', amount_total: 0, payment_intent: null };
+    const data = { customer_email: email, order_number: metadata.order_number, checkout_context_hash: hash,
+      credit_reservation_id: rid, reward_reservation_id: rid, credits_discount: amount,
+      credit_reservation_revision: credit.CHECKOUT_CREDIT_REVISION, no_payment_credit_revision: '2026-09-09.no-payment-credit-v1',
+      total: 0, delivery_fee: 0, subtotal: amount, total_discounts: amount, guest_checkout: false,
+      internal_sandbox_checkout: false, points_used: 0, points_discount: 0, reward_reservation_points: 0,
+      items: [{ product_id: 'synthetic-oasis', title: 'OASIS', quantity: 1, price: amount }] };
+    const order = { id: `order_${suffix}`, customer_email: email, order_number: metadata.order_number,
+      total: 0, payment_captured: false, items: copy(data.items), stripe_checkout_session_id: id,
+      status: 'pending_payment', payment_status: 'pending' };
+    const context = { id: `context_${suffix}`, customer_email: email, order_number: metadata.order_number,
+      stripe_session_id: id, checkout_data: data };
+    sessions.set(id, session); rows.Order.push(order); rows.CheckoutSession.push(context);
+    return { session, data, order, context };
+  }
+  return { rows, entities, stripe, payments, sessions, calls, fault, add, addNoPayment, wallet: () => rows.NuViraCredit[0],
+    reserveSession: (session, preparationAttemptId = 'synthetic-preparation') =>
+      credit.reserveNoPaymentCheckoutCredit({ entities, stripe, email, sessionId: session.id, preparationAttemptId }),
+    settleSession: session => credit.settleNoPaymentCheckoutCredit({ entities, stripe, email, sessionId: session.id }),
     reserve: payment => credit.reserveCheckoutCredit({ entities, stripe, email, paymentId: payment.id }),
     settle: payment => credit.settleCheckoutCredit({ entities, email, payment }) };
 }
@@ -224,5 +252,112 @@ await test('existing function names, strict schema fields and no production cred
   assert.match(entry, /creditReservationId && effectiveTotal < 0\.5/);
   assert.ok(entry.indexOf('await reserveCheckoutCredit(') > entry.indexOf('CHECKOUT_RECORDS_NOT_READY'));
   assert.ok(entry.indexOf('await reserveCheckoutCredit(') < entry.lastIndexOf('clientSecret:         paymentIntent.client_secret'));
+});
+await test('no-payment hold and receipt bind a Session, never a fake PaymentIntent', async () => {
+  const f = fixture(); const a = f.addNoPayment(); await f.reserveSession(a.session);
+  assert.equal(f.wallet().reserved_balance, 6); assert.equal(f.wallet().balance, 10);
+  assert.equal(f.wallet().checkout_reservations[0].checkout_session_id, a.session.id);
+  assert.equal(f.wallet().checkout_reservations[0].payment_intent_id, undefined);
+  Object.assign(a.session, { status: 'complete', payment_status: 'no_payment_required' });
+  await Promise.all([f.settleSession(a.session), f.settleSession(a.session)]);
+  assert.equal(f.wallet().balance, 4); assert.equal(f.wallet().reserved_balance, 0);
+  assert.equal(f.wallet().lifetime_used, 6); assert.equal(f.wallet().history.length, 1);
+  assert.equal(f.wallet().history[0].checkout_session_id, a.session.id);
+  assert.equal(f.wallet().history[0].payment_intent_id, undefined);
+});
+await test('card and no-payment checkouts compete on the same atomic credit balance', async () => {
+  const f = fixture(); const a = f.add(); const b = f.addNoPayment();
+  const result = await Promise.allSettled([f.reserve(a.payment), f.reserveSession(b.session)]);
+  assert.equal(result.filter(row => row.status === 'fulfilled').length, 1);
+  assert.equal(f.wallet().reserved_balance, 6); assert.equal(f.wallet().checkout_reservations.length, 1);
+});
+await test('simultaneous Session retries agree on one preparation owner', async () => {
+  const f = fixture(); const a = f.addNoPayment();
+  const result = await Promise.all([f.reserveSession(a.session, 'owner-one'), f.reserveSession(a.session, 'owner-two')]);
+  assert.equal(result[0].preparation_attempt_id, result[1].preparation_attempt_id);
+  assert.equal(f.wallet().checkout_reservations.length, 1); assert.equal(f.wallet().reserved_balance, 6);
+});
+await test('no-payment settlement leaves another card checkout hold intact', async () => {
+  const f = fixture(); const a = f.add('a', 3); const b = f.addNoPayment();
+  await Promise.all([f.reserve(a.payment), f.reserveSession(b.session)]);
+  Object.assign(b.session, { status: 'complete', payment_status: 'no_payment_required' });
+  await f.settleSession(b.session); assert.equal(f.wallet().balance, 4); assert.equal(f.wallet().reserved_balance, 3);
+  assert.equal(await credit.availableCheckoutCredit(f.entities, email), 1);
+});
+await test('no-payment expiry releases once and blocks stale retry', async () => {
+  const f = fixture(); const a = f.addNoPayment(); await f.reserveSession(a.session); a.session.status = 'expired';
+  await Promise.all([f.settleSession(a.session), f.settleSession(a.session)]);
+  assert.equal(f.wallet().balance, 10); assert.equal(f.wallet().reserved_balance, 0);
+  assert.equal(f.wallet().history.length, 0); await assert.rejects(() => f.reserveSession(a.session));
+});
+await test('Session expiry before reserve creates a tombstone instead of a spendable race', async () => {
+  const f = fixture(); const a = f.addNoPayment();
+  f.fault.beforeCAS = async () => { a.session.status = 'expired'; await f.settleSession(a.session); };
+  await assert.rejects(() => f.reserveSession(a.session));
+  assert.equal(f.wallet().checkout_reservations[0].status, 'released');
+  assert.equal(f.wallet().reserved_balance || 0, 0); assert.equal(f.wallet().balance, 10);
+});
+for (const phase of ['reserve', 'consume', 'release']) await test(`Session ${phase} recovers lost CAS acknowledgement once`, async () => {
+  const f = fixture(); const a = f.addNoPayment();
+  if (phase !== 'reserve') await f.reserveSession(a.session);
+  if (phase === 'consume') Object.assign(a.session, { status: 'complete', payment_status: 'no_payment_required' });
+  if (phase === 'release') a.session.status = 'expired';
+  const run = () => phase === 'reserve' ? f.reserveSession(a.session) : f.settleSession(a.session);
+  f.fault.lost = true; await assert.rejects(run); await run(); await run();
+  assert.equal(f.wallet().balance, phase === 'consume' ? 4 : 10);
+  assert.equal(f.wallet().reserved_balance, phase === 'reserve' ? 6 : 0);
+  assert.equal(f.wallet().history.length, phase === 'consume' ? 1 : 0);
+  assert.equal(f.wallet().checkout_reservations.length, 1);
+});
+await test('ignored credit CAS cannot expose a confirmed Session hold', async () => {
+  const f = fixture(); const a = f.addNoPayment(); f.fault.ignored = true;
+  await assert.rejects(() => f.reserveSession(a.session), /readback_unconfirmed/);
+  assert.equal(f.wallet().reserved_balance || 0, 0);
+});
+for (const patch of [{ amount_total: 1 }, { payment_intent: 'pi_synthetic_forbidden' }, { livemode: false },
+  { currency: 'eur' }, { customer_email: 'other@example.test' }, { status: 'processing' }]) {
+  await test(`Session identity mutation rejected: ${JSON.stringify(patch)}`, async () => {
+    const f = fixture(); const a = f.addNoPayment(); Object.assign(a.session, patch);
+    await assert.rejects(() => f.reserveSession(a.session)); assert.equal(f.wallet().reserved_balance || 0, 0);
+  });
+}
+for (const [name, mutate] of [
+  ['priced total', a => { a.data.subtotal = 7; }],
+  ['credit amount', a => { a.data.credits_discount = 5; }],
+  ['owner', a => { a.data.customer_email = 'other@example.test'; }],
+  ['items', a => { a.data.items[0].quantity = 2; }],
+  ['birthday', a => { a.data.birthday_reservation_id = 'birthday:unreviewed'; }],
+  ['context hash', a => { a.data.checkout_context_hash = 'f'.repeat(64); }],
+  ['terminal order', a => { a.order.status = 'cancelled'; }],
+  ['captured card', a => { a.order.payment_captured = true; }],
+]) await test(`Session completion refuses mismatched private proof: ${name}`, async () => {
+  const f = fixture(); const a = f.addNoPayment(); await f.reserveSession(a.session);
+  Object.assign(a.session, { status: 'complete', payment_status: 'no_payment_required' }); mutate(a);
+  await assert.rejects(() => f.settleSession(a.session));
+  assert.equal(f.wallet().balance, 10); assert.equal(f.wallet().reserved_balance, 6);
+  assert.equal(f.wallet().history.length, 0);
+});
+await test('completed Session cannot create a missing hold or debit an unreserved balance', async () => {
+  const f = fixture(); const a = f.addNoPayment();
+  Object.assign(a.session, { status: 'complete', payment_status: 'no_payment_required' });
+  await assert.rejects(() => f.reserveSession(a.session)); await assert.rejects(() => f.settleSession(a.session));
+  assert.equal(f.wallet().balance, 10); assert.equal(f.wallet().history.length, 0);
+});
+await test('Session consumed receipt cannot silently disappear on retry', async () => {
+  const f = fixture(); const a = f.addNoPayment(); await f.reserveSession(a.session);
+  Object.assign(a.session, { status: 'complete', payment_status: 'no_payment_required' }); await f.settleSession(a.session);
+  f.wallet().history = []; await assert.rejects(() => f.settleSession(a.session), /receipt_mismatch/);
+});
+await test('provider or storage outage never releases a Session hold', async () => {
+  for (const key of ['provider', 'outage']) {
+    const f = fixture(); const a = f.addNoPayment(); await f.reserveSession(a.session); a.session.status = 'expired';
+    f.fault[key] = true; await assert.rejects(() => f.settleSession(a.session)); f.fault[key] = false;
+    assert.equal(f.wallet().reserved_balance, 6); assert.equal(f.wallet().balance, 10);
+  }
+});
+await test('one hold cannot contain both card and Session provider identities', async () => {
+  const f = fixture(); const a = f.addNoPayment(); await f.reserveSession(a.session);
+  f.wallet().checkout_reservations[0].payment_intent_id = 'pi_synthetic_conflict';
+  assert.throws(() => credit.creditAccountState(f.wallet()), /invalid_credit_reservations/);
 });
 console.log(`Credit reservation: ${passed}/${passed} passed; simulated provider/storage/CAS only, not a live release.`);

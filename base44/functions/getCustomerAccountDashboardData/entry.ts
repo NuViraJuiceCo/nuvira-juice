@@ -1,4 +1,5 @@
 // @ts-nocheck
+// Bundle revision: credit-settlement-receipt-20260909 (unreleased).
 // Bundle revision: checkout-credit-availability-20260908 (unreleased).
 // Bundle revision: reward-settlement-20260908 (no-cash eligibility; unreleased).
 // Bundle revision: reward-reserved-balance-20260908 (selection excludes held points; unreleased).

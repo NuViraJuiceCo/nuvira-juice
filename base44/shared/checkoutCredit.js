@@ -1,6 +1,7 @@
 // One credit-account CAS, shared by checkout and the signed-payment handler.
 // This is not a cross-record transaction. Provider/storage ambiguity keeps the
 // hold intact and the payment secret withheld. No timer releases spendable value.
+import { verifiedNoPaymentCreditMetadata, verifiedNoPaymentCreditSnapshot } from './noPaymentCredit.js';
 export const CHECKOUT_CREDIT_REVISION = '2026-09-08.credit-reservation-v1';
 export class CheckoutCreditError extends Error {
   constructor(code) { super(code); this.code = code; }
@@ -27,13 +28,17 @@ export function creditAccountState(row) {
   const paymentIds = new Set();
   let held = 0;
   for (const hold of holds) {
+    const providerId = hold?.checkout_session_id || hold?.payment_intent_id;
+    const noPayment = Boolean(hold?.checkout_session_id);
     if (!/^credit:[a-f0-9]{64}$/.test(hold?.reservation_id || '') || ids.has(hold.reservation_id)
-      || paymentIds.has(hold.payment_intent_id)
-      || !/^[a-f0-9]{64}$/.test(hold.context_hash || '') || !/^pi_[a-zA-Z0-9_]+$/.test(hold.payment_intent_id || '')
+      || paymentIds.has(providerId)
+      || !/^[a-f0-9]{64}$/.test(hold.context_hash || '')
+      || !(noPayment ? /^cs_[a-zA-Z0-9_]+$/ : /^pi_[a-zA-Z0-9_]+$/).test(providerId || '')
+      || (noPayment && (hold.payment_intent_id || !/^[A-Za-z0-9_-]{1,120}$/.test(hold.preparation_attempt_id || '')))
       || !['held', 'consumed', 'released'].includes(hold.status)
       || !Number.isSafeInteger(hold.amount_cents) || hold.amount_cents <= 0) fail('invalid_credit_reservations');
     ids.add(hold.reservation_id);
-    paymentIds.add(hold.payment_intent_id);
+    paymentIds.add(providerId);
     if (hold.status === 'held') held += hold.amount_cents;
   }
   if (!Number.isSafeInteger(held) || held !== reserved || reserved > balance) fail('invalid_credit_reservations');
@@ -93,7 +98,89 @@ function paymentIdentity(payment, email) {
 }
 function bound(hold, identity) {
   if (hold.context_hash !== identity.context_hash || hold.payment_intent_id !== identity.payment_intent_id
+    || hold.checkout_session_id !== identity.checkout_session_id
     || hold.amount_cents !== identity.amount_cents) fail('checkout_credit_context_conflict');
+}
+
+async function noPaymentIdentity(stripe, sessionId, email) {
+  if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId || '')) fail('checkout_credit_payment_mismatch');
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  const amount = verifiedNoPaymentCreditMetadata(session?.metadata);
+  if (session.id !== sessionId || session.livemode !== true || session.currency !== 'usd'
+    || session.mode !== 'payment' || session.amount_total !== 0 || session.payment_intent !== null
+    || session.customer_email !== email || session.metadata.customer_email !== email
+    || !['open', 'complete', 'expired'].includes(session.status)
+    || !['unpaid', 'no_payment_required'].includes(session.payment_status)
+    || (session.status === 'complete' && session.payment_status !== 'no_payment_required')) fail('checkout_credit_payment_mismatch');
+  return { session, identity: { reservation_id: session.metadata.credit_reservation_id,
+    context_hash: session.metadata.checkout_context_hash, checkout_session_id: session.id, amount_cents: amount } };
+}
+async function noPaymentContext(entities, session, email) {
+  const contexts = await entities.CheckoutSession.filter({ stripe_session_id: session.id }, undefined, 2);
+  const orders = await entities.Order.filter({ stripe_checkout_session_id: session.id }, undefined, 2);
+  if (!Array.isArray(contexts) || contexts.length !== 1 || !contexts[0]?.id
+    || !Array.isArray(orders) || orders.length !== 1 || !orders[0]?.id) fail('checkout_credit_context_unavailable');
+  const data = contexts[0].checkout_data; const order = orders[0];
+  verifiedNoPaymentCreditSnapshot(data, session.metadata);
+  if ([contexts[0], order].some(row => row.customer_email !== email || row.order_number !== session.metadata.order_number)
+    || order.total !== 0 || order.payment_captured !== false || order.stripe_payment_intent_id || order.is_test_order === true
+    || order.is_abandoned_checkout === true || order.do_not_recover === true || Number(order.amount_refunded || 0) > 0
+    || ['cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+    || ['refunded', 'partially_refunded', 'failed'].includes(order.payment_status)
+    || JSON.stringify(order.items) !== JSON.stringify(data.items)) fail('checkout_credit_context_mismatch');
+  return order;
+}
+export async function reserveNoPaymentCheckoutCredit({ entities, stripe, email, sessionId, preparationAttemptId }) {
+  const { session, identity } = await noPaymentIdentity(stripe, sessionId, email);
+  if (!/^[A-Za-z0-9_-]{1,120}$/.test(preparationAttemptId || '')) fail('credit_preparation_identity_required');
+  if (session.status === 'complete') await noPaymentContext(entities, session, email);
+  return mutate(entities, email, state => {
+    const hold = state.holds.find(row => row.reservation_id === identity.reservation_id);
+    if (hold) {
+      bound(hold, identity);
+      if (hold.status === 'released' || session.status === 'expired'
+        || (hold.status === 'consumed' && session.status !== 'complete')) fail('checkout_credit_reservation_conflict');
+      return { reservation_status: hold.status, preparation_attempt_id: hold.preparation_attempt_id };
+    }
+    if (session.status !== 'open') fail('checkout_credit_payment_not_reservable');
+    if (state.available < identity.amount_cents) fail('insufficient_checkout_credit');
+    const next = { ...identity, status: 'held', preparation_attempt_id: preparationAttemptId, created_at: new Date().toISOString() };
+    return { reservation_status: 'held', preparation_attempt_id: preparationAttemptId,
+      patch: { reserved_balance: (state.reserved + identity.amount_cents) / 100, checkout_reservations: [...state.holds, next] } };
+  });
+}
+export async function settleNoPaymentCheckoutCredit({ entities, stripe, email, sessionId }) {
+  const { session, identity } = await noPaymentIdentity(stripe, sessionId, email);
+  if (!['complete', 'expired'].includes(session.status)) fail('checkout_credit_terminal_payment_required');
+  const consumed = session.status === 'complete';
+  const order = consumed ? await noPaymentContext(entities, session, email) : null;
+  return mutate(entities, email, state => {
+    const hold = state.holds.find(row => row.reservation_id === identity.reservation_id);
+    if (!hold) {
+      if (consumed) fail('checkout_credit_reservation_missing');
+      return { reservation_status: 'released', patch: { checkout_reservations: [...state.holds, {
+        ...identity, status: 'released', preparation_attempt_id: 'expired_before_reservation', settled_at: new Date().toISOString(),
+      }] } };
+    }
+    bound(hold, identity);
+    const target = consumed ? 'consumed' : 'released';
+    const key = `stripe_checkout:${session.id}:credit`;
+    const receipts = state.history.filter(row => row.idempotency_key === key || (order && row.type === 'used' && row.order_id === order.id));
+    if (hold.status === target) {
+      if (consumed && (receipts.length !== 1 || receipts[0].idempotency_key !== key
+        || receipts[0].checkout_session_id !== session.id || receipts[0].payment_intent_id
+        || receipts[0].order_id !== order.id || creditCents(receipts[0].amount) !== hold.amount_cents)) fail('checkout_credit_receipt_mismatch');
+      return { reservation_status: target };
+    }
+    if (hold.status !== 'held' || receipts.length) fail('checkout_credit_settlement_conflict');
+    const next = { ...hold, status: target, settled_at: new Date().toISOString() };
+    return { reservation_status: target, patch: { reserved_balance: (state.reserved - hold.amount_cents) / 100,
+      checkout_reservations: state.holds.map(row => row.reservation_id === hold.reservation_id ? next : row),
+      ...(consumed ? { balance: (state.balance - hold.amount_cents) / 100, lifetime_used: (state.lifetime + hold.amount_cents) / 100,
+        history: [...state.history, { type: 'used', amount: hold.amount_cents / 100,
+          description: `Applied to order ${order.order_number}`, order_id: order.id,
+          checkout_session_id: session.id, idempotency_key: key, timestamp: next.settled_at }] } : {}) } };
+  });
 }
 async function context(entities, payment, email) {
   const sessions = await entities.CheckoutSession.filter({ stripe_session_id: payment.id }, undefined, 2);

@@ -315,6 +315,8 @@
         "context_hash": { "type": "string" },
         "reservation_id": { "type": "string" },
         "points_redeemed": { "type": "number" },
+        "credit_reservation_id": { "type": "string" },
+        "credit_redeemed_cents": { "type": "number" },
         "provider_event_id": { "type": "string" },
         "settled_at": { "type": "string", "format": "date-time" }
       }
