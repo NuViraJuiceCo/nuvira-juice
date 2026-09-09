@@ -245,7 +245,7 @@ export async function readVerifiedNoPaymentBirthday({ entities, stripe, customer
     && (payment.status !== 'complete' || payment.payment_status === 'no_payment_required'));
   // Expiration can arrive after interrupted record creation. The provider's
   // immutable binding can release/tombstone the exact annual hold, never consume.
-  if (payment.status !== 'expired') {
+  if (payment.status !== 'expired' && await noPaymentRouteOutcome(entities, payment) !== 'released') {
     const context = one(await entities.CheckoutSession.filter({ stripe_session_id: sessionId }, undefined, 2));
     const order = one(await entities.Order.filter({ stripe_checkout_session_id: sessionId }, undefined, 2));
     const data = context.checkout_data;
@@ -279,6 +279,9 @@ export async function reserveNoPaymentBirthdayCheckout({ entities, stripe, authe
 export async function settleNoPaymentBirthdayCheckout({ entities, stripe, customerEmail, sessionId, now = Date.now() }) {
   const verified = await readVerifiedNoPaymentBirthday({ entities, stripe, customerEmail, sessionId });
   assert(['complete', 'expired'].includes(verified.payment.status), 'birthday_provider_outcome_required');
-  const result = await settleBirthdayGift(entities, customerEmail, verified.request, now);
+  const outcome = await noPaymentRouteOutcome(entities, verified.payment);
+  if (outcome === 'held') return { success: true, deferred: true, reservation_status: 'held' };
+  const result = await settleBirthdayGift(entities, customerEmail, { ...verified.request, route_review_outcome: outcome }, now);
   return { success: true, reservation_status: result.reservation.status, idempotent: result.idempotent };
 }
+import { noPaymentRouteOutcome } from '../../shared/routeReview.js';

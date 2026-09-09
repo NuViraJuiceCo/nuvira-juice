@@ -152,7 +152,9 @@ export async function reserveNoPaymentCheckoutCredit({ entities, stripe, email, 
 export async function settleNoPaymentCheckoutCredit({ entities, stripe, email, sessionId }) {
   const { session, identity } = await noPaymentIdentity(stripe, sessionId, email);
   if (!['complete', 'expired'].includes(session.status)) fail('checkout_credit_terminal_payment_required');
-  const consumed = session.status === 'complete';
+  const outcome = await noPaymentRouteOutcome(entities, session);
+  if (outcome === 'held') return { success: true, deferred: true, reservation_status: 'held' };
+  const consumed = outcome === 'consumed';
   const order = consumed ? await noPaymentContext(entities, session, email) : null;
   return mutate(entities, email, state => {
     const hold = state.holds.find(row => row.reservation_id === identity.reservation_id);
@@ -267,3 +269,4 @@ export async function settleCheckoutCredit({ entities, payment, email }) {
     return { reservation_status: target, patch };
   });
 }
+import { noPaymentRouteOutcome } from './routeReview.js';

@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
 import Stripe from 'npm:stripe@14.21.0';
+import { noPaymentRouteOutcome } from '../../shared/routeReview.js';
 import { applyPointsTransaction, syncPointsMemberProjection, readPointsAccount, reserveRewardPoints,
   settleRewardPoints, recordCanceledPointsReservation, verifyDirectPointsCheckoutContext,
   PointsAccountError, POINTS_ACCOUNT_REVISION, verifiedNoPaymentPointsMetadata,
@@ -44,9 +45,11 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
     || (payment.status === 'complete' && payment.payment_status !== 'no_payment_required'))) {
     return Response.json({ error: 'no_payment_session_not_verified' }, { status: 409 });
   }
-  const complete = payment.status === (noPayment ? 'complete' : 'succeeded');
-  const expired = payment.status === (noPayment ? 'expired' : 'canceled');
   const entities = base44.asServiceRole.entities;
+  const providerComplete = payment.status === (noPayment ? 'complete' : 'succeeded');
+  const routeOutcome = noPayment ? await noPaymentRouteOutcome(entities, payment) : null;
+  const complete = providerComplete && (!noPayment || routeOutcome === 'consumed');
+  const expired = payment.status === (noPayment ? 'expired' : 'canceled') || routeOutcome === 'released';
   const directOnly = /^points:[a-f0-9]{64}$/.test(metadata.reward_reservation_id);
   // During preparation the ledger CAS owns creation of the protected records.
   // The exact cost may come from freshly retrieved server-issued metadata for
@@ -67,7 +70,7 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
     if (!(noPayment ? ['open'] : ['requires_payment_method', 'requires_confirmation', 'requires_action']).includes(payment.status)) {
       // A response retry after success may reuse only the already-bound hold.
       // It must never create a fresh reservation for a captured/canceled PI.
-      if (complete) {
+      if (providerComplete) {
         const existingAccount = await readPointsAccount(entities, customerEmail);
         const existing = existingAccount.reward_reservations?.find((row: AnyRecord) => row.reservation_id === metadata.reward_reservation_id);
         if (existing && existing[providerField] === payment.id && existing.context_hash === metadata.checkout_context_hash
@@ -92,7 +95,7 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
   }
   const account = await readPointsAccount(entities, customerEmail);
   let hold = account.reward_reservations?.find((row: AnyRecord) => row.reservation_id === metadata.reward_reservation_id);
-  if (!hold && directOnly && expired) {
+  if (!hold && directOnly && expired && !providerComplete) {
     const canceled = await recordCanceledPointsReservation(entities, customerEmail, {
       reservation_id: metadata.reward_reservation_id, context_hash: metadata.checkout_context_hash,
       [providerField]: payment.id, points: verifiedDirectPoints, provider_status: payment.status,
@@ -158,7 +161,7 @@ async function rewardPaymentAction(base44: any, body: AnyRecord, action: string,
   const result = await settleRewardPoints(entities, customerEmail, {
     reservation_id: hold.reservation_id, context_hash: hold.context_hash,
     [providerField]: payment.id, provider_status: payment.status,
-    ...(noPayment ? { no_payment_required: true } : {}),
+    ...(noPayment ? { no_payment_required: true, route_review_outcome: routeOutcome } : {}),
   }, transaction);
   if (transaction) {
     const receipt = result.receipt;

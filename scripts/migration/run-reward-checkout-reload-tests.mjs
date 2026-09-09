@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import * as routeReview from '../../base44/shared/routeReview.js';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
 import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
 import * as birthdayEntitlement from '../../base44/shared/birthdayEntitlement.js';
@@ -110,6 +111,7 @@ function backendFixture({ user = { id: owner, email }, balancePatch = {}, holdPa
     Deno: { env: { get: () => undefined }, serve: fn => { served = fn; } },
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
+      if (name.includes('routeReview')) return routeReview;
       if (name.includes('noPaymentCheckout')) return noPayment;
       if (name.includes('paidCheckoutRecovery')) return paidRecovery;
       if (name.includes('rewardCheckout')) return rewards;
@@ -267,7 +269,8 @@ await test('real reload effect restores opaque identity, locks new attempt and r
 await test('completed Session is displayed separately, never automatically claimed fulfilled', async () => {
   const f = frontFixture({ state: 'complete' }); await f.drain();
   assert.ok(f.calls.some(([name, value]) => name === 'state' && value === 'complete'));
-  assert.match(checkoutSource, /rewardRecoveryState === 'complete' \? <button/);
+  assert.match(checkoutSource, /rewardRecoveryState === 'complete' && !routeCheckout \? <button/);
+  assert.match(checkoutSource, /\['pending_authorization', 'pending_review'\].includes\(routeCheckout.status\)/);
   assert.equal(attempt.readRewardCheckoutAttempt(f.store, owner).attempt_key, attemptKey);
 });
 await test('offline reload keeps the original attempt and offers no new payment', async () => {

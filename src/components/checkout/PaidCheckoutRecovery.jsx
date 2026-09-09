@@ -58,10 +58,12 @@ export default function PaidCheckoutRecovery({ attempt, onCancelled, onReceipt }
       {deliveryDate && <p>Saved delivery: {deliveryDate}{proof.delivery_window ? ` · ${proof.delivery_window}` : ''}</p>}
       <p className="text-muted-foreground">This is the saved order, not a new quote. Fulfillment is confirmed separately on your receipt.</p>
       {proof.state === 'succeeded' && <p>Your payment is confirmed by Stripe. Please don’t place this order again.</p>}
+      {proof.routeReview && <p>Delivery request {proof.routeReview.requestNumber}: {proof.routeReview.status.replaceAll('_', ' ')}. Approval is required before fulfillment.</p>}
       {['processing', 'requires_capture'].includes(proof.state) && <p>Your payment is processing or awaiting capture. Don’t submit another payment.</p>}
       {proof.state === 'canceled' && <p>The payment was cancelled. Finish cancellation below to confirm any held rewards or credits are released.</p>}
     </div>}
     {payment && <div className="mt-5"><EmbeddedPayment recoverOnReturn clientSecret={payment.clientSecret} publishableKey={payment.publishableKey}
+      confirmLabel={payment.routeReview ? `Authorize Hold · $${payment.total.toFixed(2)}` : undefined}
       total={payment.total} customerName={payment.customerName} customerEmail={payment.customerEmail}
       customerPhone={payment.customerPhone} isSubmitting={busy} setIsSubmitting={setBusy}
       onSuccess={() => { setPayment(null); void run('read_paid_checkout_recovery'); }}
@@ -72,11 +74,13 @@ export default function PaidCheckoutRecovery({ attempt, onCancelled, onReceipt }
       {proof && resumable.has(proof.state) && !payment && <button type="button" disabled={busy}
         className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
         onClick={() => void run('resume_paid_checkout')}>Resume this secure payment</button>}
-      {proof && (resumable.has(proof.state) || proof.state === 'canceled') && <button type="button" disabled={busy}
+      {proof && (resumable.has(proof.state) || proof.state === 'canceled' || (proof.routeReview && proof.state === 'requires_capture')) && <button type="button" disabled={busy}
         className="py-2 text-sm underline disabled:opacity-50" onClick={() => {
           setPayment(null); void run('cancel_paid_checkout');
         }}>Cancel this attempt and edit my cart</button>}
-      {proof && ['succeeded', 'requires_capture', 'processing'].includes(proof.state)
+      {proof?.routeReview && proof.state !== 'succeeded' && <a className="rounded-xl border px-4 py-3 text-center text-sm font-semibold"
+        href={`/zone3-review-submitted?request=${encodeURIComponent(proof.routeReview.requestNumber)}`}>View delivery request</a>}
+      {proof && ['succeeded', 'processing'].includes(proof.state)
         && <button type="button" disabled={busy} className="rounded-xl bg-primary px-4 py-3 font-semibold text-primary-foreground"
           onClick={openReceipt}>View this order’s receipt</button>}
       <a href="mailto:info@nuvirajuice.com" className="py-2 text-center text-sm underline">Contact NuVira for help</a>

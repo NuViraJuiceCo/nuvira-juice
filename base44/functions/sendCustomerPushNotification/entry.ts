@@ -25,6 +25,7 @@ const DELIVERY_LIVE_ACTIVITY_OPERATION = 'refresh_delivery_live_activity';
 const DELIVERY_LIVE_ACTIVITY_ATTRIBUTES_TYPE = 'NuViraDeliveryAttributes';
 
 const ELEVATED_TRANSACTIONAL_PUSH_SUBTYPES = new Set([
+  'route_review',
   'scheduled_for_juicing',
   'in_production',
   'ready_for_pickup',

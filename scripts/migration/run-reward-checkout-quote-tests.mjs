@@ -8,6 +8,7 @@ import { transformSync } from 'esbuild';
 import * as checkout from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
 import * as noPaymentCheckout from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
 import * as paidRecovery from '../../base44/functions/createPaymentIntent/paidCheckoutRecovery.js';
+import * as routeReview from '../../base44/shared/routeReview.js';
 import * as offers from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
 
 // Synthetic in-memory fixtures only. Entity writes and external/provider calls throw.
@@ -179,6 +180,7 @@ function handler(db) {
       if (name.includes('birthdayEntitlement')) return birthdayEntitlement;
       if (name.includes('noPaymentCheckout')) return noPaymentCheckout;
       if (name.includes('paidCheckoutRecovery')) return paidRecovery;
+      if (name.includes('routeReview')) return routeReview;
       if (name.includes('firstOrderEligibility')) return offers;
       if (name.includes('stripe')) return class { constructor() { return new Proxy({}, { get() { throw new Error('Stripe use forbidden'); } }); } };
       throw new Error(`Unexpected dependency: ${name}`);
@@ -215,12 +217,18 @@ await test('preview does not claim points reservation or debit, payment, or fulf
   assert.equal(body.quote.reservation_id, undefined); assert.equal(body.clientSecret, undefined);
   assert.equal(body.quote.order_id, undefined); assert.equal(body.quote.transaction_id, undefined);
 });
-await test('admin runtime marker is read-only and explicitly reports unfinished reward payment integration', async () => {
+await test('admin runtime marker reports integrated code and configuration without claiming live provider verification', async () => {
   const db = fakeDb({ user: { email, role: 'admin' } });
   const response = await handler(db)(request({ mode: 'checkout_runtime_status' })); const body = await response.json();
-  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-09.no-payment-birthday-v7');
+  assert.equal(response.status, 200); assert.equal(body.checkout_record_revision, '2026-09-09.integrated-route-rewards-v8');
   assert.equal(body.catalog_quote_revision, checkout.CATALOG_CHECKOUT_REVISION);
-  assert.equal(body.reward_payment_integration_complete, false); assert.equal(body.writes_performed, false);
+  assert.equal(body.reward_payment_integration_complete, true); assert.equal(body.writes_performed, false);
+  assert.equal(body.birthday_payment_integration_complete, true);
+  assert.equal(body.route_review_revision, '2026-09-09.route-review-v2');
+  assert.equal(body.verification_scope, 'code_capabilities_and_configuration_only');
+  assert.equal(body.configuration.route_review_decisions_enabled, false);
+  assert.equal(body.configuration.route_review_expiry_enabled, false);
+  assert.equal(body.provider_calls_performed, false);
   assert.equal(db.reads.length, 0);
 });
 await test('runtime status is not exposed to ordinary customers or guests', async () => {

@@ -337,7 +337,8 @@ export async function settleRewardPoints(entities, customerEmail, request, trans
     // No-cost sessions must be bound before their client secret is exposed. Do
     // not attach one to an unbound legacy payment reservation during settlement.
     if ((existing.checkout_session_id ?? undefined) !== (request.checkout_session_id ?? undefined)) fail('reservation_payment_conflict');
-    const target = ['succeeded', 'complete'].includes(request.provider_status) ? 'consumed' : 'released';
+    const target = ['succeeded', 'complete'].includes(request.provider_status)
+      && !(noPayment && request.route_review_outcome === 'released') ? 'consumed' : 'released';
     if (existing.status === target) {
       return { reservation: existing, receipt: state.history.find(item => item.idempotency_key === key) };
     }

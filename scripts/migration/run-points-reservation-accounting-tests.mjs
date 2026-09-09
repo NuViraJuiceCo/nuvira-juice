@@ -229,6 +229,7 @@ function serve(f, role = 'admin') {
         auth: { me: async () => role ? { email: customer, role } : null }, asServiceRole: { entities: f.entities },
       }) };
       if (name.includes('pointsAccount')) return ledger;
+      if (name.includes('routeReview')) return routeReview;
       if (name.includes('stripe')) return class { paymentIntents = { retrieve: async id => {
         assert.equal(id, f.payment.id); return structuredClone(f.payment);
       } }; checkout = { sessions: { retrieve: async id => {
@@ -602,3 +603,4 @@ for (const [name, fn] of tests) {
   catch (error) { console.error(`FAIL ${name}`); throw error; }
 }
 console.log(`Points reservation/accounting: ${passed}/${tests.length}; in-memory conditional-write model only, no provider traffic.`);
+import * as routeReview from '../../base44/shared/routeReview.js';

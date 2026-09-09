@@ -146,7 +146,8 @@ export function settleBirthdayOperation(account, request, now = Date.now()) {
   if (!(requested.checkout_session_id ? ['complete', 'expired'] : ['succeeded', 'canceled']).includes(request.provider_status)) fail('confirmed_birthday_payment_outcome_required');
   const state = birthdayReservationState(account);
   const existing = state.holds.find(hold => hold.reservation_id === requested.reservation_id);
-  const status = ['succeeded', 'complete'].includes(request.provider_status) ? 'consumed' : 'released';
+  const status = ['succeeded', 'complete'].includes(request.provider_status)
+    && !(requested.checkout_session_id && request.route_review_outcome === 'released') ? 'consumed' : 'released';
   const settledAt = new Date(now).toISOString();
   if (!existing) {
     if (status !== 'released') fail('birthday_reservation_missing');

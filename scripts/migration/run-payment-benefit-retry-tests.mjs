@@ -97,6 +97,7 @@ function fixture({ paid = false, reward = false, credit = 0, terminal = '', bala
       require: name => {
         if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
         if (name.includes('pointsAccount')) return pointsLedger;
+      if (name.includes('routeReview')) return routeReview;
         if (name.includes('stripe')) return class { paymentIntents = { retrieve: async id => {
           assert.equal(id, provider.id); calls.push('ledger.provider.read'); return structuredClone(provider);
         } }; };
@@ -119,6 +120,9 @@ function serve(f) {
       if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('birthdayCheckout')) return birthdayCheckout;
       if (name.includes('rewardWebhook')) return rewardWebhook;
+      if (name.includes('routeReviewDecision')) return routeReviewDecision;
+      if (name.includes('routeReviewNotifications')) return routeReviewNotifications;
+      if (name.includes('routeReview')) return routeReview;
       if (name.includes('rewardHandoffRuntime')) return rewardHandoffRuntime;
       if (name.includes('refundRecovery')) return refundRecovery;
       if (name.includes('refundProof')) return refundProof;
@@ -388,3 +392,6 @@ let passed = 0;
 for (const [name, fn] of tests) { try { await fn(); passed++; console.log(`PASS ${name}`); }
   catch (error) { console.error(`FAIL ${name}`); throw error; } }
 console.log(`Payment benefit retry: ${passed}/${tests.length}; actual handler with simulated Stripe and no network.`);
+import * as routeReview from '../../base44/shared/routeReview.js';
+import * as routeReviewDecision from '../../base44/shared/routeReviewDecision.js';
+import * as routeReviewNotifications from '../../base44/shared/routeReviewNotifications.js';

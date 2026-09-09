@@ -1,5 +1,8 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.48';
+import { recordRouteAuthorization, assertRouteCaptureApproved } from '../../shared/routeReview.js';
+import { notifyRouteReview } from '../../shared/routeReviewNotifications.js';
+import { decideRouteReview } from '../../shared/routeReviewDecision.js';
 import Stripe from 'npm:stripe@14.21.0';
 import { sendGooglePurchaseMeasurement } from './googleMeasurement.js';
 import { sendMetaPurchaseConversion } from './metaConversions.js';
@@ -538,6 +541,34 @@ Deno.serve(async (req) => {
 
     const rewardLedgerSecret = Deno.env.get('LOYALTY_LEDGER_SECRET')
       || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '';
+    if (event.data?.object?.metadata?.route_review_request
+      && ['checkout.session.expired', 'payment_intent.canceled'].includes(event.type)) {
+      if (stagingSafeMode || event.livemode !== true) return Response.json({ error: 'route_review_mode_unconfirmed' }, { status: 503 });
+      const providerId = event.data.object.id;
+      const fresh = event.type === 'checkout.session.expired' ? await stripe.checkout.sessions.retrieve(providerId)
+        : await stripe.paymentIntents.retrieve(providerId);
+      if (fresh.id !== providerId || fresh.status !== (event.type === 'checkout.session.expired' ? 'expired' : 'canceled')
+        || ['route_review_request', 'checkout_context_hash', 'customer_email', 'order_number'].some(key =>
+          fresh.metadata?.[key] !== event.data.object.metadata?.[key])) throw new Error('route_review_expiry_unconfirmed');
+      const rows = await base44.asServiceRole.entities.DeliveryApprovalRequest.filter({ request_number: fresh.metadata.route_review_request }, undefined, 2);
+      if (!Array.isArray(rows) || rows.length > 1) throw new Error('route_review_not_unique');
+      if (rows.length === 1) {
+        const kind = rows[0].review_decision?.kind || 'expire';
+        if (!['expire', 'deny', 'cancel'].includes(kind)) throw new Error('route_review_decision_conflict');
+        await decideRouteReview({ base44, stripe, darId: rows[0].id, kind, actor: 'stripe_webhook',
+          reason: 'Stripe confirmed the authorization or checkout expired without capture.', env: Deno.env,
+          notify: (proof, stage) => notifyRouteReview({ base44, proof, stage, env: Deno.env }) });
+        return Response.json({ received: true, route_review: true, expired: true });
+      }
+    }
+    if (event.data?.object?.metadata?.route_review_request
+      && ['checkout.session.completed', 'payment_intent.amount_capturable_updated'].includes(event.type)) {
+      if (stagingSafeMode) return Response.json({ error: 'route_review_staging_blocked' }, { status: 503 });
+      const proof = await recordRouteAuthorization({ entities: base44.asServiceRole.entities, stripe, event });
+      if (!proof.dar.review_decision) await notifyRouteReview({ base44, proof, stage: 'submitted', env: Deno.env });
+      // Approval owns fulfillment. A zero-cash confirmation only reserves benefits.
+      return Response.json({ received: true, route_review: true, state: proof.dar.status });
+    }
     const rewardResult = await handleRewardCheckoutEvent({
       entities: base44.asServiceRole.entities, stripe, event, stagingSafeMode,
       internalSecretAvailable: Boolean(rewardLedgerSecret), verifySchedule: verifiedCheckoutSchedule,
@@ -1323,6 +1354,14 @@ Deno.serve(async (req) => {
           console.warn(`[PI succeeded] Order ${orderNumber} is in terminal state (refunded/cancelled). Skipping state reset. PI=${pi.id}`);
           return Response.json({ received: true, action: 'skipped_terminal_state' });
         }
+      }
+
+      // A replay after a refund/cancellation must exit above before checking
+      // the active route receipt, which intentionally rejects terminal orders.
+      if (pi.metadata?.route_review_request) {
+        const current = await stripe.paymentIntents.retrieve(pi.id);
+        if (current.status !== 'succeeded' || current.amount_received !== current.amount) throw new Error('route_review_capture_unconfirmed');
+        await assertRouteCaptureApproved(base44.asServiceRole.entities, current);
       }
 
       if (existingOrders.length > 0) {

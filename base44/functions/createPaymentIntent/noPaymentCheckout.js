@@ -6,6 +6,8 @@ import { NO_PAYMENT_CREDIT_REVISION, verifiedNoPaymentCreditSnapshot, verifiedNo
 import { reserveNoPaymentCheckoutCredit, settleNoPaymentCheckoutCredit } from '../../shared/checkoutCredit.js';
 import { noPaymentBirthdayMetadata, NO_PAYMENT_BIRTHDAY_REVISION } from '../../shared/noPaymentBirthday.js';
 import { reserveNoPaymentBirthdayCheckout, settleNoPaymentBirthdayCheckout } from './birthdayCheckout.js';
+import { readRouteReview } from '../../shared/routeReview.js';
+import { decideRouteReview } from '../../shared/routeReviewDecision.js';
 export { NO_PAYMENT_BIRTHDAY_REVISION };
 export { NO_PAYMENT_POINTS_REVISION };
 export { NO_PAYMENT_CREDIT_REVISION };
@@ -111,6 +113,18 @@ export async function cancelNoPaymentCheckout({ base44, stripe, sessionId, custo
     && metadata.reward_reservation_id && metadata.order_number && metadata.is_test_order !== 'true'
     && metadata.internal_sandbox_checkout !== 'true', 'reward_cancel_identity_mismatch');
   verifySession(session, metadata);
+  const routeRows = metadata.route_review_request ? await base44.asServiceRole.entities.DeliveryApprovalRequest.filter({ request_number: metadata.route_review_request }, undefined, 2) : [];
+  assert(Array.isArray(routeRows) && routeRows.length <= 1, 'route_review_not_unique');
+  if (routeRows.length) {
+    const proof = await readRouteReview(base44.asServiceRole.entities, session);
+    const result = await decideRouteReview({ base44, stripe, darId: proof.dar.id, kind: 'cancel',
+      actor: customerEmail, reason: 'Customer canceled this route-review checkout.',
+      env: { get: name => name === 'LOYALTY_LEDGER_SECRET' ? secret : undefined },
+      notify: async () => {} }); // This explicit customer action returns its confirmation in the checkout UI.
+    const fresh = await stripe.checkout.sessions.retrieve(session.id);
+    return { ok: result.success, checkout_session_expired: fresh.status === 'expired',
+      route_review_cancelled: true, reward_reservation_released: result.benefit_reservations_released };
+  }
   assert(session.status !== 'complete', 'reward_checkout_already_completed');
   if (session.status === 'open') await stripe.checkout.sessions.expire(session.id);
   session = await stripe.checkout.sessions.retrieve(session.id);
@@ -201,7 +215,12 @@ export async function readNoPaymentCheckoutRecovery({ base44, stripe, customerEm
     'reward_recovery_provider_mismatch');
   if (creditHold) assert(verifiedNoPaymentCreditMetadata(metadata) === creditHold.amount_cents
     && metadata.credit_reservation_id === reservationId, 'reward_recovery_provider_mismatch');
+  const routeRows = metadata.route_review_request ? await entities.DeliveryApprovalRequest.filter({ request_number: metadata.route_review_request }, undefined, 2) : [];
+  assert(Array.isArray(routeRows) && routeRows.length <= 1, 'route_review_not_unique');
+  const route = routeRows.length ? await readRouteReview(entities, session) : null;
+  if (metadata.route_review_request && !route) assert(session.status !== 'complete', 'route_review_context_missing');
   return { ok: true, state: session.status, writes_performed: false,
+    ...(route ? { routeReview: { requestNumber: route.dar.request_number, darId: route.dar.id, status: route.dar.status, total: 0 } } : {}),
     payment_confirmation_attempted: false, reward_reservation_released: false,
     reward_checkout_recovery: { kind: 'reward_no_payment', checkout_session_id: session.id,
       order_number: metadata.order_number } };
@@ -219,6 +238,9 @@ export async function prepareNoPaymentCheckout({ base44, stripe, data, metadata,
   // Stripe's 50-key limit; retain every price, schedule and entitlement binding.
   assert(!sessionMetadata.sandbox_test_id && sessionMetadata.meta_capi_test_enabled !== 'true', 'reward_zero_checkout_invalid');
   delete sessionMetadata.sandbox_test_id;
+  // A missing optional referral is identical to an empty one. Keep every
+  // nonempty value and all private proof bindings; reserve room for route review.
+  if (sessionMetadata.referral_code === '') delete sessionMetadata.referral_code;
   delete sessionMetadata.meta_capi_test_enabled;
   if (creditCovered) verifiedNoPaymentCreditSnapshot(data, sessionMetadata);
   else if (directOnly) {

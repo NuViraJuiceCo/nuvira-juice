@@ -37,8 +37,14 @@ try {
     const current = await open(`state=${state}&mode=guest`);
     check(await current.getByRole('button', { name: 'Resume this secure payment' }).count() === 0, `${state} cannot pay again`);
     check(await current.getByRole('button', { name: 'Cancel this attempt and edit my cart' }).count() === 0, `${state} cannot cancel`);
-    await current.getByRole('button', { name: 'View this order’s receipt' }).click();
-    await current.getByText('Receipt navigation callback', { exact: true }).waitFor(); await current.close();
+    if (state === 'requires_capture') {
+      check(await current.getByRole('button', { name: 'View this order’s receipt' }).count() === 0, 'an authorization is not a paid receipt');
+      await current.getByText('Your payment is processing or awaiting capture. Don’t submit another payment.').waitFor();
+    } else {
+      await current.getByRole('button', { name: 'View this order’s receipt' }).click();
+      await current.getByText('Receipt navigation callback', { exact: true }).waitFor();
+    }
+    await current.close();
   }
   for (const scenario of ['recovery-offline', 'release-failure']) {
     const current = await open(`scenario=${scenario}`);

@@ -1,5 +1,9 @@
 # Ongoing first-order offer: implementation and release boundary
 
+## September 9 integrated candidate
+
+The full first-order, selected-reward, credit/birthday, cashless, route-review and refund source is now connected in one candidate based on canonical `2623d1e5`. See the top section of `earned-reward-checkout-contract-20260907.md` for current acceptance evidence; the source blockers and suite counts in the historical sections below are superseded. Real Base44 conditional updates passed an isolated two-contender/one-winner test and its temporary noncustomer row was removed. The existing C01 draft was independently read back with all Meta errors resolved and compatibility with all selected placements. WELCOME10 is still absent from live data and C01 remains unpublished until exact release and live offer verification complete.
+
 ## September 8 current status (supersedes historical audit notes below)
 
 WELCOME10 remains uncreated/inactive by this task. The ongoing no-expiration policy and reward-selection checks are included in the current **147-harness** local critical suite. Complete no-payment reward handoff passes **33/33** connected synthetic cases; full-refund loyalty recovery/manual review passes **52/52**. Owner-approved spent-point cases now hold the points adjustment for Operations review, without automatically clawing back rewards or deducting later replenished points. See the newest section of `earned-reward-checkout-contract-20260907.md` for exact scope and remaining benefit/refund/release gates. Selection defects described in the historical audit below are corrected locally; full deployment/provider validation is not complete. Final rerun evidence is stored outside the repository. No source merge, Base44/site/schema/Appflow release, paid provider event, customer balance change or ad publication occurred. The Base44 published-runtime promotion incident remains an explicit release boundary, not permission for a broad publish.

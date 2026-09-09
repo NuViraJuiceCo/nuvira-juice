@@ -137,6 +137,7 @@ export async function createRefundFixture({ amount = 4299, multiplier = 1 } = {}
     Deno: { env, serve: handler => { ledgerHandler = handler; } }, require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => base44 };
       if (name.includes('pointsAccount')) return ledger;
+      if (name.includes('routeReview')) return routeReview;
       if (name.includes('stripe')) return class {};
       throw new Error(`Unexpected ledger import ${name}`);
     } });
@@ -402,3 +403,4 @@ if (process.argv[1]?.endsWith('run-full-refund-loyalty-recovery-tests.mjs')) {
     catch (error) { console.error(`FAIL ${name}`, error); process.exitCode = 1; } }
   console.log(`Full-refund loyalty recovery: ${passed}/${tests.length}; simulated providers/storage, no external writes.`);
 }
+import * as routeReview from '../../base44/shared/routeReview.js';

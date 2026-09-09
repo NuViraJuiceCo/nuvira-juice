@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import * as routeReview from '../../base44/shared/routeReview.js';
+import * as routeReviewDecision from '../../base44/shared/routeReviewDecision.js';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
 import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
 import * as birthdayEntitlement from '../../base44/shared/birthdayEntitlement.js';
@@ -61,6 +63,8 @@ function loadHandler(path, db, env = {}, stripeMock = null) {
     fetch: () => { throw new Error('External network forbidden in regression'); },
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
+      if (name.includes('routeReviewDecision')) return routeReviewDecision;
+      if (name.includes('routeReview')) return routeReview;
       if (name.includes('firstOrderEligibility')) return policy;
       if (name.includes('rewardCheckout')) return rewardCheckout;
       if (name.includes('checkoutCredit')) return creditReservation;
@@ -203,7 +207,6 @@ await test('zero-dollar rewards and free items cannot bypass the new offer non-s
 });
 for (const [path, normalizer, resolver] of [
   [piPath, 'normalizePromotionCode', 'resolvePromotion'],
-  [zonePath, 'normalizeDiscountCode', 'resolveDiscount'],
 ]) {
   await test(resolver + ' honors an optional explicit deadline, exclusively', async () => {
     const source = read(path);
@@ -304,19 +307,27 @@ await test('old admin toggle cannot activate an unsafe first-order record', asyn
   assert.equal(result.status, 400);
   assert.equal(db.writes.length, 0);
 });
-await test('actual route authorization rejects a prior buyer before any hold or record write', async () => {
+await test('compatibility route authorization delegates to the authenticated authoritative checkout', async () => {
   const db = backend({ DiscountCode: [offer], Order: [paid()] }, { email, role: 'user' });
+  db.auth.me = async () => ({ id: 'synthetic-user', email, role: 'user' });
+  let delegated = 0;
+  db.functions = { invoke: async (name, payload) => {
+    assert.equal(name, 'createPaymentIntent'); assert.equal(payload.mode, 'prepare_route_review');
+    assert.equal(payload.guest_checkout, false); assert.equal(payload.discount_code, offer.code);
+    delegated++; return { data: { error_code: 'FIRST_ORDER_OFFER_NOT_ELIGIBLE' } };
+  } };
   const result = await loadHandler(zonePath, db)(request({
     customer_email: email, discount_code: offer.code, subtotal: 78, discount_eligible_subtotal: 78,
     items: [{ product_id: 'synthetic', title: 'Synthetic juice', price: 13, quantity: 6 }],
     customer_acknowledged_hold: true, contact_phone: '2025550100',
     address_line1: '1 Test Street', address_city: 'Example', address_state: 'MO', address_postal_code: '63366',
   }));
-  assert.equal(result.status, 409);
+  assert.equal(result.status, 200);
   assert.equal(await errorCode(result), 'FIRST_ORDER_OFFER_NOT_ELIGIBLE');
+  assert.equal(delegated, 1);
   assert.equal(db.writes.length, 0);
 });
-await test('actual route capture rejects newly consumed eligibility and never raises/captures the price', async () => {
+await test('legacy route approval cannot capture an unprotected checkout', async () => {
   const db = backend({ Order: [paid()], DeliveryApprovalRequest: [{ id: 'route1', customer_email: email,
     status: 'pending_review', stripe_payment_intent_id: 'pi_synthetic', discount_code: offer.code,
     discount_first_order_only: true }] }, { email: 'admin@example.test', role: 'admin' });
@@ -326,11 +337,11 @@ await test('actual route capture rejects newly consumed eligibility and never ra
     capture: async () => { captures++; throw new Error('Must not capture'); },
   })(request({ dar_id: 'route1', admin_decision_reason: 'Synthetic verification' }));
   assert.equal(result.status, 409);
-  assert.equal(await errorCode(result), 'FIRST_ORDER_OFFER_NOT_ELIGIBLE');
+  assert.equal(await errorCode(result), 'ROUTE_REVIEW_RECONFIRMATION_REQUIRED');
   assert.equal(captures, 0);
   assert.equal(db.writes.length, 0);
 });
-await test('actual route capture lookup failure leaves the hold and price unchanged', async () => {
+await test('legacy route approval never falls back to capture when order lookup is unavailable', async () => {
   const db = backend({ DeliveryApprovalRequest: [{ id: 'route1', customer_email: email,
     status: 'pending_review', stripe_payment_intent_id: 'pi_synthetic', discount_code: offer.code,
     discount_first_order_only: true }] }, { email: 'admin@example.test', role: 'admin' });
@@ -340,7 +351,7 @@ await test('actual route capture lookup failure leaves the hold and price unchan
     retrieve: async () => ({ status: 'requires_capture', metadata: {} }),
     capture: async () => { captures++; throw new Error('Must not capture'); },
   })(request({ dar_id: 'route1', admin_decision_reason: 'Synthetic verification' }));
-  assert.equal(result.status, 503);
+  assert.equal(result.status, 409);
   assert.equal(captures, 0);
   assert.equal(db.writes.length, 0);
 });
@@ -348,12 +359,13 @@ await test('server guard is present at validation, standard checkout, authorizat
   const pi = read(piPath), zone = read(zonePath), capture = read(capturePath);
   assert.equal((pi.match(/await firstOrderEligibilityBlock\(/g) || []).length, 2);
   assert.ok(pi.indexOf('const firstOrderBlock', pi.indexOf('const promotion = await resolvePromotion')) < pi.indexOf('await checkoutStripe.paymentIntents.create'));
-  assert.ok(zone.indexOf('await firstOrderEligibilityBlock') < zone.indexOf('entities.DeliveryApprovalRequest.create'));
-  assert.ok(zone.indexOf('await firstOrderEligibilityBlock') < zone.indexOf('await stripe.paymentIntents.create'));
-  assert.ok(capture.indexOf('await firstOrderEligibilityBlock') < capture.indexOf('await stripe.paymentIntents.capture'));
-  assert.match(zone, /discount_first_order_only: discount.first_order_only === true/);
-  assert.match(capture, /dar.discount_first_order_only === true/);
-  assert.match(capture, /pi.metadata\?\.discount_account_email/);
+  assert.match(zone, /base44.functions.invoke\('createPaymentIntent'/);
+  assert.doesNotMatch(zone, /paymentIntents.create|DeliveryApprovalRequest.create/);
+  assert.match(capture, /decideRouteReview/);
+  assert.match(capture, /ROUTE_REVIEW_RECONFIRMATION_REQUIRED/);
+  const decision = read('base44/shared/routeReviewDecision.js');
+  assert.ok(decision.indexOf('await firstOrderEligibilityBlock') < decision.indexOf('await stripe.paymentIntents.capture'));
+  assert.match(decision, /proof.data.route_review.first_order_only === true/);
 });
 await test('schema, UI, trusted command and gateway packaging support the opt-in policy', () => {
   const schema = JSON.parse(read('base44/entities/DiscountCode.jsonc'));

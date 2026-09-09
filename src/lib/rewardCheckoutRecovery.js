@@ -17,7 +17,7 @@ export async function cancelRewardCheckoutRecovery(invoke, recovery) {
     mode: 'cancel_reward_checkout', checkout_session_id: checked.checkout_session_id,
   });
   const result = response?.data;
-  if (result?.ok !== true || result.checkout_session_expired !== true
+  if (result?.ok !== true || (result.checkout_session_expired !== true && result.route_review_cancelled !== true)
     || result.reward_reservation_released !== true) throw new Error('reward_recovery_unconfirmed');
   return true;
 }

@@ -97,7 +97,7 @@ await test('actual Checkout reward-completion callback only clears cart and open
   const calls = [];
   const callback = vm.runInNewContext(`(${attribute.initializer.expression.getText(tree)})`, {
     clearCart: () => calls.push('clear'), localStorage: { removeItem: key => calls.push(`remove:${key}`) },
-    navigate: url => calls.push(url), pendingOrderNumber: 'NV-SYNTHETIC', encodeURIComponent,
+    navigate: url => calls.push(url), pendingOrderNumber: 'NV-SYNTHETIC', encodeURIComponent, routeCheckout: null,
   });
   callback(); assert.deepEqual(calls, ['clear', 'remove:nuvira_pending_checkout_session', '/order-confirmation?order_number=NV-SYNTHETIC']);
 });
@@ -114,6 +114,7 @@ function cancelFixture(result, throwing = false) {
     setClientSecret: value => calls.push(`secret:${value}`),
     setPendingOrderNumber: value => calls.push(`order:${value}`),
     setConfirmedDeliverySchedule: value => calls.push(`schedule:${value}`),
+    setRouteCheckout: () => {},
     refreshCheckoutPoints: async () => calls.push('refresh-points'),
     crypto: { randomUUID: () => 'new-attempt' },
     toast: { error: () => calls.push('error') },
@@ -165,6 +166,7 @@ function recoveryFixture(result, throwing = false) {
     setIsSubmitting: value => calls.push(`submitting:${value}`),
     setRewardCheckoutRecovery: value => calls.push(`recovery:${value}`),
     setRewardCheckoutSessionId: value => calls.push(`session:${value}`),
+    setRouteCheckout: value => calls.push(`route:${value}`),
     setClientSecret: value => calls.push(`secret:${value}`), setPendingOrderNumber: value => calls.push(`order:${value}`),
     setConfirmedDeliverySchedule: value => calls.push(`schedule:${value}`),
     setCheckoutStartLockedSafely: value => calls.push(`locked:${value}`),
@@ -181,7 +183,7 @@ function recoveryFixture(result, throwing = false) {
 await test('actual recovery callback releases the checkout lock only after exact cancellation proof', async () => {
   const f = recoveryFixture({ ok: true, checkout_session_expired: true, reward_reservation_released: true });
   await f.callback(); assert.equal(f.key.current, 'new-attempt'); assert.equal(f.ref.current, false);
-  assert.deepEqual(f.calls, ['submitting:true', 'cancel', 'forget-attempt', 'recovery:null', 'session:null', 'secret:null', 'order:null',
+  assert.deepEqual(f.calls, ['submitting:true', 'cancel', 'forget-attempt', 'recovery:null', 'session:null', 'route:null', 'secret:null', 'order:null',
     'schedule:null', 'locked:false', 'stage:idle', 'message:', 'refresh-points', 'submitting:false']);
 });
 for (const [name, result, throwing] of [

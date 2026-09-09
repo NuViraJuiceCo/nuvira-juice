@@ -7,6 +7,8 @@ import { createRewardSettlementFixture } from './run-no-payment-reward-settlemen
 import { REWARD_HANDOFF_STAGES } from '../../base44/functions/stripeWebhook/rewardHandoff.js';
 import { runVerifiedRewardHandoff } from '../../base44/functions/stripeWebhook/rewardHandoffRuntime.js';
 import { noPaymentBirthdayMetadata } from '../../base44/shared/noPaymentBirthday.js';
+import { prepareRouteReview, recordRouteAuthorization, ROUTE_REVIEW_REVISION } from '../../base44/shared/routeReview.js';
+import { decideRouteReview } from '../../base44/shared/routeReviewDecision.js';
 
 // Bundle the real webhook and every local helper. Only SDK/provider transports,
 // storage, and native safe-sync planning use synthetic fixtures; no network.
@@ -172,6 +174,57 @@ function fixture({ directPoints = false, mixedPoints = false, creditMode = null,
 }
 const tests = []; const test = (name, fn) => tests.push([name, fn]);
 const count = (f, name) => f.c.calls.filter(call => call === name).length;
+test('approved cashless route executes every real handoff stage once using its existing order', async () => {
+  const f = fixture({ directPoints: true }); const requests = [];
+  const matches = (row, query) => Object.entries(query).every(([key, value]) => row[key] === value);
+  const entity = {
+    filter: async query => copy(requests.filter(row => matches(row, query))),
+    create: async data => { const row = { id: 'dar-integration-synthetic', ...copy(data) }; requests.push(row); return copy(row); },
+    updateMany: async (query, patch) => { const rows = requests.filter(row => matches(row, query));
+      rows.forEach(row => Object.assign(row, copy(patch.$set))); return { success: true, updated: rows.length, has_more: false }; },
+  };
+  f.c.entities.DeliveryApprovalRequest = entity; f.settled.entities.DeliveryApprovalRequest = entity;
+  f.order.delivery_zone_id = 'zone_3a_route_review_25_30';
+  // The original local handoff fixture does not persist all private quote
+  // columns; route review requires the same exact values as root preparation.
+  for (const key of ['assigned_delivery_date', 'assigned_production_day', 'delivery_window_label',
+    'assigned_delivery_window_start', 'assigned_delivery_window_end', 'address_line1', 'address_line2',
+    'address_city', 'address_state', 'address_postal_code', 'contact_phone', 'subtotal', 'delivery_fee', 'total_discounts']) {
+    f.order[key] = f.data[key];
+  }
+  f.data.route_review = { revision: ROUTE_REVIEW_REVISION, request_number: 'DAR-' + 'A'.repeat(24),
+    customer_acknowledged_hold: true, qualification_subtotal: 78, zone_key: f.order.delivery_zone_id };
+  Object.assign(f.s.metadata, { route_review_request: f.data.route_review.request_number, delivery_zone_key: f.order.delivery_zone_id });
+  Object.assign(f.s.metadata, { assigned_production_day: f.data.assigned_production_day,
+    selected_delivery_date: f.data.assigned_delivery_date, delivery_window_label: f.data.delivery_window_label,
+    delivery_window_start: f.data.assigned_delivery_window_start, delivery_window_end: f.data.assigned_delivery_window_end });
+  const stripe = f.settled.options.stripe; f.s.status = 'open';
+  await prepareRouteReview({ entities: f.c.entities, stripe, providerId: f.s.id });
+  f.s.status = 'complete';
+  const event = { ...f.settled.event, data: { object: copy(f.s) } };
+  stripe.events = { retrieve: async id => { assert.equal(id, event.id); return copy(event); } };
+  await recordRouteAuthorization({ entities: f.c.entities, stripe, event });
+  assert.equal(f.order.status, 'pending_payment'); assert.equal(f.shopify.state.creates.length, 0);
+  const invoke = f.c.base44.asServiceRole.functions.invoke;
+  f.c.base44.asServiceRole.functions.invoke = async (name, payload) => name === 'calculateNuViraFulfillmentSchedule'
+    ? { data: { options: [{ production_date: f.data.assigned_production_day, delivery_date: f.data.assigned_delivery_date,
+      delivery_window_label: f.data.delivery_window_label, delivery_window_start: f.data.assigned_delivery_window_start,
+      delivery_window_end: f.data.assigned_delivery_window_end }] } } : invoke(name, payload);
+  const args = { base44: f.c.base44, stripe, darId: requests[0].id, kind: 'approve', actor: 'admin@example.test',
+    reason: 'Synthetic route approval, no live fulfillment', env: f.env, fetchImpl: f.fetchImpl };
+  const result = await decideRouteReview(args); assert.equal(result.fulfillment_handoff, 'complete');
+  assert.ok(REWARD_HANDOFF_STAGES.every(stage => f.order.reward_handoff.steps[stage].state === 'complete'));
+  assert.equal(f.order.payment_captured, false); assert.equal(f.order.total, 0);
+  assert.equal(f.native.rows.FulfillmentTask.length, 1); assert.equal(f.shopify.state.creates.length, 1);
+  assert.equal(f.settled.rows.UserPoints[0].total_points, 1200); assert.equal(requests[0].status, 'captured');
+  await decideRouteReview(args);
+  assert.equal(f.shopify.state.creates.length, 1); assert.equal(count(f, 'provider:send'), 1);
+  assert.equal(f.settled.rows.UserPoints[0].total_points, 1200);
+  Object.assign(f.order, { status: 'refunded', payment_status: 'refunded' });
+  const replay = await recordRouteAuthorization({ entities: f.c.entities, stripe, event });
+  assert.equal(replay.dar.status, 'captured'); assert.equal(f.order.status, 'refunded');
+  assert.equal(f.shopify.state.creates.length, 1); assert.equal(count(f, 'provider:send'), 1);
+});
 function complete(f, result, { expectedAttempts = 1 } = {}) {
   assert.equal(result.status, 200, JSON.stringify(result)); assert.equal(result.body.handoff_complete, true);
   assert.ok(REWARD_HANDOFF_STAGES.every(stage => f.order.reward_handoff.steps[stage].state === 'complete'));

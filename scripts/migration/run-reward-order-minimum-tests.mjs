@@ -38,7 +38,7 @@ for (const price of [0, 0.01, 39, 78]) {
 
 // Execute the actual checkout preflight with all external effects prohibited.
 const checkout = fs.readFileSync('src/pages/Checkout.jsx', 'utf8');
-const begin = checkout.indexOf('const handlePlaceOrder = async () => {');
+const begin = checkout.indexOf('const handlePlaceOrder = async (routeAcknowledged = false) => {');
 const end = checkout.indexOf('// Block checkout if running inside an iframe', begin);
 assert.ok(begin >= 0 && end > begin);
 const prefix = checkout.slice(begin, end);
@@ -75,28 +75,22 @@ for (const patch of [{ ok: false }, { preview_only: false }, { writes_performed:
 }
 assert.match(checkout, /cart_subtotal: qualifyingSubtotal/);
 assert.match(checkout, /rewardDeliveryMinimumSubtotal\(\{ subtotal, items, activeReward/);
-// Manual authorization still has no reward settlement contract. Test its actual
-// preflight in both bundles: no new eligibility rule may create an unreserved
-// discounted authorization while that integration is unfinished.
+// Both retained route entrypoints delegate unchanged benefit selections to the
+// authoritative root. Runtime qualification/hold/decision cases are exercised
+// in run-checkout-record-persistence-tests.mjs.
 const routeFiles = ['base44/functions/createZone3AuthorizationIntent/entry.ts',
   'base44/functions/getCustomerAccountDashboardData/handlers/createZone3AuthorizationIntent/entry.ts'];
 let routeGuardCases = 0;
 for (const file of routeFiles) {
   const source = fs.readFileSync(file, 'utf8');
-  const begin = source.indexOf('const items = body.items ?? body.cart_items ?? [];');
-  const end = source.indexOf('const subtotal =', begin); assert.ok(begin > 0 && end > begin);
-  const guard = source.slice(begin, end);
-  for (const body of [{ active_reward: { id: 'vip' } }, { items: [{ isFreeReward: true }] },
-    { items: [{ reward_id: 'vip' }] }, { cart_items: [{ product_id: '__free_reward_old' }] }, { items: [juice(3)] }]) {
-    const run = vm.runInNewContext(`(async () => { ${guard} return 'continue'; })`, { body, Response });
-    const result = await run();
-    if (body.items?.[0]?.price === 13) assert.equal(result, 'continue');
-    else { assert.equal(result.status, 409); assert.equal((await result.json()).error_code, 'REWARD_ROUTE_REVIEW_NOT_READY'); }
-    routeGuardCases++;
-  }
+  assert.match(source, /base44.functions.invoke\('createPaymentIntent'/);
+  assert.match(source, /\.\.\.body, mode: 'prepare_route_review', guest_checkout: false/);
+  assert.match(source, /customer_acknowledged_hold !== true/);
+  assert.doesNotMatch(source, /paymentIntents.create|DeliveryApprovalRequest.create/);
+  routeGuardCases += 4;
 }
 console.log(JSON.stringify({ ok: true, suite: 'reward-order-minimum', policy_cases: cases.length,
   checkout_preflight_cases: cases.length - 1, price_independence_cases: 4,
   retail_preview_cases: 12, route_guard_cases: routeGuardCases,
   provider_calls: false, production_writes: false,
-  limitation: 'Synthetic count/retail-preview and fail-closed manual-route guards. Live redemption and route-review integration remain pending.' }, null, 2));
+  limitation: 'Synthetic count/retail-preview and shared route entrypoint contracts. Runtime integration is tested separately; this is not live provider evidence.' }, null, 2));

@@ -163,6 +163,7 @@ function fixture({ directPoints = false, mixedPoints = false, creditMode = null,
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => ({ auth: { me: async () => null }, asServiceRole: { entities } }) };
       if (name.includes('pointsAccount')) return ledger;
+      if (name.includes('routeReview')) return routeReview;
       if (name.includes('stripe')) return class { checkout = stripe.checkout; };
       throw new Error(`Unexpected import ${name}`);
     },
@@ -614,3 +615,4 @@ await test('completed birthday confirmation cannot be canceled or release any co
   assert.equal(f.rows.NuViraCredit[0].balance, 22); assert.equal(f.rows.Order[0].payment_status, 'paid');
 });
 console.log(`No-payment checkout start: ${count}/${count} passed. Local synthetic I/O only; not live/provider-release evidence.`);
+import * as routeReview from '../../base44/shared/routeReview.js';

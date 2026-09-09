@@ -10,6 +10,8 @@ import * as rewards from '../../base44/functions/createPaymentIntent/rewardCheck
 import * as noPayment from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
 import * as paidRecovery from '../../base44/functions/createPaymentIntent/paidCheckoutRecovery.js';
 import * as pointsLedger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
+import * as routeReview from '../../base44/shared/routeReview.js';
+import { decideRouteReview } from '../../base44/shared/routeReviewDecision.js';
 
 const source = fs.readFileSync('base44/functions/createPaymentIntent/entry.ts', 'utf8');
 const compiled = transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
@@ -38,12 +40,13 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
     category: 'juice', size: '12 oz', is_available: true }], Subscription: [], SubscriptionPlan: [], UserProfile: [],
     RewardTier: [{ id: 'reward-test', title: 'Double Points', reward_type: 'double_points', points_required: 1500, is_active: true }],
     UserPoints: [{ id: 'balance-test', customer_email: email, total_points: 7000, reserved_points: 0, reward_reservations: [] }],
-    NuViraCredit: [], LoyaltyMember: [], LoyaltyTransaction: [], OperationalAlert: [], ...structuredClone(seed) };
+    NuViraCredit: [], LoyaltyMember: [], LoyaltyTransaction: [], OperationalAlert: [], DeliveryApprovalRequest: [], ShopifyOrder: [], ...structuredClone(seed) };
   const effects = []; const entities = {};
   let lostCreditAck = false;
   let lostPointsAck = false;
   let ledgerServed;
   const match = (row, query) => Object.entries(query).every(([key, value]) => key === '$or' ? value.some(q => match(row, q))
+    : value && typeof value === 'object' && '$regex' in value ? new RegExp(value.$regex, value.$options || '').test(row[key] || '')
     : value && typeof value === 'object' && '$exists' in value ? (row[key] !== undefined) === value.$exists
     : value && typeof value === 'object' && '$ne' in value ? row[key] !== value.$ne : row[key] === value);
   for (const [name, values] of Object.entries(rows)) entities[name] = {
@@ -63,7 +66,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       Object.assign(row, structuredClone(patch)); return structuredClone(row);
     },
     updateMany: async (query, update) => {
-      assert.ok(['NuViraCredit', 'UserPoints', 'LoyaltyMember', 'Order'].includes(name));
+      assert.ok(['NuViraCredit', 'UserPoints', 'LoyaltyMember', 'Order', 'DeliveryApprovalRequest'].includes(name));
       effects.push(name === 'NuViraCredit' ? 'credit.CAS' : `${name}.CAS`);
       if (name === 'NuViraCredit' && failCredit) throw new Error('SYNTHETIC_ONLY credit outage');
       const found = values.filter(row => match(row, query)); assert.ok(found.length <= 1);
@@ -142,6 +145,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       if (name.includes('noPaymentCheckout')) return noPayment;
       if (name.includes('paidCheckoutRecovery')) return paidRecovery;
       if (name.includes('pointsAccount')) return pointsLedger;
+      if (name.includes('routeReview')) return routeReview;
       if (name.includes('stripe')) return class {
         webhooks = { constructEventAsync: async (raw, signature) => {
           if (signature !== 'SYNTHETIC_VALID_SIGNATURE') throw new Error('Synthetic signature rejected');
@@ -185,7 +189,45 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
   const ledgerModule = { exports: {} };
   vm.runInNewContext(compiledLedger, { ...runtime, module: ledgerModule, exports: ledgerModule.exports,
     Deno: { ...runtime.Deno, serve: fn => { ledgerServed = fn; } } });
-  return { rows, effects, entities, runWebhook: async (event, signature = 'SYNTHETIC_VALID_SIGNATURE') => {
+  const routeEvents = new Map();
+  let loseCaptureAck = false; let captureFailure = false;
+  const routeStripe = {
+    paymentIntents: { retrieve: async id => { assert.equal(id, storedIntent.id); return structuredClone(storedIntent); },
+      capture: async (id, data, options) => { assert.equal(id, storedIntent.id); assert.equal(data.amount_to_capture, storedIntent.amount);
+        assert.match(options.idempotencyKey, /^route_review:.*:capture:v2$/);
+        if (captureFailure) throw new Error('SYNTHETIC_ONLY capture unavailable');
+        storedIntent.status = 'succeeded'; storedIntent.amount_received = storedIntent.amount; storedIntent.amount_capturable = 0;
+        effects.push('route.capture'); if (loseCaptureAck) { loseCaptureAck = false; throw new Error('SYNTHETIC_ONLY lost capture acknowledgement'); }
+        return structuredClone(storedIntent); },
+      cancel: async id => { assert.equal(id, storedIntent.id); if (failCancel) throw new Error('SYNTHETIC_ONLY cancel unavailable');
+        storedIntent.status = 'canceled'; effects.push('route.cancel'); return structuredClone(storedIntent); } },
+    checkout: { sessions: { retrieve: async id => { assert.equal(id, storedSession.id); return structuredClone(storedSession); },
+      expire: async id => { assert.equal(id, storedSession.id); if (failCancel) throw new Error('SYNTHETIC_ONLY expiry unavailable');
+        storedSession.status = 'expired'; effects.push('route.expire'); return structuredClone(storedSession); } } },
+    events: { retrieve: async id => { assert.ok(routeEvents.has(id)); return structuredClone(routeEvents.get(id)); } },
+  };
+  const route = {
+    stripe: routeStripe,
+    loseCapture: () => { loseCaptureAck = true; }, failCapture: value => { captureFailure = value; },
+    confirm: async () => {
+      const provider = storedSession || storedIntent;
+      if (storedSession) { provider.status = 'complete'; provider.payment_status = 'no_payment_required'; }
+      else { provider.status = 'requires_capture'; provider.amount_capturable = provider.amount;
+        provider.latest_charge = { payment_method_details: { card: { capture_before: Math.floor(clock / 1000) + 3 * 86400 } } }; }
+      const event = { id: 'evt_route_synthetic', livemode: true, created: Math.floor(clock / 1000),
+        type: storedSession ? 'checkout.session.completed' : 'payment_intent.amount_capturable_updated', data: { object: structuredClone(provider) } };
+      routeEvents.set(event.id, event);
+      return routeReview.recordRouteAuthorization({ entities, stripe: routeStripe, event });
+    },
+    decide: (kind, extra = {}) => decideRouteReview({ base44: db, stripe: routeStripe, darId: rows.DeliveryApprovalRequest[0].id,
+      kind, actor: 'admin@example.test', reason: 'Synthetic route decision only',
+      now: Math.max(clock, ...(rows.UserPoints[0]?.birthday_reservations || []).map(hold => Date.parse(hold.created_at))), env: { get: name => env[name] },
+      notify: async () => { effects.push('route.notify'); }, handoff: async () => { effects.push('route.handoff'); return { complete: true }; }, ...extra }),
+    settlePoints: async () => { const response = await ledgerServed(new Request('https://unit.test/ledger', { method: 'POST', body: JSON.stringify({
+      action: 'settle_reward_checkout', customer_email: email, stripe_checkout_session_id: storedSession.id, internal_secret: env.LOYALTY_LEDGER_SECRET }) }));
+      return response.json(); },
+  };
+  return { rows, effects, entities, route, runWebhook: async (event, signature = 'SYNTHETIC_VALID_SIGNATURE') => {
     let webhook;
     const hookModule = { exports: {} };
     vm.runInNewContext(compiledWebhook, { ...runtime, module: hookModule, exports: hookModule.exports,
@@ -211,6 +253,20 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
 }
 let passed = 0;
 async function test(name, run) { await run(); passed++; console.log('PASS', name); }
+await test('route review prepares one catalog-priced order and review before exposing a manual-capture secret', async () => {
+  const ctx = fixture({ distanceMiles: 27 });
+  const response = await ctx.handle({ mode: 'prepare_route_review', customer_acknowledged_hold: true,
+    items: [{ ...body.items[0], quantity: 5 }], subtotal: 65, delivery_fee: 12.99, total: 77.99 });
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  assert.equal(result.routeReview, true);
+  assert.equal(ctx.intent().capture_method, 'manual');
+  assert.equal(ctx.rows.Order.length, 1); assert.equal(ctx.rows.CheckoutSession.length, 1);
+  assert.equal(ctx.rows.DeliveryApprovalRequest.length, 1);
+  assert.equal(ctx.rows.DeliveryApprovalRequest[0].status, 'pending_authorization');
+  assert.equal(ctx.rows.Order[0].status, 'pending_payment');
+  assert.equal(ctx.effects.includes('PI.cancel'), false);
+});
 await test('actual mixed tier/points zero-cash entrypoint uses catalog pricing and a combined real ledger hold', async () => {
   const tier = { id: 'vip', title: 'VIP', reward_type: 'vip_box', points_required: 6000, is_active: true };
   const ctx = fixture({ realLedger: true, seed: { RewardTier: [tier],
@@ -1006,5 +1062,132 @@ await test('actual webhook rejects forged or stale cancellation before releasing
   assert.equal((await ctx.runWebhook(event)).status, 500); // Fresh provider still says retryable, not canceled.
   assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'held');
   assert.equal(ctx.rows.Order[0].status, 'pending_payment'); assert.equal(ctx.rows.OperationalAlert.length, 0);
+});
+const routeRequest = { mode: 'prepare_route_review', customer_acknowledged_hold: true,
+  items: [{ ...body.items[0], quantity: 5 }], guest_order_token: null };
+const routeCreditSeed = { NuViraCredit: [{ id: 'route-credit', customer_email: email, balance: 100,
+  lifetime_used: 0, reserved_balance: 0, checkout_revision: 0, checkout_reservations: [], transaction_history: [] }] };
+async function prepareRoute(ctx, patch = {}) {
+  const response = await ctx.handle({ ...routeRequest, ...patch }); const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result)); assert.equal(result.routeReview, true);
+  return result;
+}
+for (const kind of ['approve', 'deny', 'expire']) await test(`route ${kind} uses one existing paid order and a durable decision`, async () => {
+  const ctx = fixture({ distanceMiles: 27, realLedger: true, seed: routeCreditSeed });
+  await prepareRoute(ctx, { points_used: 2000, points_discount: 20, credits_discount: 10 });
+  await ctx.route.confirm();
+  assert.equal(ctx.rows.Order[0].payment_captured, false);
+  const result = await ctx.route.decide(kind);
+  assert.equal(result.success, true); assert.equal(ctx.rows.Order.length, 1);
+  assert.equal(ctx.rows.DeliveryApprovalRequest[0].review_decision.complete, true);
+  if (kind === 'approve') {
+    assert.equal(ctx.intent().status, 'succeeded'); assert.equal(ctx.intent().amount_received, 4799);
+    assert.equal(ctx.rows.Order[0].status, 'pending_payment'); // signed payment webhook owns finalization
+    assert.equal(ctx.rows.UserPoints[0].reward_reservations[0].status, 'held');
+  } else {
+    assert.equal(ctx.intent().status, 'canceled'); assert.equal(ctx.rows.Order[0].status, 'cancelled');
+    assert.equal(ctx.rows.UserPoints[0].reserved_points, 0); assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 0);
+  }
+  await ctx.route.decide(kind);
+  assert.equal(ctx.effects.filter(value => value === 'route.capture').length, kind === 'approve' ? 1 : 0);
+  await assert.rejects(() => ctx.route.decide(kind === 'approve' ? 'deny' : 'approve'), /competing_decision/);
+});
+await test('route approval recovers a lost capture response without a second capture or order', async () => {
+  const ctx = fixture({ distanceMiles: 27 }); await prepareRoute(ctx); await ctx.route.confirm();
+  ctx.route.loseCapture(); await assert.rejects(() => ctx.route.decide('approve'), /lost capture/);
+  assert.equal(ctx.intent().status, 'succeeded'); assert.equal(ctx.rows.Order.length, 1);
+  assert.equal((await ctx.route.decide('approve')).success, true);
+  assert.equal(ctx.effects.filter(value => value === 'route.capture').length, 1);
+});
+await test('failed route cancellation preserves the review and does not send a release notice', async () => {
+  const ctx = fixture({ distanceMiles: 27, failCancel: true }); await prepareRoute(ctx); await ctx.route.confirm();
+  await assert.rejects(() => ctx.route.decide('deny'), /cancel unavailable/);
+  assert.equal(ctx.rows.DeliveryApprovalRequest[0].status, 'pending_review');
+  assert.equal(ctx.rows.Order[0].status, 'pending_payment'); assert.equal(ctx.effects.includes('route.notify'), false);
+});
+await test('changed route fee and expired authorization block before capture or decision', async () => {
+  const ctx = fixture({ distanceMiles: 27 }); await prepareRoute(ctx); await ctx.route.confirm();
+  await assert.rejects(() => ctx.route.decide('approve', { approvedDeliveryFee: 19.99 }), /fee_change/);
+  ctx.intent().latest_charge.payment_method_details.card.capture_before = 1;
+  await assert.rejects(() => ctx.route.decide('approve'), /authorization_expired/);
+  assert.equal(ctx.rows.DeliveryApprovalRequest[0].review_decision, undefined);
+  assert.equal(ctx.effects.includes('route.capture'), false);
+});
+for (const birthday of [false, true]) for (const kind of ['approve', 'deny', 'expire']) {
+  await test(`zero-cash route ${birthday ? 'birthday/points/credit' : 'points/credit'} ${kind} never debits before approval`, async () => {
+    const ctx = fixture({ distanceMiles: 27, realLedger: true, birthdayUser: birthday, seed: { ...routeCreditSeed,
+      ...(birthday ? { Subscription: [{ customer_email: email, status: 'active', plan_id: 'plan' }],
+        SubscriptionPlan: [{ id: 'plan', discount_percent: 10 }] }
+        : { RewardTier: [{ id: 'free-delivery', title: 'Delivery reward', reward_type: 'free_delivery', points_required: 500, is_active: true }] }) } });
+    const items = birthday ? [{ ...body.items[0], quantity: 4 }, birthdayCart()[1]] : routeRequest.items;
+    await prepareRoute(ctx, { items, points_used: 2000, points_discount: 20, credits_discount: birthday ? 26.8 : 45,
+      ...(!birthday ? { active_reward: { id: 'free-delivery' } } : {}) });
+    assert.equal(ctx.intent(), undefined); assert.equal(ctx.session().amount_total, 0);
+    assert.ok(Object.keys(ctx.session().metadata).length <= 50);
+    await ctx.route.confirm();
+    assert.equal((await ctx.route.settlePoints()).reservation_status, 'held');
+    assert.equal((await creditReservation.settleNoPaymentCheckoutCredit({ entities: ctx.entities,
+      stripe: ctx.route.stripe, email, sessionId: ctx.session().id })).reservation_status, 'held');
+    if (birthday) assert.equal((await birthdayCheckout.settleNoPaymentBirthdayCheckout({ entities: ctx.entities,
+      stripe: ctx.route.stripe, customerEmail: email, sessionId: ctx.session().id })).reservation_status, 'held');
+    assert.equal(ctx.rows.UserPoints[0].total_points, 7000);
+    assert.equal(ctx.rows.Order[0].status, 'pending_payment');
+    const result = await ctx.route.decide(kind);
+    assert.equal(result.success, true); assert.equal(ctx.rows.Order.length, 1);
+    assert.equal(ctx.rows.Order[0].payment_captured, false); assert.equal(ctx.session().status, 'complete');
+    assert.equal(ctx.rows.UserPoints[0].total_points, kind === 'approve' ? (birthday ? 5000 : 4500) : 7000);
+    assert.equal(ctx.rows.UserPoints[0].reserved_points, 0); assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 0);
+    assert.equal(ctx.rows.Order[0].status, kind === 'approve' ? 'scheduled_for_juicing' : 'cancelled');
+    if (birthday) assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, kind === 'approve' ? 'consumed' : 'released');
+    await ctx.route.decide(kind);
+    assert.equal(ctx.rows.Order.length, 1); assert.equal(ctx.rows.UserPoints[0].total_points, kind === 'approve' ? (birthday ? 5000 : 4500) : 7000);
+  });
+}
+const firstOffer = { id: 'first-synthetic', code: 'FIRST10_QA', display_name: 'Synthetic first order', active: true,
+  discount_type: 'percent', discount_kind: 'promotion', discount_value: 10, first_order_only: true,
+  once_per_customer: true, ends_at: null };
+await test('authoritative route preparation rejects a prior first-offer buyer before payment or record writes', async () => {
+  const ctx = fixture({ distanceMiles: 27, seed: { DiscountCode: [firstOffer],
+    Order: [{ id: 'prior', customer_email: email, payment_status: 'paid', total: 39 }] } });
+  const response = await ctx.handle({ ...routeRequest, discount_contract_version: 2, discount_code: firstOffer.code });
+  assert.equal(response.status, 409); assert.equal((await response.json()).error_code, 'FIRST_ORDER_OFFER_NOT_ELIGIBLE');
+  assert.equal(ctx.intent(), undefined); assert.equal(ctx.rows.DeliveryApprovalRequest.length, 0);
+});
+await test('protected route approval rechecks first-order eligibility without raising the confirmed total', async () => {
+  const ctx = fixture({ distanceMiles: 27, seed: { DiscountCode: [firstOffer] } });
+  await prepareRoute(ctx, { discount_contract_version: 2, discount_code: firstOffer.code }); await ctx.route.confirm();
+  assert.equal(ctx.intent().amount, 7149);
+  ctx.rows.Order.push({ id: 'other-paid', customer_email: email, payment_status: 'paid', total: 39 });
+  await assert.rejects(() => ctx.route.decide('approve'), /first_order_offer_recheck_failed/);
+  assert.equal(ctx.intent().amount, 7149); assert.equal(ctx.effects.includes('route.capture'), false);
+  assert.equal(ctx.rows.DeliveryApprovalRequest[0].review_decision, undefined);
+});
+for (const kind of ['deny', 'expire']) await test(`route ${kind} notification failure stays visible and retries without recanceling`, async () => {
+  const ctx = fixture({ distanceMiles: 27 }); await prepareRoute(ctx); await ctx.route.confirm();
+  await assert.rejects(() => ctx.route.decide(kind, { notify: async () => { throw new Error('SYNTHETIC notification unavailable'); } }), /notification unavailable/);
+  assert.equal(ctx.rows.DeliveryApprovalRequest[0].communications_pending, true);
+  assert.equal(ctx.rows.Order[0].status, 'cancelled');
+  assert.equal((await ctx.route.decide(kind)).success, true);
+  assert.equal(ctx.rows.DeliveryApprovalRequest[0].communications_pending, false);
+  assert.equal(ctx.effects.filter(value => value === 'route.cancel').length, 1);
+});
+await test('terminal route payment replay never resurrects or revalidates a refunded order', async () => {
+  const ctx = fixture({ distanceMiles: 27 }); await prepareRoute(ctx); await ctx.route.confirm();
+  const oldAuthorization = { id: 'evt_route_authorization_replay', type: 'payment_intent.amount_capturable_updated', livemode: true,
+    created: Math.floor(Date.now() / 1000), data: { object: structuredClone(ctx.intent()) } };
+  await ctx.route.decide('approve');
+  Object.assign(ctx.rows.Order[0], { status: 'refunded', payment_status: 'refunded', amount_refunded: 1 });
+  const event = { id: 'evt_route_replay_synthetic', type: 'payment_intent.succeeded', livemode: true,
+    created: Math.floor(Date.now() / 1000), data: { object: structuredClone(ctx.intent()) } };
+  const result = await ctx.runWebhook(event);
+  assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(result.body.action, 'skipped_terminal_state');
+  assert.equal(ctx.rows.Order[0].status, 'refunded');
+  const effects = ctx.effects.filter(effect => effect !== 'PI.retrieve');
+  const late = await ctx.runWebhook(oldAuthorization);
+  assert.equal(late.status, 200, JSON.stringify(late.body));
+  assert.equal(late.body.state, 'captured'); assert.deepEqual(ctx.effects.filter(effect => effect !== 'PI.retrieve'), effects);
+  assert.equal(ctx.rows.Order[0].status, 'refunded');
+  ctx.rows.CheckoutSession[0].customer_email = 'other@example.test';
+  assert.equal((await ctx.runWebhook(oldAuthorization)).status, 500, 'A terminal replay must still prove ownership');
 });
 console.log(`Checkout record persistence: ${passed}/${passed} passed. Real handler, synthetic storage/Maps/Stripe only; no external calls or production writes.`);

@@ -146,6 +146,7 @@ function fixture({ role = 'admin', noPayment = false, reward = false, realLedger
       require: name => {
         if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
         if (name.includes('pointsAccount')) return pointsLedger;
+      if (name.includes('routeReview')) return routeReview;
         if (name.includes('stripe')) return class { paymentIntents = { retrieve: read };
           checkout = { sessions: { retrieve: read } }; };
         throw new Error(`Unexpected import ${name}`);
@@ -387,3 +388,4 @@ for (const [name, fn] of tests) {
   catch (error) { console.error(`FAIL ${name}`); throw error; }
 }
 console.log(`Checkout abandonment safety: ${passed}/${tests.length}; actual handler, synthetic provider/storage only.`);
+import * as routeReview from '../../base44/shared/routeReview.js';

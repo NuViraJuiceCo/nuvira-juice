@@ -2,6 +2,25 @@
   "name": "DeliveryApprovalRequest",
   "type": "object",
   "properties": {
+    "communications_pending": { "type": "boolean" },
+    "requested_delivery_date": { "type": "string" },
+    "requested_production_date": { "type": "string" },
+    "requested_delivery_window": { "type": "string" },
+    "checkout_revision": { "type": "string" },
+    "checkout_provider_id": { "type": "string" },
+    "checkout_context_hash": { "type": "string" },
+    "stripe_checkout_session_id": { "type": "string" },
+    "catalog_qualification_subtotal": { "type": "number" },
+    "review_revision": { "type": "number" },
+    "provider_confirmation": { "type": "object", "properties": {
+      "event_id": { "type": "string" }, "event_type": { "type": "string" },
+      "created": { "type": "number" }, "provider_id": { "type": "string" }
+    } },
+    "review_decision": { "type": "object", "properties": {
+      "kind": { "type": "string", "enum": ["approve", "deny", "expire", "cancel"] },
+      "actor": { "type": "string" }, "reason": { "type": "string" }, "created_at": { "type": "string" },
+      "complete": { "type": "boolean" }
+    } },
     "discount_first_order_only": {
       "type": "boolean",
       "default": false,
@@ -255,16 +274,7 @@
   ],
   "rls": {
     "create": {
-      "$or": [
-        {
-          "data.customer_email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": { "role": "admin" }
     },
     "read": {
       "$or": [

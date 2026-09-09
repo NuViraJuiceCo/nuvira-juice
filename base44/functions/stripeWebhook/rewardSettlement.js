@@ -5,6 +5,7 @@ import { verifiedNoPaymentCreditSnapshot } from '../../shared/noPaymentCredit.js
 import { settleNoPaymentCheckoutCredit } from '../../shared/checkoutCredit.js';
 import { verifiedNoPaymentBirthdaySnapshot } from '../../shared/noPaymentBirthday.js';
 import { settleNoPaymentBirthdayCheckout } from '../createPaymentIntent/birthdayCheckout.js';
+import { noPaymentRouteOutcome } from '../../shared/routeReview.js';
 export const REWARD_SETTLEMENT_REVISION = '2026-09-08.reward-settlement-v1';
 
 export function isVerifiedNoPaymentOrder(order) {
@@ -66,6 +67,7 @@ export async function finalizeNoPaymentRewardOrder({ entities, stripe, event, se
   requireExact(typeof entities.Order?.updateMany === 'function', 'conditional_order_updates_unavailable');
   const session = await stripe.checkout.sessions.retrieve(eventSession.id);
   const metadata = session?.metadata || {};
+  requireExact(await noPaymentRouteOutcome(entities, session) === 'consumed', 'route_review_approval_required');
   requireExact(session?.id === eventSession.id && session.livemode === true && session.currency === 'usd'
     && session.mode === 'payment' && session.status === 'complete' && session.payment_status === 'no_payment_required'
     && session.amount_total === 0 && session.payment_intent === null

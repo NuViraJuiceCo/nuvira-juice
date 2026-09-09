@@ -109,6 +109,7 @@ function fixture({ connected = false } = {}) {
       require: name => {
         if (name.includes('@base44/sdk')) return { createClientFromRequest: () => ({ auth: { me: async () => null }, asServiceRole: { entities } }) };
         if (name.includes('pointsAccount')) return ledger;
+      if (name.includes('routeReview')) return routeReview;
         if (name.includes('stripe')) return class { checkout = stripe.checkout; };
         throw new Error(`Unexpected import ${name}`);
       },
@@ -404,6 +405,9 @@ function actualWebhook(f, { missingSecret = false, staging = false, invalidSigna
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('rewardWebhook')) return rewardWebhook;
+      if (name.includes('routeReviewDecision')) return routeReviewDecision;
+      if (name.includes('routeReviewNotifications')) return routeReviewNotifications;
+      if (name.includes('routeReview')) return routeReview;
       if (name.includes('rewardHandoffRuntime')) return rewardHandoffRuntime;
       if (name.includes('refundRecovery')) return refundRecovery;
       if (name.includes('refundProof')) return refundProof;
@@ -464,3 +468,6 @@ if (process.argv[1]?.endsWith('run-no-payment-reward-settlement-tests.mjs')) {
   for (const [name, fn] of tests) { try { await fn(); passed++; console.log(`PASS ${name}`); } catch (error) { console.error(`FAIL ${name}`, error); process.exitCode = 1; } }
   console.log(`No-payment reward settlement: ${passed}/${tests.length}; local source and simulated provider/storage only.`);
 }
+import * as routeReview from '../../base44/shared/routeReview.js';
+import * as routeReviewDecision from '../../base44/shared/routeReviewDecision.js';
+import * as routeReviewNotifications from '../../base44/shared/routeReviewNotifications.js';

@@ -62,7 +62,10 @@ assert.doesNotMatch(
 assert.match(checkout, /return <Navigate to="\/cart" replace \/>;/);
 assert.doesNotMatch(checkout, /if \(items\.length === 0\) \{\s*navigate\(['"]\/cart['"]\)/);
 
-for (const source of [createPaymentIntent, createZone3AuthorizationIntent]) {
+assert.match(createZone3AuthorizationIntent, /base44.functions.invoke\('createPaymentIntent'/);
+assert.match(createZone3AuthorizationIntent, /\.\.\.body, mode: 'prepare_route_review', guest_checkout: false/);
+assert.doesNotMatch(createZone3AuthorizationIntent, /paymentIntents.create/);
+for (const source of [createPaymentIntent]) {
   assert.match(source, /CUSTOMER_NAME_REQUIRED/, 'Payment functions must reject missing structured customer identity');
   assert.match(source, /INVALID_ORDER_ITEMS/, 'Payment functions must reject unusable fulfillment items');
   assert.match(source, /CUSTOMER_PHONE_REQUIRED/, 'Payment functions must reject missing fulfillment phone numbers');
