@@ -27,8 +27,10 @@ function cents(value) {
 }
 const dollars = value => value / 100;
 const size = product => String(product?.size || '').toLowerCase().replace(/\s+/g, '');
-const juice = product => product?.category === 'juice' && /^(12oz|12floz|355ml)$/.test(size(product));
-const shot = product => product?.category === 'shot' && /^(2oz|2floz|60ml)$/.test(size(product));
+// Accept the dual-unit labels stored in the live catalog, without accepting a
+// mismatched volume, bundle description or arbitrary substring.
+const juice = product => product?.category === 'juice' && /^(?:(?:12oz|12floz)(?:\/355ml)?|355ml)$/.test(size(product));
+const shot = product => product?.category === 'shot' && /^(?:(?:2oz|2floz)(?:\/60ml)?|60ml)$/.test(size(product));
 const isEarned = item => item?.isFreeReward === true || Boolean(item?.reward_id)
   || String(item?.product_id || '').startsWith('__free_reward_');
 

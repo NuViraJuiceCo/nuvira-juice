@@ -14,10 +14,10 @@ import * as offers from '../../base44/functions/createPaymentIntent/firstOrderEl
 // Synthetic in-memory fixtures only. Entity writes and external/provider calls throw.
 let passed = 0;
 async function test(name, run) { await run(); passed++; console.log('PASS', name); }
-const product = (id, extra = {}) => ({ id, title: id.toUpperCase(), category: 'juice', size: '12 oz',
+const product = (id, extra = {}) => ({ id, title: id.toUpperCase(), category: 'juice', size: '12oz / 355ml',
   price: 13, is_available: true, image_url: `https://images.example.test/${id}.png`, ...extra });
 const products = [product('oasis'), product('aura'), product('renu'),
-  product('shot', { category: 'shot', size: '2 oz', price: 6 }),
+  product('shot', { category: 'shot', size: '2oz / 60ml', price: 6 }),
   product('large', { size: '32 oz', price: 15 }),
   product('trio', { category: 'bundle', size: '3 x 12 oz', bottle_count: 3, price: 36 }),
   product('tote', { category: 'merch', size: '', price: 10 })];
@@ -83,7 +83,7 @@ await test('canonical catalog overrides client reward cost type title price and 
   const result = quote('discount_10pct', [paid('oasis', 3)], { requestedReward: { id: reward('discount_10pct').id,
     title: 'Forged', points_required: 1, reward_type: 'vip_box' } });
   assert.equal(result.active_reward.reward_type, 'discount_10pct'); assert.equal(result.points_required, 2500);
-  assert.equal(result.items[0].size, '12 oz'); assert.equal(result.items[0].price, 13);
+  assert.equal(result.items[0].size, '12oz / 355ml'); assert.equal(result.items[0].price, 13);
 });
 for (const [name, patch, code] of [
   ['inactive', { reward: { ...reward('discount_10pct'), is_active: false } }, 'REWARD_UNAVAILABLE'],

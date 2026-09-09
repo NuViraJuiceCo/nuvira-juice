@@ -58,7 +58,7 @@ export function verifiedNoPaymentBirthdaySnapshot(data, meta) {
       gifts++;
       check(item.isBirthdayReward === true && item.birthday_product_id === request.product_id
         && item.product_id === request.product_id && item.quantity === 1 && item.price === 0
-        && item.category === 'juice' && /^(12oz|12floz|355ml)$/.test(String(item.size).toLowerCase().replace(/\s+/g, ''))
+        && item.category === 'juice' && /^(?:(?:12oz|12floz)(?:\/355ml)?|355ml)$/.test(String(item.size).toLowerCase().replace(/\s+/g, ''))
         && cents(item.catalog_unit_price) === request.retail_value_cents
         && cents(item.birthday_discount_amount) === request.retail_value_cents);
     } else check(cents(item.price) > 0);

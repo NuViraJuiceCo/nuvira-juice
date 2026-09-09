@@ -8,8 +8,10 @@ export class BirthdayEntitlementError extends Error {
 const fail = code => { throw new BirthdayEntitlementError(code); };
 const DAY = 86400000;
 const id = value => typeof value === 'string' && /^[A-Za-z0-9._:-]{1,120}$/.test(value);
+// Base44 created_date uses microseconds; preserve strict date/time/zone checks
+// while accepting its six-digit fractional seconds as well as JS milliseconds.
 const timestamp = value => typeof value === 'string'
-  && /^\d{4}-\d\d-\d\dT(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value)
+  && /^\d{4}-\d\d-\d\dT(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value)
   && day(value.slice(0, 10)) !== null && Number.isFinite(Date.parse(value));
 function day(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\d$/.test(value)) return null;

@@ -8,10 +8,10 @@ export function rewardProductEligible(reward, product) {
   if (!product?.id || product.is_available === false) return false;
   const size = String(product.size || '').toLowerCase().replace(/\s+/g, '');
   if (reward?.reward_type === 'free_shot') {
-    return product.category === 'shot' && /^(2oz|2floz|60ml)$/.test(size);
+    return product.category === 'shot' && /^(?:(?:2oz|2floz)(?:\/60ml)?|60ml)$/.test(size);
   }
   if (['free_bottle', 'bundle_upgrade', 'vip_box'].includes(reward?.reward_type)) {
-    return product.category === 'juice' && /^(12oz|12floz|355ml)$/.test(size);
+    return product.category === 'juice' && /^(?:(?:12oz|12floz)(?:\/355ml)?|355ml)$/.test(size);
   }
   return false;
 }
