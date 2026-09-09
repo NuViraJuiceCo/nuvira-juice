@@ -2,6 +2,7 @@
 // query/update operators; never falls back to an unconditional balance write.
 // Release requires an isolated Base44 conditional-write contract test in addition
 // to local fixtures. This module does not claim multi-record transactions.
+import { birthdayReservationState, reserveBirthdayOperation, settleBirthdayOperation } from '../../shared/birthdayEntitlement.js';
 export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-direct-payment-v4';
 export const DIRECT_POINTS_CHECKOUT_REVISION = '2026-09-08.direct-points-v1';
 
@@ -197,6 +198,23 @@ export async function reserveRewardPoints(entities, customerEmail, request) {
       created_at: request.created_at || new Date().toISOString() };
     return { reservation, patch: { reserved_points: state.reserved + points,
       reward_reservations: [...state.holds, reservation] } };
+  });
+}
+
+// Internal primitives only; no public action is enabled until checkout,
+// cancellation, webhook and recovery callers all carry verified birthday proof.
+export async function reserveBirthdayGift(entities, customerEmail, request, identity, now = Date.now()) {
+  return mutate(entities, customerEmail, row => {
+    const operation = reserveBirthdayOperation(row, request, identity, now);
+    birthdayReservationState({ ...row, ...operation.patch });
+    return operation;
+  });
+}
+export async function settleBirthdayGift(entities, customerEmail, request, now = Date.now()) {
+  return mutate(entities, customerEmail, row => {
+    const operation = settleBirthdayOperation(row, request, now);
+    birthdayReservationState({ ...row, ...operation.patch });
+    return operation;
   });
 }
 
