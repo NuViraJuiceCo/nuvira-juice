@@ -6,6 +6,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
  */
 
 export default async (req: Request) => {
+  if (req.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, { status: 405 });
   if (Deno.env.get('ENABLE_PRODUCT_SHOPIFY_AUTOMATION') !== 'true') {
     return Response.json({
       success: true,
@@ -16,6 +17,12 @@ export default async (req: Request) => {
   }
 
   const base44 = createClientFromRequest(req);
+  // Inactive legacy automation stays inactive. If deliberately enabled, its
+  // caller must authenticate just like other admin entity-automation handlers.
+  const caller = await base44.auth.me().catch(() => null);
+  if (!caller || !['admin', 'owner'].includes(String(caller.role || '').trim().toLowerCase())) {
+    return Response.json({ error: 'admin_access_required' }, { status: caller ? 403 : 401 });
+  }
 
   const SHOPIFY_API_TOKEN = Deno.env.get('SHOPIFY_API_TOKEN');
   const SHOPIFY_STORE_URL = Deno.env.get('SHOPIFY_STORE_URL');

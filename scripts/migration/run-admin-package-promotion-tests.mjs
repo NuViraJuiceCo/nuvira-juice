@@ -16,7 +16,7 @@ for (const method of ['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']) {
   const response = await serve(new Request('https://example.test/admin', {method}));
   assert.equal(response.status, 405);
   assert.deepEqual(await response.json(), {error: 'method_not_allowed'});
-  assert.equal(response.headers.get('x-nuvira-admin-revision'), '2026-09-09.admin-package-g165-parity');
+  assert.equal(response.headers.get('x-nuvira-admin-revision'), '2026-09-09.admin-package-g165-auth-parity');
   assert.equal(response.headers.get('cache-control'), 'no-store');
 }
 assert.equal(calls, 0, 'Revision probe must never dispatch a handler.');
@@ -31,7 +31,7 @@ assert.equal(response.headers.has('x-nuvira-admin-revision'), false, 'POST respo
 assert.equal(calls, 1);
 const bundle = await build({entryPoints: [file], bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', external: ['npm:*', 'node:*'], banner: {js: '// @ts-nocheck'}, write: false});
 const text = bundle.outputFiles[0].text;
-assert.ok(text.includes('2026-09-09.admin-package-g165-parity'));
+assert.ok(text.includes('2026-09-09.admin-package-g165-auth-parity'));
 assert.ok(text.includes('verified_output_below_event_allocation_total'));
 assert.ok(text.includes('verified_output_exceeds_event_allocation_total'));
 assert.ok(!text.includes('verified_output_must_equal_event_allocation_total'));

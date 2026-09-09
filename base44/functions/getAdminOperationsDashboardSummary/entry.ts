@@ -1,6 +1,6 @@
 // @ts-nocheck
 // Read-only deployment proof; POST routing and authorization remain unchanged.
-const ADMIN_PACKAGE_REVISION = '2026-09-09.admin-package-g165-parity';
+const ADMIN_PACKAGE_REVISION = '2026-09-09.admin-package-g165-auth-parity';
 // Bundle revision: g165-production-yield-surplus-20260828.
 // Bundle revision: g127-product-date-batching-multi-event-pos-allocation-20260824.
 // Bundle revision: g127b-hide-superseded-product-batches-20260824.
