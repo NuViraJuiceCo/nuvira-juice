@@ -1,4 +1,6 @@
 // @ts-nocheck
+// Read-only deployment proof; POST routing and authorization remain unchanged.
+const ADMIN_PACKAGE_REVISION = '2026-09-09.admin-package-g165-parity';
 // Bundle revision: g165-production-yield-surplus-20260828.
 // Bundle revision: g127-product-date-batching-multi-event-pos-allocation-20260824.
 // Bundle revision: g127b-hide-superseded-product-batches-20260824.
@@ -183,7 +185,10 @@ const RETIRED_LEGACY_HUB_ACTIONS = new Set([
 ]);
 
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, { status: 405 });
+  if (req.method !== 'POST') return Response.json({ error: 'method_not_allowed' }, {
+    status: 405,
+    headers: { 'X-NuVira-Admin-Revision': ADMIN_PACKAGE_REVISION, 'Cache-Control': 'no-store' },
+  });
 
   const rawBody = await req.text();
   let body: Record<string, unknown> = {};
