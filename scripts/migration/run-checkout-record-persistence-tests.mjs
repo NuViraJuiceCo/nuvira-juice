@@ -6,6 +6,7 @@ import { transformSync } from 'esbuild';
 import * as offers from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
 import * as rewards from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
 import * as noPayment from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
+import * as paidRecovery from '../../base44/functions/createPaymentIntent/paidCheckoutRecovery.js';
 import * as pointsLedger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 
 const source = fs.readFileSync('base44/functions/createPaymentIntent/entry.ts', 'utf8');
@@ -27,7 +28,8 @@ const option = { option_id: 'synthetic-saturday', production_date: '2026-09-11',
 function fixture({ guest = false, failOrder = false, failSession = false, failCancel = false, failReserve = false,
   failRelease = false, missingId = '', strictStripe = false, seed = {}, noRewardSecret = false, distanceMiles = 2,
   failCredit = false, loseCreditAck = false, ignoreCreditWrite = false,
-  realLedger = false, ignorePointsWrite = false, losePointsAck = false, failCatalog = false } = {}) {
+  realLedger = false, ignorePointsWrite = false, losePointsAck = false, failCatalog = false,
+  recoveryKey = false, cancelCaptureRace = false, ignoreOrderWrite = false } = {}) {
   const rows = { Order: [], CheckoutSession: [], Product: [{ id: 'oasis-test', title: 'OASIS', price: 13,
     category: 'juice', size: '12 oz', is_available: true }], Subscription: [], SubscriptionPlan: [], UserProfile: [],
     RewardTier: [{ id: 'reward-test', title: 'Double Points', reward_type: 'double_points', points_required: 1500, is_active: true }],
@@ -56,11 +58,12 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       Object.assign(row, structuredClone(patch)); return structuredClone(row);
     },
     updateMany: async (query, update) => {
-      assert.ok(['NuViraCredit', 'UserPoints', 'LoyaltyMember'].includes(name));
+      assert.ok(['NuViraCredit', 'UserPoints', 'LoyaltyMember', 'Order'].includes(name));
       effects.push(name === 'NuViraCredit' ? 'credit.CAS' : `${name}.CAS`);
       if (name === 'NuViraCredit' && failCredit) throw new Error('SYNTHETIC_ONLY credit outage');
       const found = values.filter(row => match(row, query)); assert.ok(found.length <= 1);
-      if (!(name === 'NuViraCredit' && ignoreCreditWrite) && !(name === 'UserPoints' && ignorePointsWrite)) found.forEach(row => Object.assign(row, structuredClone(update.$set)));
+      if (!(name === 'NuViraCredit' && ignoreCreditWrite) && !(name === 'UserPoints' && ignorePointsWrite)
+        && !(name === 'Order' && ignoreOrderWrite)) found.forEach(row => Object.assign(row, structuredClone(update.$set)));
       if (name === 'NuViraCredit' && loseCreditAck && !lostCreditAck) { lostCreditAck = true; throw new Error('SYNTHETIC_ONLY lost credit acknowledgement'); }
       if (name === 'UserPoints' && losePointsAck && !lostPointsAck) { lostPointsAck = true; throw new Error('SYNTHETIC_ONLY lost points acknowledgement'); }
       return { success: true, updated: found.length, has_more: false };
@@ -112,7 +115,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       return { data: { options: [option] } };
     } } } };
   const module = { exports: {} };
-  const env = { GOOGLE_MAPS_API_KEY: 'synthetic-maps-key', STRIPE_PUBLISHABLE_KEY: 'pk_test_synthetic',
+  const env = { GOOGLE_MAPS_API_KEY: 'synthetic-maps-key', STRIPE_PUBLISHABLE_KEY: recoveryKey ? 'pk_live_SYNTHETICONLY' : 'pk_test_synthetic',
     STRIPE_SECRET_KEY: 'synthetic-only-provider-key',
     LOYALTY_LEDGER_SECRET: noRewardSecret ? undefined : 'synthetic-ledger-secret' };
   const runtime = {
@@ -129,6 +132,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
       if (name.includes('rewardCheckout')) return rewards;
       if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('noPaymentCheckout')) return noPayment;
+      if (name.includes('paidCheckoutRecovery')) return paidRecovery;
       if (name.includes('pointsAccount')) return pointsLedger;
       if (name.includes('stripe')) return class {
         constructor() { this.paymentIntents = {
@@ -140,11 +144,12 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
               error.type = 'StripeIdempotencyError'; throw error;
             }
             originalParameters ||= parameters;
-            storedIntent ||= { id: 'pi_test_synthetic', client_secret: 'unit-test',
+            storedIntent ||= { id: 'pi_test_synthetic', client_secret: recoveryKey ? 'pi_test_synthetic_secret_SYNTHETICONLY' : 'unit-test',
               livemode: true, status: 'requires_payment_method', ...structuredClone(data) }; return structuredClone(storedIntent);
           },
           retrieve: async id => { effects.push('PI.retrieve'); assert.equal(id, storedIntent.id); return structuredClone(storedIntent); },
-          cancel: async id => { effects.push('PI.cancel'); assert.equal(id, 'pi_test_synthetic'); if (failCancel) throw new Error('Synthetic cancellation unavailable'); storedIntent.status = 'canceled'; return structuredClone(storedIntent); },
+          cancel: async id => { effects.push('PI.cancel'); assert.equal(id, 'pi_test_synthetic'); if (failCancel) throw new Error('Synthetic cancellation unavailable');
+            storedIntent.status = cancelCaptureRace ? 'processing' : 'canceled'; return structuredClone(storedIntent); },
         }; this.checkout = { sessions: {
           create: async (data, options) => {
             effects.push('Session.create');
@@ -643,5 +648,112 @@ await test('points-only zero-cash checkout never becomes a fabricated fifty-cent
   } });
   const result = await (await ctx.handle({ points_used: 3510, points_discount: 35.1 })).json();
   assert.equal(result.error_code, 'POINTS_BALANCE_REQUIRES_REVIEW'); assert.equal(ctx.effects.length, 0);
+});
+for (const guest of [false, true]) {
+  for (const state of ['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing', 'requires_capture', 'succeeded', 'canceled']) {
+    await test(`${guest ? 'guest' : 'member'} recovers existing ${state} payment with no writes or new intent`, async () => {
+      const ctx = fixture({ guest, recoveryKey: true });
+      const start = await (await ctx.handle()).json();
+      ctx.intent().status = state;
+      if (state === 'succeeded') ctx.intent().amount_received = ctx.intent().amount;
+      const before = JSON.stringify(ctx.rows); const effectCount = ctx.effects.length;
+      const request = { order_number: start.orderNumber, guest_order_token: guest ? body.guest_order_token : null };
+      const result = await (await ctx.handle({ ...request, mode: 'read_paid_checkout_recovery' })).json();
+      assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(result.state, state);
+      assert.equal(result.order_number, start.orderNumber); assert.equal(result.total, 42.99);
+      assert.equal(result.clientSecret, undefined); assert.equal(result.writes_performed, false);
+      assert.equal(JSON.stringify(ctx.rows), before); assert.deepEqual(ctx.effects.slice(effectCount), ['PI.retrieve']);
+      assert.doesNotMatch(JSON.stringify(result), /buyer@|2025550100|123 Example|secret|SYNTHETICONLY/);
+      const resumed = await (await ctx.handle({ ...request, mode: 'resume_paid_checkout' })).json();
+      assert.equal(resumed.ok, ['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(state));
+      if (resumed.ok) assert.equal(resumed.clientSecret, ctx.intent().client_secret);
+      else assert.equal(resumed.clientSecret, undefined);
+      assert.equal(ctx.effects.filter(x => x === 'PI.create').length, 1);
+    });
+  }
+  await test(`${guest ? 'guest' : 'member'} cancellation confirms provider and order before retry permission`, async () => {
+    const ctx = fixture({ guest, recoveryKey: true }); const start = await (await ctx.handle()).json();
+    const request = { mode: 'cancel_paid_checkout', order_number: start.orderNumber,
+      guest_order_token: guest ? body.guest_order_token : null };
+    const result = await (await ctx.handle(request)).json(); assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.payment_attempt_canceled, true); assert.equal(result.order_cancelled, true);
+    assert.equal(ctx.rows.Order[0].do_not_recover, true); assert.equal(ctx.rows.Order[0].payment_captured, false);
+    assert.ok(ctx.effects.indexOf('Order.CAS') > ctx.effects.indexOf('PI.cancel'));
+    assert.equal((await (await ctx.handle(request)).json()).ok, true);
+    assert.equal(ctx.effects.filter(x => x === 'PI.cancel').length, 1);
+  });
+}
+await test('real ledger points and credits remain held during recovery and release once after cancellation', async () => {
+  const ctx = fixture({ realLedger: true, seed: creditSeed, recoveryKey: true });
+  await ctx.handle({ points_used: 1000, points_discount: 10, credits_discount: 6 });
+  const request = { guest_order_token: null };
+  const prior = JSON.stringify(ctx.rows);
+  assert.equal((await (await ctx.handle({ ...request, mode: 'resume_paid_checkout' })).json()).ok, true);
+  assert.equal(JSON.stringify(ctx.rows), prior);
+  const result = await (await ctx.handle({ ...request, mode: 'cancel_paid_checkout' })).json();
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 0); assert.equal(ctx.rows.UserPoints[0].total_points, 7000);
+  assert.equal(ctx.rows.NuViraCredit[0].reserved_balance, 0); assert.equal(ctx.rows.NuViraCredit[0].balance, 10);
+  assert.equal(ctx.rows.Order[0].status, 'cancelled');
+  assert.equal((await (await ctx.handle({ ...request, mode: 'cancel_paid_checkout' })).json()).ok, true);
+  assert.equal(ctx.rows.UserPoints[0].reserved_points, 0); assert.equal(ctx.rows.NuViraCredit[0].balance, 10);
+});
+for (const [label, options] of [
+  ['cancellation outage', { failCancel: true }], ['capture race', { cancelCaptureRace: true }],
+  ['ignored order write', { ignoreOrderWrite: true }], ['ledger release failure', { failRelease: true }],
+]) await test(`${label} never grants retry permission`, async () => {
+  const ctx = fixture({ ...options, recoveryKey: true });
+  await ctx.handle({ active_reward: selected });
+  const result = await (await ctx.handle({ mode: 'cancel_paid_checkout', guest_order_token: null })).json();
+  assert.equal(result.ok, false, JSON.stringify(result)); assert.equal(result.payment_attempt_canceled, false);
+  assert.equal(result.benefit_reservations_released, undefined);
+  if (options.failCancel || options.cancelCaptureRace) assert.equal(ctx.rows.UserPoints[0].reserved_points, 1500);
+});
+for (const [label, mutate] of [
+  ['missing session', ctx => { ctx.rows.CheckoutSession.length = 0; }],
+  ['missing order', ctx => { ctx.rows.Order.length = 0; }],
+  ['duplicate session', ctx => { ctx.rows.CheckoutSession.push(structuredClone(ctx.rows.CheckoutSession[0])); }],
+  ['duplicate order', ctx => { ctx.rows.Order.push(structuredClone(ctx.rows.Order[0])); }],
+  ['foreign account ID', ctx => { ctx.rows.CheckoutSession[0].checkout_data.customer_app_user_id = 'other'; }],
+  ['foreign outer email', ctx => { ctx.rows.CheckoutSession[0].customer_email = 'other@example.test'; }],
+  ['foreign provider email', ctx => { ctx.intent().metadata.customer_email = 'other@example.test'; }],
+  ['wrong context', ctx => { ctx.intent().metadata.checkout_context_hash = 'b'.repeat(64); }],
+  ['old snapshot', ctx => { delete ctx.rows.CheckoutSession[0].checkout_data.paid_recovery_revision; }],
+  ['test payment', ctx => { ctx.intent().livemode = false; }],
+  ['test order', ctx => { ctx.rows.Order[0].is_test_order = true; }],
+  ['amount mismatch', ctx => { ctx.intent().amount++; }],
+  ['refund', ctx => { ctx.rows.Order[0].payment_status = 'refunded'; }],
+  ['false success', ctx => { ctx.intent().status = 'succeeded'; ctx.intent().amount_received = 0; }],
+]) await test(`${label} keeps paid recovery unresolved and secret withheld`, async () => {
+  const ctx = fixture({ recoveryKey: true }); await ctx.handle(); mutate(ctx);
+  const count = ctx.effects.length; const before = JSON.stringify(ctx.rows);
+  for (const mode of ['read_paid_checkout_recovery', 'resume_paid_checkout', 'cancel_paid_checkout']) {
+    const result = await (await ctx.handle({ mode, guest_order_token: null })).json();
+    assert.equal(result.ok, false, label); assert.equal(result.clientSecret, undefined);
+    assert.doesNotMatch(JSON.stringify(result), /buyer@|secret_SYNTHETIC|PRIVATE/);
+  }
+  assert.equal(JSON.stringify(ctx.rows), before); assert.ok(ctx.effects.slice(count).every(x => x === 'PI.retrieve'));
+});
+await test('guest cannot recover using only an email, order number or expired bearer token', async () => {
+  const ctx = fixture({ guest: true, recoveryKey: true }); const start = await (await ctx.handle()).json();
+  for (const patch of [{ guest_order_token: null }, { guest_order_token: 'wrong-synthetic-token-1234567890' },
+    { checkout_idempotency_key: 'wrong-synthetic-attempt-1234567890' }, { guest_checkout: false }]) {
+    const before = ctx.effects.length;
+    assert.equal((await ctx.handle({ mode: 'read_paid_checkout_recovery', order_number: start.orderNumber, ...patch })).status, 409);
+    assert.equal(ctx.effects.length, before);
+  }
+  ctx.rows.CheckoutSession[0].expires_at = '2020-01-01T00:00:00Z';
+  assert.equal((await ctx.handle({ mode: 'read_paid_checkout_recovery', order_number: start.orderNumber })).status, 409);
+});
+await test('released points, missing credit hold, expired context cannot revive a payment secret', async () => {
+  for (const change of ['points', 'credit', 'expired']) {
+    const ctx = fixture({ recoveryKey: true, seed: creditSeed, realLedger: true });
+    await ctx.handle({ points_used: 1000, points_discount: 10, credits_discount: 6 });
+    if (change === 'points') { ctx.rows.UserPoints[0].reward_reservations[0].status = 'released'; ctx.rows.UserPoints[0].reserved_points = 0; }
+    if (change === 'credit') { ctx.rows.NuViraCredit[0].checkout_reservations = []; ctx.rows.NuViraCredit[0].reserved_balance = 0; }
+    if (change === 'expired') ctx.rows.CheckoutSession[0].expires_at = '2020-01-01T00:00:00Z';
+    const result = await (await ctx.handle({ mode: 'resume_paid_checkout', guest_order_token: null })).json();
+    assert.equal(result.ok, false); assert.equal(result.clientSecret, undefined);
+  }
 });
 console.log(`Checkout record persistence: ${passed}/${passed} passed. Real handler, synthetic storage/Maps/Stripe only; no external calls or production writes.`);

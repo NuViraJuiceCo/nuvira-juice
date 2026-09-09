@@ -7,6 +7,8 @@ import { transformSync } from 'esbuild';
 import * as attempt from '../../src/lib/rewardCheckoutAttempt.js';
 import * as recovery from '../../src/lib/rewardCheckoutRecovery.js';
 import * as noPayment from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
+import * as paidRecovery from '../../base44/functions/createPaymentIntent/paidCheckoutRecovery.js';
+import { readPaidCheckoutAttempt } from '../../src/lib/paidCheckoutAttempt.js';
 import * as rewards from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
 import * as offers from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
 
@@ -96,6 +98,7 @@ function backendFixture({ user = { id: owner, email }, balancePatch = {}, holdPa
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
       if (name.includes('noPaymentCheckout')) return noPayment;
+      if (name.includes('paidCheckoutRecovery')) return paidRecovery;
       if (name.includes('rewardCheckout')) return rewards;
       if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('firstOrderEligibility')) return offers;
@@ -193,6 +196,8 @@ function frontFixture({ pending = true, state = 'open', failure = false, deferre
   const callback = vm.runInNewContext(`(${effect})`, { isLoadingAuth: false, user: { id: owner },
     setTimeout: (fn, ms) => { assert.equal(ms, 15000); timeout = fn; return 1; }, clearTimeout: () => {},
     localStorage: store, readRewardCheckoutAttempt: attempt.readRewardCheckoutAttempt,
+    readPaidCheckoutAttempt, paidAttemptRef: { current: null }, setPaidRecovery: setter('paid'),
+    checkoutAttemptInFlightRef: { current: false }, setIsSubmitting: setter('submitting'),
     rewardRecoveryOwnerRef: ownerRef, rewardAttemptTrackedRef: trackedRef,
     readRewardCheckoutRecovery: recovery.readRewardCheckoutRecovery, checkoutIdempotencyKey: key,
     setRewardCheckoutRecovery: setter('recovery'), setRewardRecoveryState: setter('state'),

@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { transformSync } from 'esbuild';
 import * as checkout from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
 import * as noPaymentCheckout from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
+import * as paidRecovery from '../../base44/functions/createPaymentIntent/paidCheckoutRecovery.js';
 import * as offers from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
 
 // Synthetic in-memory fixtures only. Entity writes and external/provider calls throw.
@@ -173,6 +174,7 @@ function handler(db) {
       if (name.includes('rewardCheckout')) return checkout;
       if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('noPaymentCheckout')) return noPaymentCheckout;
+      if (name.includes('paidCheckoutRecovery')) return paidRecovery;
       if (name.includes('firstOrderEligibility')) return offers;
       if (name.includes('stripe')) return class { constructor() { return new Proxy({}, { get() { throw new Error('Stripe use forbidden'); } }); } };
       throw new Error(`Unexpected dependency: ${name}`);

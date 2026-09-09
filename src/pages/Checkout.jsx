@@ -5,6 +5,8 @@ import CheckoutExperience, { CheckoutAction, CheckoutAddress } from '@/component
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
 import RewardEmbeddedCheckout from '@/components/checkout/RewardEmbeddedCheckout';
+import PaidCheckoutRecovery from '@/components/checkout/PaidCheckoutRecovery';
+import { readPaidCheckoutAttempt, savePaidCheckoutAttempt, clearPaidCheckoutAttempt } from '@/lib/paidCheckoutAttempt';
 import { readRewardCheckoutRecovery, cancelRewardCheckoutRecovery } from '@/lib/rewardCheckoutRecovery';
 import { readRewardCheckoutAttempt, saveRewardCheckoutAttempt, clearRewardCheckoutAttempt } from '@/lib/rewardCheckoutAttempt';
 import { rewardDeliveryMinimumSubtotal } from '@/lib/rewardDeliveryMinimum';
@@ -159,6 +161,8 @@ function CheckoutFlow() {
   const [rewardRecoveryCheckedOwner, setRewardRecoveryCheckedOwner] = useState(null);
   const rewardAttemptTrackedRef = useRef(false);
   const rewardRecoveryOwnerRef = useRef(null);
+  const paidAttemptRef = useRef(null);
+  const [paidRecovery, setPaidRecovery] = useState(null);
   const [publishableKey, setPublishableKey] = useState(null);
   const [pendingOrderNumber, setPendingOrderNumber] = useState(null);
   const [paymentTotal, setPaymentTotal] = useState(0);
@@ -481,6 +485,11 @@ function CheckoutFlow() {
     clearRewardCheckoutAttempt(localStorage, user.id, checkoutIdempotencyKey.current);
     rewardAttemptTrackedRef.current = false;
   };
+  const forgetPaidAttempt = () => {
+    if (!paidAttemptRef.current) return;
+    clearPaidCheckoutAttempt(localStorage, paidAttemptRef.current);
+    paidAttemptRef.current = null;
+  };
 
   React.useEffect(() => {
     if (isLoadingAuth) return;
@@ -497,8 +506,24 @@ function CheckoutFlow() {
         setClientSecret(null);
         setCheckoutStartLockedSafely(false);
         setCheckoutStartMessage('');
+        checkoutAttemptInFlightRef.current = false;
+        setIsSubmitting(false);
         rewardAttemptTrackedRef.current = false;
+        paidAttemptRef.current = null;
+        setPaidRecovery(null);
+        const guestPending = readPaidCheckoutAttempt(localStorage, 'guest');
+        const memberPending = owner ? readPaidCheckoutAttempt(localStorage, `account:${owner}`) : null;
         const pending = owner ? readRewardCheckoutAttempt(localStorage, owner) : null;
+        if (guestPending || memberPending) {
+          if ((guestPending && memberPending) || pending) throw new Error('multiple_checkout_attempts_need_review');
+          const paid = memberPending || guestPending;
+          paidAttemptRef.current = paid;
+          checkoutIdempotencyKey.current = paid.attempt_key;
+          if (paid.owner === 'guest') guestOrderToken.current = paid.guest_order_token;
+          setCheckoutStartLockedSafely(true);
+          setPaidRecovery({ attempt: paid });
+          return;
+        }
         if (!pending) return;
         rewardAttemptTrackedRef.current = true;
         checkoutIdempotencyKey.current = pending.attempt_key;
@@ -526,6 +551,8 @@ function CheckoutFlow() {
           : 'An earlier reward checkout was found. Check your orders, or cancel that attempt before starting again.');
       } catch {
         if (cancelled) return;
+        // Corrupt/inaccessible storage is not proof there was no paid attempt.
+        if (!rewardAttemptTrackedRef.current) setPaidRecovery({ attempt: null });
         setCheckoutStartLockedSafely(true);
         setCheckoutStartStage(CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN);
         setCheckoutStartMessage('We could not confirm your earlier reward checkout. Check your orders or contact NuVira before starting again.');
@@ -599,7 +626,7 @@ function CheckoutFlow() {
   };
 
   const showExplicitNoWriteCheckoutFailure = (message) => {
-    try { forgetRewardAttempt(); } catch {
+    try { forgetRewardAttempt(); forgetPaidAttempt(); } catch {
       showAmbiguousCheckoutStartState();
       return;
     }
@@ -619,6 +646,7 @@ function CheckoutFlow() {
     setCheckoutStartStage(CHECKOUT_START_STAGES.PAYMENT_ATTEMPT_STATE_UNKNOWN);
     setCheckoutStartMessage(CHECKOUT_COPY.AMBIGUOUS_STATE);
     setIsSubmitting(false);
+    if (paidAttemptRef.current) setPaidRecovery({ attempt: paidAttemptRef.current });
     toast.error(CHECKOUT_COPY.AMBIGUOUS_STATE);
   };
 
@@ -814,13 +842,29 @@ function CheckoutFlow() {
         ? getMetaCapiAttributionContext()
         : null;
 
+      if (!checkoutAttemptInFlightRef.current || checkoutCustomerIdentityRef.current !== `${user?.id || ''}:${user?.email || ''}`) return;
+
       // Persist before the request can reach Stripe. Only the fully covered
       // reward candidate uses this no-payment recovery contract. Storage
       // failure stops preparation; no secret, contact data or cart is saved.
       if (!isGuestCheckout && activeReward && totalBeforePromotion === 0) {
         saveRewardCheckoutAttempt(localStorage, user.id, checkoutIdempotencyKey.current);
         rewardAttemptTrackedRef.current = true;
+      } else {
+        const savedAttempt = await savePaidCheckoutAttempt(localStorage, {
+          owner: isGuestCheckout ? 'guest' : `account:${user.id}`, email: normalizedCustomerEmail,
+          attemptKey: checkoutIdempotencyKey.current, guestToken: isGuestCheckout ? guestOrderToken.current : null,
+        });
+        if (!checkoutAttemptInFlightRef.current || checkoutCustomerIdentityRef.current !== `${user?.id || ''}:${user?.email || ''}`) {
+          // No provider request was sent. Clear only this exact newly saved
+          // reference, not a newer account/tab's attempt.
+          try { clearPaidCheckoutAttempt(localStorage, savedAttempt); } catch { /* Retain ambiguous storage for review. */ }
+          return;
+        }
+        paidAttemptRef.current = savedAttempt;
       }
+
+      if (!checkoutAttemptInFlightRef.current || checkoutCustomerIdentityRef.current !== `${user?.id || ''}:${user?.email || ''}`) return;
 
       const res = await base44.functions.invoke('createPaymentIntent', {
         items,
@@ -880,6 +924,8 @@ function CheckoutFlow() {
         meta_capi_context: metaCapiContext,
       });
 
+      if (!checkoutAttemptInFlightRef.current || checkoutCustomerIdentityRef.current !== `${user?.id || ''}:${user?.email || ''}`) return;
+
       if (res.data?.checkoutKind === 'reward_no_payment' && res.data.checkoutCompleted === true
         && res.data.effectiveTotal === 0 && typeof res.data.orderNumber === 'string'
         && /^cs_[A-Za-z0-9_]+$/.test(res.data.checkoutSessionId || '') && !isGuestCheckout) {
@@ -888,7 +934,7 @@ function CheckoutFlow() {
         // A provider replay is not proof of local settlement. The confirmation
         // page polls the owned order and requires the verified reward receipt.
         clearCart();
-        try { forgetRewardAttempt(); } catch { /* The owned order remains the recovery destination. */ }
+        try { forgetRewardAttempt(); forgetPaidAttempt(); } catch { /* The owned order remains the recovery destination. */ }
         localStorage.removeItem('nuvira_pending_checkout_session');
         navigate(`/order-confirmation?order_number=${encodeURIComponent(res.data.orderNumber)}`);
         return;
@@ -904,8 +950,24 @@ function CheckoutFlow() {
         if (validRewardSession) {
           saveRewardCheckoutAttempt(localStorage, user.id, checkoutIdempotencyKey.current);
           rewardAttemptTrackedRef.current = true;
+          // The authoritative total can change the provider type (for example,
+          // a verified member delivery benefit). Save the new recovery kind
+          // before retiring the old one, never leave a confirmable gap.
+          forgetPaidAttempt();
+        } else {
+          if (!paidAttemptRef.current) {
+            const savedAttempt = await savePaidCheckoutAttempt(localStorage, {
+              owner: isGuestCheckout ? 'guest' : `account:${user.id}`, email: normalizedCustomerEmail,
+              attemptKey: checkoutIdempotencyKey.current, guestToken: isGuestCheckout ? guestOrderToken.current : null,
+            });
+            // Here Stripe already exists, so retain its old-owner marker even
+            // if the account changed while local persistence was finishing.
+            if (!checkoutAttemptInFlightRef.current || checkoutCustomerIdentityRef.current !== `${user?.id || ''}:${user?.email || ''}`) return;
+            paidAttemptRef.current = savedAttempt;
+          }
+          forgetRewardAttempt();
         }
-        else forgetRewardAttempt();
+        if (!checkoutAttemptInFlightRef.current || checkoutCustomerIdentityRef.current !== `${user?.id || ''}:${user?.email || ''}`) return;
         console.group('[NuVira Checkout] createPaymentIntent Response');
         console.log('Source              : FRESH call to createPaymentIntent (not localStorage/sessionStorage)');
         console.log('orderNumber         :', res.data.orderNumber);
@@ -959,6 +1021,7 @@ function CheckoutFlow() {
 
       showAmbiguousCheckoutStartState();
     } catch (error) {
+      if (!checkoutAttemptInFlightRef.current || checkoutCustomerIdentityRef.current !== `${user?.id || ''}:${user?.email || ''}`) return;
       const explicitFailure = error?.data || error?.response?.data || null;
       const recoverableReward = !isGuestCheckout && readRewardCheckoutRecovery(explicitFailure);
       if (recoverableReward) {
@@ -984,6 +1047,27 @@ function CheckoutFlow() {
       Checking your secure checkout…
     </div>;
   }
+
+  if (paidRecovery) return <PaidCheckoutRecovery key={`${user?.id || 'guest'}:${paidRecovery.attempt?.attempt_key || 'unknown'}`}
+    attempt={paidRecovery.attempt}
+    onCancelled={async () => {
+      forgetPaidAttempt();
+      checkoutIdempotencyKey.current = crypto.randomUUID();
+      guestOrderToken.current = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
+      setPaidRecovery(null); setClientSecret(null); setPendingOrderNumber(null); setConfirmedDeliverySchedule(null);
+      setCheckoutStartLockedSafely(false); setCheckoutStartMessage(''); setIsSubmitting(false);
+      setCheckoutStartStage(CHECKOUT_START_STAGES.IDLE);
+      await refreshCheckoutPoints();
+    }}
+    onReceipt={async (attempt, proof) => {
+      if (attempt.owner === 'guest') sessionStorage.setItem('nuvira_guest_order_confirmation', JSON.stringify({
+        order_number: attempt.order_number, token: attempt.guest_order_token, timestamp: Date.now(),
+      }));
+      // Processing is not final. Retain its recovery marker until success is
+      // provider-confirmed; never discard another cart assembled after reload.
+      if (proof.state === 'succeeded') forgetPaidAttempt();
+      navigate(`/order-confirmation?order_number=${encodeURIComponent(attempt.order_number)}${attempt.owner === 'guest' ? '&guest_checkout=1' : ''}`);
+    }} />;
 
   if (items.length === 0 && !checkoutStartLocked) {
     return <Navigate to="/cart" replace />;
@@ -1473,6 +1557,7 @@ function CheckoutFlow() {
               navigate(`/order-confirmation?order_number=${encodeURIComponent(pendingOrderNumber)}`);
             }}
           /> : <EmbeddedPayment
+            recoverOnReturn
             clientSecret={clientSecret}
             publishableKey={publishableKey}
             total={paymentTotal}
@@ -1489,6 +1574,9 @@ function CheckoutFlow() {
               void trackSnapAddBilling(items, paymentTotal);
             }}
             onSuccess={(paymentIntentId) => {
+              if (checkoutCustomerIdentityRef.current !== `${user?.id || ''}:${user?.email || ''}`) return;
+              // Keep the opaque marker until a fresh recovery/receipt read.
+              // Stripe can return requires_capture here; that is not final.
               clearCart();
               localStorage.removeItem('nuvira_pending_checkout_session');
               if (isGuestCheckout) {
@@ -1515,6 +1603,12 @@ function CheckoutFlow() {
           <button
             disabled={isSubmitting}
             onClick={async () => {
+              if (!rewardCheckoutSessionId && paidAttemptRef.current) {
+                setClientSecret(null);
+                setCheckoutStartLockedSafely(true);
+                setPaidRecovery({ attempt: paidAttemptRef.current });
+                return;
+              }
               if (rewardCheckoutSessionId) {
                 if (checkoutAttemptInFlightRef.current) return;
                 checkoutAttemptInFlightRef.current = true;

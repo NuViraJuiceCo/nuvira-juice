@@ -3,6 +3,7 @@ import Stripe from 'npm:stripe@14.21.0';
 import { firstOrderOfferIsConfigured, firstOrderEligibilityBlock, firstOrderStackingBlock } from './firstOrderEligibility.js';
 import { loadRewardCheckoutQuote, loadCatalogCheckoutQuote, priceRewardPayment, priceMemberPayment, reservePaymentReward, RewardCheckoutError, REWARD_CHECKOUT_REVISION, CATALOG_CHECKOUT_REVISION } from './rewardCheckout.js';
 import { prepareNoPaymentCheckout, cancelNoPaymentCheckout, readNoPaymentCheckoutRecovery } from './noPaymentCheckout.js';
+import { recoverPaidCheckout, cancelPaidCheckout, PAID_RECOVERY_REVISION } from './paidCheckoutRecovery.js';
 import { creditCents, availableCheckoutCredit, reserveCheckoutCredit, settleCheckoutCredit, CHECKOUT_CREDIT_REVISION, CheckoutCreditError } from '../../shared/checkoutCredit.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
@@ -955,6 +956,7 @@ Deno.serve(async (req) => {
     if (mode === 'checkout_runtime_status') {
       if (authenticatedUser?.role !== 'admin') return Response.json({ error: 'forbidden' }, { status: 403 });
       return Response.json({ ok: true, mode, checkout_record_revision: CHECKOUT_RECORD_REVISION,
+        paid_recovery_revision: PAID_RECOVERY_REVISION,
         catalog_quote_revision: CATALOG_CHECKOUT_REVISION,
         reward_quote_revision: REWARD_CHECKOUT_REVISION, reward_payment_integration_complete: false,
         writes_performed: false, provider_calls_performed: false, payment_intent_created: false, order_created: false });
@@ -970,6 +972,23 @@ Deno.serve(async (req) => {
           error: 'We could not confirm this earlier checkout. Check your orders or contact NuVira before starting again.',
           writes_performed: false, payment_confirmation_attempted: false,
           reward_reservation_released: false }, { status: 409 });
+      }
+    }
+
+    if (['read_paid_checkout_recovery', 'resume_paid_checkout', 'cancel_paid_checkout'].includes(mode)) {
+      if (internalSandboxCheckout) return Response.json({ error: 'forbidden' }, { status: 403 });
+      try {
+        const options = { base44, stripe, user: authenticatedUser, body: requestBody, now: Date.now(),
+          publishableKey: Deno.env.get('STRIPE_PUBLISHABLE_KEY'),
+          secret: Deno.env.get('LOYALTY_LEDGER_SECRET') || Deno.env.get('CUSTOMER_APP_SYNC_SECRET') || Deno.env.get('HUB_SYNC_SECRET') || '',
+        };
+        return Response.json(mode === 'cancel_paid_checkout'
+          ? await cancelPaidCheckout(options) : await recoverPaidCheckout(options));
+      } catch {
+        return Response.json({ ok: false, error_code: 'PAID_RECOVERY_UNCONFIRMED',
+          error: 'We could not confirm this checkout action. Check your order status or contact NuVira before paying again.',
+          payment_confirmation_attempted: false, payment_attempt_canceled: false,
+          ...(mode !== 'cancel_paid_checkout' ? { writes_performed: false } : {}) }, { status: 409 });
       }
     }
 
@@ -1838,6 +1857,8 @@ Deno.serve(async (req) => {
           customer_name_source: customerIdentity.source,
           customer_app_user_id: authenticatedUser?.id || null,
           checkout_idempotency_key: checkout_idempotency_key || null,
+          paid_recovery_revision: PAID_RECOVERY_REVISION,
+          checkout_context_hash: checkoutContextHash,
           bag_return_request_id: bag_return_request_id || null,
           address_line1: normalizedAddress.line1,
           address_line2: normalizedAddress.line2,
