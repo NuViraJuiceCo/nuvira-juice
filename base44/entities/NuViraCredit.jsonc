@@ -14,7 +14,26 @@
     "balance": {
       "type": "number",
       "default": 0,
-      "description": "Current available credit balance in dollars"
+      "description": "Total unspent credits in dollars; subtract reserved_balance for new checkout availability"
+    },
+    "reserved_balance": { "type": "number", "minimum": 0, "default": 0 },
+    "checkout_reservations": {
+      "type": "array", "default": [],
+      "items": {
+        "type": "object",
+        "properties": {
+          "reservation_id": { "type": "string" },
+          "context_hash": { "type": "string" },
+          "payment_intent_id": { "type": "string" },
+          "checkout_session_id": { "type": "string" },
+          "preparation_attempt_id": { "type": "string" },
+          "amount_cents": { "type": "integer", "minimum": 1 },
+          "status": { "type": "string", "enum": ["held", "consumed", "released"] },
+          "created_at": { "type": "string" },
+          "settled_at": { "type": "string" }
+        },
+        "required": ["reservation_id", "context_hash", "amount_cents", "status"]
+      }
     },
     "lifetime_issued": {
       "type": "number",
@@ -26,6 +45,7 @@
       "default": 0,
       "description": "Total credits ever redeemed"
     },
+    "credit_ledger_revision": { "type": "integer", "minimum": 0, "default": 0 },
     "history": {
       "type": "array",
       "default": [],
@@ -50,6 +70,9 @@
           "order_id": {
             "type": "string"
           },
+          "payment_intent_id": { "type": "string" },
+          "checkout_session_id": { "type": "string" },
+          "idempotency_key": { "type": "string" },
           "timestamp": {
             "type": "string"
           }

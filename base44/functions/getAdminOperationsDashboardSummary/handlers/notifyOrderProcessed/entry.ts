@@ -22,7 +22,45 @@ type OrderNotificationPayload = {
   items?: OrderNotificationItem[];
   total?: number;
   delivery_address?: string;
+  reward_checkout_session_id?: string;
+  suppress_push?: boolean;
 };
+
+// Bundle-local copy of stripeWebhook/rewardSettlement.js, checked for parity.
+function isVerifiedNoPaymentOrder(order) {
+  const receipt = order?.reward_settlement;
+  return Boolean(order?.id && order?.customer_email && order?.order_number
+    && order.total === 0 && order.payment_captured === false
+    && order.payment_status === 'paid' && order.financial_status === 'paid'
+    && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
+    && !['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+    && !order.stripe_payment_intent_id && !(Number(order.amount_refunded || 0) > 0)
+    && (receipt?.revision === '2026-09-08.reward-settlement-v1'
+    || (receipt?.revision === '2026-09-09.credit-settlement-v2'
+      && /^credit:[a-f0-9]{64}$/.test(receipt.credit_reservation_id || '')
+      && Number.isSafeInteger(receipt.credit_redeemed_cents) && receipt.credit_redeemed_cents > 0
+      && (receipt.points_redeemed === 0 ? receipt.reservation_id === receipt.credit_reservation_id
+        : /^(points|reward):[a-f0-9]{64}$/.test(receipt.reservation_id || ''))))
+    && /^cs_[A-Za-z0-9_]+$/.test(order.stripe_checkout_session_id || '')
+    && receipt.checkout_session_id === order.stripe_checkout_session_id
+    && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
+    && typeof receipt.reservation_id === 'string' && receipt.reservation_id.length > 0
+    && (() => {
+      const gifts = (Array.isArray(order.items) ? order.items : []).filter(item => item.isBirthdayReward || item.birthday_product_id);
+      if (!gifts.length) return !receipt.birthday_reservation_id && !receipt.birthday_product_id && !receipt.birthday_retail_cents;
+      const gift = gifts[0];
+      return gifts.length === 1 && /^birthday:[a-f0-9]{64}$/.test(receipt.birthday_reservation_id || '')
+        && gift.isBirthdayReward === true && gift.quantity === 1 && gift.price === 0
+        && gift.product_id === receipt.birthday_product_id && gift.birthday_product_id === receipt.birthday_product_id
+        && Number.isSafeInteger(receipt.birthday_retail_cents) && receipt.birthday_retail_cents > 0
+        && Math.round(gift.catalog_unit_price * 100) === receipt.birthday_retail_cents
+        && Math.round(gift.birthday_discount_amount * 100) === receipt.birthday_retail_cents;
+    })()
+    && Number.isSafeInteger(receipt.points_redeemed)
+    && receipt.points_redeemed >= (receipt.revision === '2026-09-09.credit-settlement-v2' ? 0 : 1)
+    && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
+    && typeof receipt.settled_at === 'string' && Number.isFinite(Date.parse(receipt.settled_at)));
+}
 
 type AdminPushSummary = {
   attempted: boolean;
@@ -92,11 +130,24 @@ export default async (req: Request) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { order_id, order_number, customer_email, items, total, delivery_address } = await req.json() as OrderNotificationPayload;
+    const { order_id, order_number, customer_email, items, total, delivery_address,
+      reward_checkout_session_id, suppress_push = false } = await req.json() as OrderNotificationPayload;
     if (!String(order_id || '').trim() && !String(order_number || '').trim()) {
       return Response.json({ error: 'order_id or order_number is required' }, { status: 400 });
     }
     const idempotencyKey = operationsEmailKey(order_id, order_number);
+    let rewardOrder = null;
+    if (reward_checkout_session_id) {
+      const orders = await base44.asServiceRole.entities.Order.filter({ id: order_id }, undefined, 2);
+      rewardOrder = orders.length === 1 ? orders[0] : null;
+      if (!isVerifiedNoPaymentOrder(rewardOrder)
+        || rewardOrder.stripe_checkout_session_id !== reward_checkout_session_id
+        || rewardOrder.order_number !== order_number || rewardOrder.customer_email !== customer_email
+        || rewardOrder.total !== total || rewardOrder.delivery_address !== delivery_address
+        || JSON.stringify(rewardOrder.items) !== JSON.stringify(items)) {
+        return Response.json({ error: 'reward_operations_order_unconfirmed' }, { status: 409 });
+      }
+    }
 
     const priorEmail = await existingOperationsEmail(base44, idempotencyKey);
     if (priorEmail) {
@@ -168,8 +219,9 @@ export default async (req: Request) => {
         </div>
       </div>
 
-      <p><strong>Status:</strong> Payment received — scheduled for juicing</p>
-      <p><a href="https://app.base44.com/admin/orders">View order in admin</a></p>
+      <p><strong>Status:</strong> ${rewardOrder ? 'Reward redeemed — no payment required; scheduled for juicing' : 'Payment received — scheduled for juicing'}</p>
+      ${rewardOrder ? `<p><strong>Delivery:</strong> ${escapeHtml(rewardOrder.assigned_delivery_date)} · ${escapeHtml(rewardOrder.delivery_window_label)} Central Time</p>` : ''}
+      <p><a href="https://nuvirajuice.com/admin/orders?order=${encodeURIComponent(order_number || order_id || '')}">View order in admin</a></p>
     </div>
 
     <div class="footer">
@@ -231,7 +283,9 @@ export default async (req: Request) => {
       skipped_reason: 'admin_order_processed_push_disabled',
     };
 
-    if (adminPushEnabled() && !ADMIN_PUSH_INTERNAL_SECRET) {
+    if (suppress_push === true) {
+      admin_push.skipped_reason = 'push_suppressed_by_channel_plan';
+    } else if (adminPushEnabled() && !ADMIN_PUSH_INTERNAL_SECRET) {
       admin_push = {
         attempted: false,
         sent: false,

@@ -107,6 +107,7 @@ export default function OrderHistory() {
         <h1 className="font-heading text-xl font-bold">Orders</h1>
       </div>
 
+      <CustomerRouteRequests />
       {isLoading ? (
         <div className="px-4 space-y-3">
           {[1,2,3].map(i => <div key={i} className="h-20 bg-secondary/50 rounded-xl animate-pulse" />)}
@@ -303,3 +304,4 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
     </motion.div>
   );
 }
+import CustomerRouteRequests from '@/components/checkout/CustomerRouteRequests';

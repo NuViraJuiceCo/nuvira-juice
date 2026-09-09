@@ -7,11 +7,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { motion } from 'framer-motion';
 import { Star, Gift, ShoppingBag, Users, Cake, Flame, Sparkles, ArrowRight, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
-import { isBirthdayRewardActive } from '@/lib/birthdayReward';
-import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
+import { useBirthdayCheckoutEligibility } from '@/lib/useBirthdayCheckoutEligibility';
+import { birthdayEligibilityMessage } from '@/lib/birthdayCheckoutEligibility';
+import { validateActiveReward, getStoredActiveReward, selectActiveReward } from '@/lib/rewardManager';
+import { earnedRewardCartItems, rewardSelectionCount } from '@/lib/rewardSelection';
 
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import FreeProductPicker from '@/components/FreeProductPicker';
+import RewardProductPicker from '@/components/RewardProductPicker';
 import MobileCarousel from '@/components/carousel/MobileCarousel';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
@@ -43,7 +45,7 @@ const DEFAULT_REWARDS = [
   { title: 'Double Points Order',     description: 'Earn 2x loyalty points on your next purchase',                                                     points_required: 1500, icon: '✨', reward_type: 'double_points' },
   { title: '10% Off Your Order',      description: '10% discount applied to your next order',                                                          points_required: 2500, icon: '💸', reward_type: 'discount_10pct' },
   { title: 'Wellness Bundle Upgrade', description: 'Upgrade any 3-bottle order to a 6-bottle bundle — 50% off the additional 3 bottles',              points_required: 4000, icon: '🎁', reward_type: 'bundle_upgrade' },
-  { title: 'VIP Wellness Box',        description: 'Exclusive curated box of 6 bottles — our best flavors, hand-selected for you',                    points_required: 6000, icon: '👑', reward_type: 'vip_box' },
+  { title: 'VIP Wellness Box',        description: 'Choose 6 included 12oz bottles. No extra merchandise required; delivery charges still apply.',       points_required: 6000, icon: '👑', reward_type: 'vip_box' },
 ];
 
 const HOW_TO_EARN = [
@@ -169,8 +171,8 @@ function StatCards({ totalPoints, lifetimePoints, redeemedPoints }) {
 }
 
 // ── Reward card (horizontal scroll) ────────────────────────────────────────
-function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, index }) {
-  const unlocked = totalPoints >= reward.points_required;
+function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, index, busy = false }) {
+  const unlocked = Boolean(reward.id) && totalPoints >= reward.points_required;
   const isActive = activeReward?.id === reward.id || activeReward?.title === reward.title;
   const progressPct = Math.min(100, (totalPoints / reward.points_required) * 100);
 
@@ -209,7 +211,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       {/* Content */}
       <div className="p-3 pointer-events-none">
         <p className="text-xs font-bold mb-1 leading-tight line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--foreground))' }}>{reward.title}</p>
-        <p className="text-[10px] font-medium mb-2 line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--muted-foreground))' }}>{reward.description}</p>
+        <p className="text-[10px] font-medium mb-2 line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--muted-foreground))' }}>{reward.reward_type === 'vip_box' ? 'Choose 6 included 12oz bottles. No extra merchandise required; delivery charges still apply.' : reward.description}</p>
 
         {/* Points required */}
         <div className="flex items-center justify-between gap-1 pointer-events-none">
@@ -221,13 +223,13 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
           </div>
           {unlocked ? (
             isActive ? (
-              <button onClick={onRemove}
+              <button type="button" disabled={busy} onClick={onRemove}
                 className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0 pointer-events-auto"
                 style={{ background: 'hsl(var(--destructive)/0.15)', color: 'hsl(var(--destructive))' }}>
                 ✓
               </button>
             ) : (
-              <button onClick={onApply}
+              <button type="button" disabled={busy} onClick={onApply}
                 className="text-[9px] font-bold px-2 py-1 rounded-lg shrink-0 text-white pointer-events-auto bg-nuvira-gradient">
                 Redeem
               </button>
@@ -317,12 +319,16 @@ function GuestView() {
 
 // ── Main authenticated view ─────────────────────────────────────────────────
 export default function Rewards() {
-  const { user } = useAuth();
-  const { addItem } = useCart();
+  const { user, isLoadingAuth } = useAuth();
+  const { setEarnedRewardSelection, clearEarnedRewardItems } = useCart();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingReward, setPendingReward] = useState(null);
+  const rewardSelectionRef = useRef(false);
+  const [isSelectingReward, setIsSelectingReward] = useState(false);
+  const currentEmailRef = useRef(user?.email);
+  currentEmailRef.current = user?.email;
 
   // Single backend call resolves all Apple relay identities for points/orders/profile
   const {
@@ -350,11 +356,12 @@ export default function Rewards() {
     staleTime: 10 * 60 * 1000, // reward tiers rarely change
   });
 
-  const totalPoints    = pointsData?.total_points    || 0;
+  const totalPoints = Math.max(0, Number(pointsData?.total_points || 0) - Number(pointsData?.reserved_points || 0));
   const lifetimePoints = pointsData?.lifetime_points || 0;
   const redeemedPoints = pointsData?.redeemed_points || 0;
   const birthday       = userProfile?.birthday || user?.birthday;
-  const birthdayActive = isBirthdayRewardActive(birthday, user?.created_date);
+  const birthdayEligibility = useBirthdayCheckoutEligibility(user);
+  const birthdayActive = birthdayEligibility.eligible;
   const rewards        = rewardTiers.length > 0 ? rewardTiers : DEFAULT_REWARDS;
   const tier           = getTier(totalPoints);
   const activationConfirmed = searchParams.get('activated') === '1';
@@ -366,26 +373,37 @@ export default function Rewards() {
 
   // Validate active reward on mount and user change
   useEffect(() => {
+    if (isLoadingAuth) return;
+    let cancelled = false;
     const validateReward = async () => {
       if (!user?.email) {
         setActiveReward(null);
+        setIsValidatingReward(false);
+        clearEarnedRewardItems();
         return;
       }
       setIsValidatingReward(true);
       const stored = getStoredActiveReward(user.email);
       if (stored) {
         const validated = await validateActiveReward(stored, user.email);
+        if (cancelled) return;
         if (validated) {
+          localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(validated));
           setActiveReward(validated);
         } else {
           localStorage.removeItem(`activeReward_${user.email}`);
           setActiveReward(null);
+          clearEarnedRewardItems();
         }
+      } else {
+        setActiveReward(null);
+        clearEarnedRewardItems();
       }
       setIsValidatingReward(false);
     };
     validateReward();
-  }, [user?.email]);
+    return () => { cancelled = true; };
+  }, [user?.email, isLoadingAuth, clearEarnedRewardItems]);
 
   // Check if rewards container is scrollable
   useEffect(() => {
@@ -402,47 +420,53 @@ export default function Rewards() {
 
   // ── Reward apply/remove logic ──
   const handleApplyReward = async (reward) => {
-    // free_shot and free_bottle both open the product picker
-    if (reward.reward_type === 'free_shot' || reward.reward_type === 'free_bottle') {
-      setPendingReward(reward);
-      setPickerOpen(true);
-      return;
-    }
-    // All other reward types (double_points, discount_10pct, bundle_upgrade, vip_box)
-    // are stored locally and applied at checkout
+    if (rewardSelectionRef.current) return;
+    rewardSelectionRef.current = true;
+    setIsSelectingReward(true);
     try {
-      await base44.functions.invoke('claimReward', {
-        email: user.email,
-        reward_id: reward.id || reward.title,
-        reward_title: reward.title,
-        reward_type: reward.reward_type,
-      });
+      const selected = await selectActiveReward(reward, user?.email);
+      if (currentEmailRef.current !== user?.email) return;
+      if (rewardSelectionCount(selected) > 0) {
+        setPendingReward(selected);
+        setPickerOpen(true);
+        return;
+      }
+      localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(selected));
+      clearEarnedRewardItems();
+      setActiveReward(selected);
+      trackGoogleRetentionEvent('reward_apply', { reward_type: selected.reward_type });
+      toast.success(`${selected.title} selected. Review it at checkout.`);
     } catch (err) {
-      console.warn('Failed to sync reward claim:', err.message);
+      toast.error(err?.data?.error || err?.message || 'Unable to select this reward. Please try again.');
+    } finally {
+      rewardSelectionRef.current = false;
+      setIsSelectingReward(false);
     }
-    const r = { id: reward.id || reward.title, title: reward.title, description: reward.description, reward_type: reward.reward_type, points_required: reward.points_required, icon: reward.icon };
-    localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(r));
-    setActiveReward(r);
-    trackGoogleRetentionEvent('reward_apply', { reward_type: reward.reward_type });
-    toast.success(`${reward.title} applied! Head to checkout to use it.`);
   };
 
-  const handleFreeProductSelect = (product) => {
-    const rewardType = pendingReward?.reward_type;
-    addItem({ ...product, id: `__free_reward_${product.id}__`, price: 0, title: `${pendingReward?.icon || '🎁'} ${product.title} (Free)` }, 1, { isFreeReward: true });
+  const handleFreeProductSelect = async (choices) => {
+    // Re-check after the picker has been open: balance/catalog may have changed.
+    const selected = await selectActiveReward(pendingReward, user?.email, { validateOnly: true });
+    if (currentEmailRef.current !== user?.email) throw new Error('Your sign-in changed. Please reopen Rewards.');
+    earnedRewardCartItems(selected, choices);
+    localStorage.setItem(`activeReward_${user.email}`, JSON.stringify(selected));
+    setEarnedRewardSelection(selected, choices);
+    setActiveReward(selected);
     setPickerOpen(false);
     setPendingReward(null);
-    trackGoogleRetentionEvent('reward_apply', { reward_type: rewardType });
-    toast.success(`${product.title} added to your cart for free!`);
+    trackGoogleRetentionEvent('reward_apply', { reward_type: selected.reward_type });
+    toast.success(`${selected.title} added. Review your selection and any delivery charges at checkout.`);
     navigate('/cart');
   };
 
   const handleRemoveReward = () => {
+    if (rewardSelectionRef.current) return;
     const rewardType = activeReward?.reward_type;
     if (user?.email) {
       localStorage.removeItem(`activeReward_${user.email}`);
     }
     setActiveReward(null);
+    clearEarnedRewardItems();
     trackGoogleRetentionEvent('reward_remove', { reward_type: rewardType });
     toast.success('Reward removed.');
   };
@@ -540,7 +564,7 @@ export default function Rewards() {
           {birthdayActive ? (
             <p className="text-xs" style={{ color: '#C0325A' }}>🎂 Your free 12oz juice is ready!</p>
           ) : (
-            <p className="text-xs text-muted-foreground">{birthday ? 'Free juice valid 30 days after your birthday' : 'Add your birthday in Settings to unlock'}</p>
+            <p className="text-xs text-muted-foreground">{birthdayEligibilityMessage(birthdayEligibility)}</p>
           )}
         </div>
         {birthdayActive ? (
@@ -576,6 +600,7 @@ export default function Rewards() {
               totalPoints={totalPoints}
               activeReward={activeReward}
               onApply={() => handleApplyReward(reward)}
+              busy={isSelectingReward || isValidatingReward}
               onRemove={handleRemoveReward}
               index={i}
             />
@@ -714,12 +739,11 @@ export default function Rewards() {
       {/* Extra bottom padding for safe scrolling above nav */}
       <div className="h-12" />
 
-      <FreeProductPicker
+      <RewardProductPicker
         open={pickerOpen}
         onClose={() => { setPickerOpen(false); setPendingReward(null); }}
         onSelect={handleFreeProductSelect}
-        title={pendingReward ? `Choose Your ${pendingReward.title}` : 'Choose Your Free Item'}
-        category={pendingReward?.reward_type === 'free_shot' ? 'shot' : 'juice'}
+        reward={pendingReward}
       />
     </div>
   );

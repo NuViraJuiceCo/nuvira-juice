@@ -128,9 +128,12 @@ assert.doesNotMatch(stripe, /failed to sync to Hub immediately after webhook/);
 pass('all_three_stripe_projection_callers_reject_nonthrowing_failure_responses');
 
 const zone3 = read('base44/functions/getAdminOperationsDashboardSummary/handlers/approveZone3DeliveryRequest/entry.ts');
-assert.match(zone3, /projectionResult\?\.success !== true/);
-assert.match(zone3, /native_order_projection_failed/);
-pass('zone3_capture_projection_rejects_nonthrowing_failure_responses');
+assert.match(zone3, /decideRouteReview/);
+assert.doesNotMatch(zone3, /entities.Order.create|Hub|hubSync/);
+const routeDecision = read('base44/shared/routeReviewDecision.js');
+assert.match(routeDecision, /handed\?\.complete === true/);
+assert.match(routeDecision, /route_review_fulfillment_handoff_pending/);
+pass('zone3_uses_verified_native_handoff_without_second_order_or_hub_writes');
 
 const refund = read('base44/functions/syncRefundToHub/entry.ts');
 const manualRefund = read('base44/functions/processManualRefund/entry.ts');

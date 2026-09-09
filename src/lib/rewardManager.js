@@ -1,4 +1,20 @@
 import { base44 } from '@/api/base44Client';
+import { canonicalRewardSelection } from '@/lib/rewardSelection';
+
+export async function selectActiveReward(reward, userEmail, { validateOnly = false } = {}) {
+  if (!reward?.id || !userEmail) throw new Error('Please sign in and choose an available reward.');
+  const response = await base44.functions.invoke('claimReward', {
+    email: userEmail,
+    reward_id: reward.id,
+    reward_title: reward.title,
+    reward_type: reward.reward_type,
+    validate_only: validateOnly,
+  });
+  if (validateOnly && (response?.data?.validated_only !== true || response?.data?.writes_performed !== false)) {
+    throw new Error('Reward validation is being updated. Please try again shortly.');
+  }
+  return canonicalRewardSelection(response?.data, reward);
+}
 
 /**
  * Validates if an active reward is still valid based on backend state.
@@ -8,32 +24,8 @@ export async function validateActiveReward(reward, userEmail) {
   if (!reward || !userEmail) return null;
 
   try {
-    // Fetch user's loyalty/points data to verify reward eligibility
-    const response = await base44.functions.invoke('getCustomerAccountDashboardData', {});
-    const dashData = response.data || {};
-    const pointsData = dashData.points_record || null;
-    const totalPoints = pointsData?.total_points || 0;
-
-    // Verify the reward type is still applicable and user has enough points
-    if (reward.points_required && totalPoints < reward.points_required) {
-      return null; // User no longer has enough points
-    }
-
-    // Check if this is a free delivery reward tied to a subscription
-    if (reward.reward_type === 'free_delivery') {
-      const subs = await base44.entities.Subscription.filter(
-        { customer_email: userEmail, status: 'active' },
-        'created_date',
-        1
-      );
-      // If reward was subscription-based and subscription is now canceled, invalidate
-      if (!subs || subs.length === 0) {
-        return null;
-      }
-    }
-
-    // Reward is still valid
-    return reward;
+    // Read-only authoritative catalog/balance check, not a localStorage promise.
+    return await selectActiveReward(reward, userEmail, { validateOnly: true });
   } catch (err) {
     console.warn('Reward validation failed:', err.message);
     // On error, err on the side of caution and return null

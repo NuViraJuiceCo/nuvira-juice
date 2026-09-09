@@ -1,0 +1,389 @@
+// Single-record compare-and-set protocol. Requires the documented updateMany
+// query/update operators; never falls back to an unconditional balance write.
+// Release requires an isolated Base44 conditional-write contract test in addition
+// to local fixtures. This module does not claim multi-record transactions.
+import { birthdayReservationState, reserveBirthdayOperation, settleBirthdayOperation } from '../../shared/birthdayEntitlement.js';
+import { verifiedNoPaymentPointsMetadata, verifiedNoPaymentPointsSnapshot } from '../../shared/noPaymentPoints.js';
+export { verifiedNoPaymentPointsMetadata };
+export { verifiedNoPaymentTierPointsSnapshot } from '../../shared/noPaymentPoints.js';
+export const POINTS_ACCOUNT_REVISION = '2026-09-08.points-cas-refund-manual-review-v6';
+export const DIRECT_POINTS_CHECKOUT_REVISION = '2026-09-08.direct-points-v1';
+
+export class PointsAccountError extends Error {
+  constructor(code) { super(code); this.code = code; }
+}
+const fail = code => { throw new PointsAccountError(code); };
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function integer(value, fallback = 0) {
+  const n = value === undefined ? fallback : Number(value);
+  if (value === null || value === '' || typeof value === 'boolean' || !Number.isSafeInteger(n) || n < 0) {
+    fail('invalid_points_account');
+  }
+  return n;
+}
+function list(value) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) fail('invalid_points_account');
+  return value;
+}
+function balances(row) {
+  const total = integer(row.total_points);
+  const reserved = integer(row.reserved_points);
+  const holds = list(row.reward_reservations);
+  const ids = new Set();
+  const held = holds.reduce((sum, hold) => {
+    if (!hold?.reservation_id || ids.has(hold.reservation_id)
+      || !['held', 'consumed', 'released'].includes(hold.status)) fail('invalid_points_reservations');
+    ids.add(hold.reservation_id);
+    const points = integer(hold.points);
+    if (!points || !hold.context_hash) fail('invalid_points_reservations');
+    if ((hold.payment_intent_id != null && !/^pi_[a-zA-Z0-9_]+$/.test(hold.payment_intent_id))
+      || (hold.checkout_session_id != null && !/^cs_[a-zA-Z0-9_]+$/.test(hold.checkout_session_id))
+      || (hold.payment_intent_id && hold.checkout_session_id)) fail('invalid_points_reservations');
+    if (hold.preparation_attempt_id != null && (!hold.checkout_session_id
+      || !/^[a-zA-Z0-9_-]{16,80}$/.test(hold.preparation_attempt_id))) fail('invalid_points_reservations');
+    return sum + (hold.status === 'held' ? points : 0);
+  }, 0);
+  if (reserved !== held || reserved > total) fail('invalid_points_reservations');
+  return { total, reserved, holds, lifetime: integer(row.lifetime_points),
+    redeemed: integer(row.redeemed_points), revision: integer(row.points_ledger_revision),
+    history: list(row.points_history) };
+}
+
+export async function readPointsAccount(entities, customerEmail, { initialize = false } = {}) {
+  let rows = await entities.UserPoints.filter({ customer_email: customerEmail }, undefined, 2);
+  if (!Array.isArray(rows)) fail('points_account_unavailable');
+  if (!rows.length && initialize) {
+    // Existing enrollment compatibility. No reward hold may bootstrap an account.
+    // No uniqueness guarantee is assumed: re-read, and fail closed on duplicates.
+    await entities.UserPoints.create({ customer_email: customerEmail, total_points: 0,
+      lifetime_points: 0, redeemed_points: 0, reserved_points: 0,
+      points_ledger_revision: 0, points_history: [], claimed_rewards: [], reward_reservations: [] });
+    rows = await entities.UserPoints.filter({ customer_email: customerEmail }, undefined, 2);
+  }
+  if (rows.length !== 1 || !rows[0]?.id) fail(rows.length > 1 ? 'duplicate_points_accounts' : 'points_account_missing');
+  balances(rows[0]);
+  return rows[0];
+}
+
+export async function verifyDirectPointsCheckoutContext(entities, payment, customerEmail) {
+  const meta = payment.metadata || {};
+  const noPayment = /^cs_[A-Za-z0-9_]+$/.test(payment.id || '');
+  const sessions = await entities.CheckoutSession.filter({ stripe_session_id: payment.id }, undefined, 2);
+  const orders = await entities.Order.filter({ [noPayment ? 'stripe_checkout_session_id' : 'stripe_payment_intent_id']: payment.id }, undefined, 2);
+  if (!Array.isArray(sessions) || sessions.length !== 1 || !sessions[0]?.id
+    || !Array.isArray(orders) || orders.length !== 1 || !orders[0]?.id) fail('points_checkout_context_missing');
+  const session = sessions[0]; const order = orders[0]; const data = session.checkout_data;
+  const cents = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
+    && Number.isSafeInteger(Math.round(value * 100)) && Math.abs(value * 100 - Math.round(value * 100)) < 0.00001
+    ? Math.round(value * 100) : NaN;
+  for (const row of [session, order, data]) {
+    if (!row || row.customer_email !== customerEmail || row.order_number !== meta.order_number) fail('points_checkout_context_mismatch');
+  }
+  if (noPayment) {
+    const points = verifiedNoPaymentPointsSnapshot(data, meta);
+    if (payment.livemode !== true || payment.mode !== 'payment' || payment.currency !== 'usd'
+      || payment.amount_total !== 0 || payment.payment_intent !== null
+      || !['open', 'complete', 'expired'].includes(payment.status)
+      || !['unpaid', 'no_payment_required'].includes(payment.payment_status)
+      || (payment.status === 'complete' && payment.payment_status !== 'no_payment_required')
+      || payment.customer_email !== customerEmail || meta.customer_email !== customerEmail
+      || order.total !== 0 || order.payment_captured !== false || order.stripe_payment_intent_id
+      || order.is_test_order === true || !same(order.items, data.items)
+      || ['canceled', 'cancelled', 'failed', 'refunded'].includes(order.status)
+      || ['refunded', 'partially_refunded', 'failed'].includes(order.payment_status)
+      || Number(order.amount_refunded || 0) > 0) fail('points_checkout_context_mismatch');
+    return points;
+  }
+  if (!/^points:[a-f0-9]{64}$/.test(meta.reward_reservation_id || '')
+    || !/^[a-f0-9]{64}$/.test(meta.checkout_context_hash || '')
+    || data.points_reservation_revision !== DIRECT_POINTS_CHECKOUT_REVISION
+    || data.reward_reservation_id !== meta.reward_reservation_id
+    || data.checkout_context_hash !== meta.checkout_context_hash
+    || data.active_reward || data.reward_checkout || data.guest_checkout === true
+    || data.internal_sandbox_checkout === true || order.is_test_order === true
+    || cents(data.reward_discount ?? 0) !== 0
+    || !Number.isSafeInteger(data.points_used) || data.points_used <= 0
+    || data.reward_reservation_points !== data.points_used || cents(data.points_discount) !== data.points_used
+    || !Number.isSafeInteger(payment.amount) || payment.amount < 50
+    || cents(data.total) !== payment.amount || cents(order.total) !== payment.amount
+    || (payment.status === 'succeeded' && (payment.amount_received !== payment.amount
+      || ['canceled', 'cancelled'].includes(order.status)))
+    || order.status === 'refunded' || ['refunded', 'partially_refunded'].includes(order.payment_status)) fail('points_checkout_context_mismatch');
+  return data.points_used;
+}
+
+function revisionQuery(row) {
+  return row.points_ledger_revision === undefined
+    ? { $or: [{ points_ledger_revision: { $exists: false } }, { points_ledger_revision: 0 }] }
+    : { points_ledger_revision: row.points_ledger_revision };
+}
+
+async function mutate(entities, customerEmail, derive, options = {}) {
+  if (typeof entities.UserPoints.updateMany !== 'function') fail('conditional_points_updates_unavailable');
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const row = await readPointsAccount(entities, customerEmail, options);
+    const state = balances(row);
+    const operation = derive(row, state);
+    if (!operation.patch) return { ...operation, account: row, idempotent: true };
+    const nextRevision = state.revision + 1;
+    if (!Number.isSafeInteger(nextRevision)) fail('points_revision_exhausted');
+    const patch = { ...operation.patch, points_ledger_revision: nextRevision };
+    balances({ ...row, ...patch });
+    const result = await entities.UserPoints.updateMany({
+      id: row.id, customer_email: customerEmail, ...revisionQuery(row),
+    }, { $set: patch });
+    if (!result || result.success !== true || result.has_more !== false
+      || ![0, 1].includes(result.updated)) fail('conditional_points_update_unconfirmed');
+    if (result.updated === 1) {
+      const confirmed = await readPointsAccount(entities, customerEmail);
+      const replay = derive(confirmed, balances(confirmed));
+      if (replay.patch) fail('conditional_points_readback_unconfirmed');
+      return { ...replay, account: confirmed, idempotent: false };
+    }
+  }
+  fail('points_account_busy_retry');
+}
+
+function transactionPatch(state, transaction, snapshot = null) {
+  const amount = Number(transaction.amount);
+  if (!Number.isSafeInteger(amount) || (!snapshot && amount === 0)) fail('nonzero_integer_amount_required');
+  const type = transaction.transaction_type;
+  // Refund reconciliation must not silently clamp a debit after these points
+  // were spent/reserved elsewhere. This guard runs inside the same balance CAS
+  // as concurrent redemptions; ordinary legacy adjustments retain their policy.
+  if (type === 'reversal' && transaction.metadata?.require_available_balance === true) {
+    const paymentId = transaction.metadata.payment_intent_id;
+    const earningKey = `stripe_payment:${paymentId}:earned`;
+    const awards = state.history.filter(row => row.idempotency_key === earningKey);
+    const legacy = state.history.filter(row => typeof row.idempotency_key === 'string'
+      && row.idempotency_key.startsWith('stripe_refund_event:')
+      && row.idempotency_key.endsWith(`:order:${transaction.order_id}`));
+    if (!/^pi_[a-zA-Z0-9_]+$/.test(paymentId || '') || !transaction.order_id
+      || transaction.idempotency_key !== `stripe_payment:${paymentId}:full_refund_reversal`
+      || awards.length !== 1 || awards[0].transaction_id !== transaction.metadata.earned_transaction_id
+      || (awards[0].transaction_type || awards[0].type) !== 'earned'
+      || !Number.isSafeInteger(awards[0].amount) || awards[0].amount <= 0
+      || legacy.some(row => row.transaction_type !== 'reversal' || !Number.isSafeInteger(row.amount) || row.amount >= 0)
+      || new Set(legacy.map(row => row.idempotency_key)).size !== legacy.length
+      || awards[0].amount + legacy.reduce((sum, row) => sum + row.amount, 0) !== -amount) {
+      fail('refund_purchase_receipt_changed');
+    }
+    // Points are fungible. A historical debit that dipped below the remaining
+    // purchase award consumed some of it; later earnings must not erase that
+    // evidence. A legacy debit without a balance receipt needs review too.
+    let remainingAward = awards[0].amount;
+    let spent = false;
+    for (const receipt of state.history.slice(state.history.indexOf(awards[0]) + 1)) {
+      if (legacy.includes(receipt)) remainingAward += receipt.amount;
+      else if (receipt.amount < 0 && (!Number.isSafeInteger(receipt.balanceAfter)
+        || receipt.balanceAfter < remainingAward)) spent = true;
+    }
+    if (spent || state.total - state.reserved + amount < 0) fail('refund_points_reversal_requires_review');
+  }
+  const after = snapshot ? {
+    total: integer(snapshot.balanceAfter), lifetime: integer(snapshot.lifetimeAfter), redeemed: integer(snapshot.redeemedAfter),
+  } : {
+    total: Math.max(0, state.total + amount),
+    lifetime: Math.max(0, state.lifetime + (['earned', 'bonus'].includes(type) ? Math.max(0, amount)
+      : type === 'reversal' ? Math.min(0, amount) : 0)),
+    redeemed: state.redeemed + (type === 'redeemed' ? Math.abs(Math.min(0, amount)) : 0),
+  };
+  if (snapshot && state.reserved) fail('points_reconciliation_has_active_reservations');
+  if (type === 'redeemed' && state.total - state.reserved + amount < 0) fail('insufficient_points');
+  if (after.total < state.reserved) fail('points_debit_conflicts_with_reservation');
+  const projection = { balanceBefore: state.total, balanceAfter: after.total,
+    lifetimeBefore: state.lifetime, lifetimeAfter: after.lifetime,
+    redeemedBefore: state.redeemed, redeemedAfter: after.redeemed };
+  const history = { amount: snapshot ? after.total - state.total : amount,
+    type: type === 'bonus' ? 'bonus' : (type === 'redeemed' || type === 'reversal' || amount < 0) ? 'redeemed' : 'earned',
+    transaction_type: type, description: transaction.description,
+    idempotency_key: transaction.idempotency_key, transaction_id: transaction.id,
+    event_key: transaction.source_id || undefined, timestamp: transaction.occurred_at,
+    ...projection };
+  return { patch: { total_points: after.total, lifetime_points: after.lifetime,
+    redeemed_points: after.redeemed, points_history: [...state.history, history] }, projection, receipt: history };
+}
+
+/** @param {any} entities @param {string} customerEmail @param {any} transaction
+ * @param {{balanceAfter: number, lifetimeAfter: number, redeemedAfter: number}|null} snapshot */
+export async function applyPointsTransaction(entities, customerEmail, transaction, snapshot = null) {
+  if (!transaction?.id || !transaction.idempotency_key) fail('idempotency_key_required');
+  const result = await mutate(entities, customerEmail, (row, state) => {
+    const matches = state.history.filter(item => item.idempotency_key === transaction.idempotency_key);
+    if (matches.length > 1) fail('duplicate_points_receipts');
+    const receipt = matches[0];
+    if (receipt) {
+      if ((!snapshot && Number(receipt.amount) !== Number(transaction.amount))
+        || (receipt.transaction_type && receipt.transaction_type !== transaction.transaction_type)) fail('idempotency_key_conflict');
+      // Legacy receipts prove the delta was applied. Do not restore old balances
+      // when another purchase was posted after a partially completed transaction.
+      return { receipt, projection: receipt.balanceAfter === undefined ? null : receipt };
+    }
+    const guardedRefund = transaction.transaction_type === 'reversal'
+      && transaction.metadata?.require_available_balance === true;
+    const reviews = guardedRefund ? list(row.refund_review_holds) : [];
+    const reviewMatches = reviews.filter(review => review.review_key === transaction.idempotency_key);
+    if (reviewMatches.length > 1) fail('duplicate_refund_review_holds');
+    if (reviewMatches[0]) {
+      const hold = reviewMatches[0];
+      if (hold.payment_intent_id !== transaction.metadata.payment_intent_id
+        || hold.order_id !== transaction.order_id || hold.points_to_review !== -transaction.amount
+        || hold.earned_transaction_id !== transaction.metadata.earned_transaction_id) fail('refund_review_hold_conflict');
+      return { refundReview: hold };
+    }
+    try { return transactionPatch(state, transaction, snapshot); }
+    catch (error) {
+      if (!guardedRefund || error?.code !== 'refund_points_reversal_requires_review') throw error;
+      const hold = { review_key: transaction.idempotency_key, payment_intent_id: transaction.metadata.payment_intent_id,
+        order_id: transaction.order_id, earned_transaction_id: transaction.metadata.earned_transaction_id,
+        points_to_review: -transaction.amount, reason: 'spent_or_unavailable', created_at: new Date().toISOString() };
+      // Commit the decision in the SAME CAS as spending. No balance or benefit
+      // change. Even a lost response cannot turn a held review into a late debit.
+      return { refundReview: hold, patch: { refund_review_holds: [...reviews, hold] } };
+    }
+  }, { initialize: Boolean(snapshot || transaction.amount > 0) });
+  if (result.refundReview) fail('refund_points_reversal_requires_review');
+  return result;
+}
+
+export async function reserveRewardPoints(entities, customerEmail, request) {
+  const points = integer(request.points);
+  const sessionId = request.checkout_session_id;
+  if (request.preparation_attempt_id != null && (!sessionId
+    || !/^[a-zA-Z0-9_-]{16,80}$/.test(request.preparation_attempt_id))) fail('invalid_points_reservation_request');
+  if (sessionId && (!/^cs_[a-zA-Z0-9_]+$/.test(sessionId) || request.payment_intent_id)) fail('invalid_points_reservation_request');
+  if (!points || !/^[a-zA-Z0-9:_-]{16,180}$/.test(request.reservation_id || '')
+    || !/^[a-f0-9]{64}$/.test(request.context_hash || '')) fail('invalid_points_reservation_request');
+  return mutate(entities, customerEmail, (row, state) => {
+    const existing = state.holds.find(hold => hold.reservation_id === request.reservation_id);
+    if (existing) {
+      if (existing.points !== points || existing.context_hash !== request.context_hash) fail('reservation_context_conflict');
+      if (existing.status === 'released') fail('reservation_already_released');
+      if ((existing.payment_intent_id ?? undefined) !== (request.payment_intent_id ?? undefined)
+        || (existing.checkout_session_id ?? undefined) !== (request.checkout_session_id ?? undefined)) fail('reservation_payment_conflict');
+      return { reservation: existing };
+    }
+    if (state.total - state.reserved < points) fail('insufficient_points');
+    const reservation = { reservation_id: request.reservation_id, context_hash: request.context_hash,
+      points, status: 'held', ...(request.payment_intent_id ? { payment_intent_id: request.payment_intent_id } : {}),
+      ...(sessionId ? { checkout_session_id: sessionId } : {}),
+      ...(request.preparation_attempt_id ? { preparation_attempt_id: request.preparation_attempt_id } : {}),
+      created_at: request.created_at || new Date().toISOString() };
+    return { reservation, patch: { reserved_points: state.reserved + points,
+      reward_reservations: [...state.holds, reservation] } };
+  });
+}
+
+// Internal primitives only; no public action is enabled until checkout,
+// cancellation, webhook and recovery callers all carry verified birthday proof.
+export async function reserveBirthdayGift(entities, customerEmail, request, identity, now = Date.now()) {
+  return mutate(entities, customerEmail, row => {
+    const operation = reserveBirthdayOperation(row, request, identity, now);
+    birthdayReservationState({ ...row, ...operation.patch });
+    return operation;
+  });
+}
+export async function settleBirthdayGift(entities, customerEmail, request, now = Date.now()) {
+  return mutate(entities, customerEmail, row => {
+    const operation = settleBirthdayOperation(row, request, now);
+    birthdayReservationState({ ...row, ...operation.patch });
+    return operation;
+  });
+}
+
+// Direct-point checkout cancellation can arrive before its reservation CAS.
+// The caller must verify a canceled provider payment and its saved checkout
+// context first. Persist that outcome so an older provider read cannot re-hold.
+export async function recordCanceledPointsReservation(entities, customerEmail, request) {
+  const points = integer(request.points);
+  const noPayment = Boolean(request.checkout_session_id);
+  const providerField = noPayment ? 'checkout_session_id' : 'payment_intent_id';
+  if (request.provider_status !== (noPayment ? 'expired' : 'canceled') || !points
+    || !/^points:[a-f0-9]{64}$/.test(request.reservation_id || '')
+    || !/^[a-f0-9]{64}$/.test(request.context_hash || '')
+    || !(noPayment ? /^cs_[a-zA-Z0-9_]+$/ : /^pi_[a-zA-Z0-9_]+$/).test(request[providerField] || '')
+    || (noPayment && (request.payment_intent_id || request.no_payment_required !== true))) fail('confirmed_points_cancellation_required');
+  return mutate(entities, customerEmail, (row, state) => {
+    const existing = state.holds.find(hold => hold.reservation_id === request.reservation_id);
+    if (existing) {
+      if (existing.points !== points || existing.context_hash !== request.context_hash
+        || (existing.payment_intent_id ?? undefined) !== (request.payment_intent_id ?? undefined)
+        || (existing.checkout_session_id ?? undefined) !== (request.checkout_session_id ?? undefined)) fail('reservation_context_conflict');
+      if (existing.status !== 'released') fail('reservation_outcome_conflict');
+      return { reservation: existing };
+    }
+    const reservation = { reservation_id: request.reservation_id, context_hash: request.context_hash,
+      [providerField]: request[providerField], points, status: 'released',
+      settled_at: new Date().toISOString() };
+    return { reservation, patch: { reward_reservations: [...state.holds, reservation] } };
+  });
+}
+
+// Only callers with a verified Stripe outcome may use this operation. A declined
+// payment stays retryable; payment_failed or a local timeout must NOT release it.
+export async function settleRewardPoints(entities, customerEmail, request, transaction = null) {
+  const noPayment = Boolean(request.checkout_session_id);
+  const providerId = noPayment ? request.checkout_session_id : request.payment_intent_id;
+  const accepted = noPayment ? ['complete', 'expired'] : ['succeeded', 'canceled'];
+  if (!accepted.includes(request.provider_status)
+    || !(noPayment ? /^cs_[a-zA-Z0-9_]+$/ : /^pi_[a-zA-Z0-9_]+$/).test(providerId || '')
+    || (noPayment && (request.payment_intent_id || request.no_payment_required !== true))) fail('confirmed_payment_outcome_required');
+  const key = `${noPayment ? 'stripe_checkout' : 'stripe_payment'}:${providerId}:redeemed`;
+  return mutate(entities, customerEmail, (row, state) => {
+    const existing = state.holds.find(hold => hold.reservation_id === request.reservation_id);
+    if (!existing || existing.context_hash !== request.context_hash) fail('reservation_context_conflict');
+    if (existing.payment_intent_id && existing.payment_intent_id !== request.payment_intent_id) fail('reservation_payment_conflict');
+    // No-cost sessions must be bound before their client secret is exposed. Do
+    // not attach one to an unbound legacy payment reservation during settlement.
+    if ((existing.checkout_session_id ?? undefined) !== (request.checkout_session_id ?? undefined)) fail('reservation_payment_conflict');
+    const target = ['succeeded', 'complete'].includes(request.provider_status)
+      && !(noPayment && request.route_review_outcome === 'released') ? 'consumed' : 'released';
+    if (existing.status === target) {
+      return { reservation: existing, receipt: state.history.find(item => item.idempotency_key === key) };
+    }
+    if (existing.status !== 'held') fail('reservation_outcome_conflict');
+    const reservation = { ...existing, status: target,
+      ...(noPayment ? { checkout_session_id: providerId } : { payment_intent_id: providerId }),
+      settled_at: request.settled_at || new Date().toISOString() };
+    const reduced = { ...state, reserved: state.reserved - existing.points };
+    let result = { patch: {} };
+    if (target === 'consumed') {
+      if (!transaction?.id || transaction.amount !== -existing.points || transaction.transaction_type !== 'redeemed'
+        || transaction.idempotency_key !== key) fail('reservation_transaction_mismatch');
+      if (state.history.some(item => item.idempotency_key === transaction.idempotency_key)) fail('reservation_receipt_conflict');
+      result = transactionPatch(reduced, transaction);
+    }
+    return { ...result, reservation, patch: { ...result.patch, reserved_points: reduced.reserved,
+      reward_reservations: state.holds.map(hold => hold.reservation_id === existing.reservation_id ? reservation : hold) } };
+  });
+}
+
+export async function syncPointsMemberProjection(entities, customerEmail) {
+  if (typeof entities.LoyaltyMember.updateMany !== 'function') fail('conditional_member_updates_unavailable');
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const account = await readPointsAccount(entities, customerEmail);
+    const state = balances(account);
+    const projection = { total_points: state.total, lifetime_points: state.lifetime, redeemed_points: state.redeemed,
+      reserved_points: state.reserved, points_history: state.history,
+      points_account_id: account.id, points_ledger_revision: state.revision };
+    const members = await entities.LoyaltyMember.filter({ email: customerEmail }, undefined, 2);
+    if (!Array.isArray(members) || members.length > 1) fail('duplicate_loyalty_members');
+    if (!members.length) {
+      await entities.LoyaltyMember.create({ email: customerEmail, ...projection });
+      continue; // Detect a racing bootstrap rather than silently selecting a row.
+    }
+    const member = members[0];
+    if (member.points_account_id && member.points_account_id !== account.id) fail('loyalty_projection_account_conflict');
+    const revision = integer(member.points_ledger_revision);
+    if (revision > state.revision) continue; // Re-read the source, never roll the mirror back.
+    if (revision === state.revision && Object.keys(projection).every(key => same(member[key], projection[key]))) return;
+    const response = await entities.LoyaltyMember.updateMany({ id: member.id, email: customerEmail, ...revisionQuery(member) }, { $set: projection });
+    if (!response || response.success !== true || response.has_more !== false || ![0, 1].includes(response.updated)) {
+      fail('conditional_member_update_unconfirmed');
+    }
+    // Independent readback on the next iteration is required before reporting
+    // the mirror current; a positive write acknowledgement alone is not proof.
+  }
+  fail('loyalty_projection_busy_retry');
+}

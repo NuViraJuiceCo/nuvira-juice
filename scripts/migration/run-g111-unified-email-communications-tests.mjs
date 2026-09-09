@@ -114,6 +114,8 @@ const orderStatus = read('base44/functions/sendOrderStatusNotification/entry.ts'
 const elevatedStatus = read('base44/functions/sendOrderStatusNotification/elevatedTransactionalCommunications.ts');
 const zone3Approval = read('base44/functions/getAdminOperationsDashboardSummary/handlers/approveZone3DeliveryRequest/entry.ts');
 const zone3Denial = read('base44/functions/getAdminOperationsDashboardSummary/handlers/denyZone3DeliveryRequest/entry.ts');
+const routeNotifications = read('base44/shared/routeReviewNotifications.js');
+const routeDecision = read('base44/shared/routeReviewDecision.js');
 const compliance = read('base44/functions/getAdminOperationsDashboardSummary/handlers/monitorPostPaymentChain/entry.ts');
 const operations = read('base44/functions/getAdminOperationsDashboardSummary/handlers/notifyOrderProcessed/entry.ts');
 
@@ -126,13 +128,20 @@ assert.match(journey, /purchase_completion_control_event_forwarded/);
 assert.match(marketingLaunch, /NuVira Juice Co <hello@nuvirajuice\.com>/);
 assert.match(marketingLaunch, /MARKETING_REPLY_TO/);
 
-for (const source of [orderConfirmation, orderStatus, elevatedStatus, zone3Approval, zone3Denial]) {
+// Canonical approval uses the existing order handoff rather than sending a
+// second receipt from the compatibility handler. Route-only messages retain
+// the same branded provider, reply address and replay protection.
+assert.match(zone3Approval, /decideRouteReview/);
+assert.doesNotMatch(zone3Approval, /integrations\.Core\.SendEmail|api\.resend\.com\/emails|entities\.Order\.create/);
+assert.match(routeDecision, /runVerifiedRewardHandoff/);
+assert.match(routeDecision, /handed\?\.complete === true/);
+for (const source of [orderConfirmation, orderStatus, elevatedStatus, routeNotifications, zone3Denial]) {
   assert.match(source, /NuVira Juice Co <orders@nuvirajuice\.com>/);
   assert.match(source, /Idempotency-Key/);
   assert.match(source, /support@nuvirajuice\.com/);
 }
 
-for (const source of [orderStatus, zone3Approval, zone3Denial, compliance]) {
+for (const source of [orderStatus, routeNotifications, zone3Denial, compliance]) {
   assert.doesNotMatch(source, /integrations\.Core\.SendEmail/);
   assert.match(source, /https:\/\/api\.resend\.com\/emails/);
 }

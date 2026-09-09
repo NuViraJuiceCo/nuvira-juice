@@ -17,6 +17,7 @@ for (const method of ['GET', 'HEAD', 'PUT', 'DELETE', 'OPTIONS']) {
   assert.equal(response.status, 405);
   assert.deepEqual(await response.json(), {error: 'method_not_allowed'});
   assert.equal(response.headers.get('x-nuvira-admin-revision'), '2026-09-09.admin-package-g165-auth-parity');
+  assert.equal(response.headers.get('x-nuvira-reward-route-revision'), '2026-09-09.integrated-route-rewards-v8');
   assert.equal(response.headers.get('cache-control'), 'no-store');
 }
 assert.equal(calls, 0, 'Revision probe must never dispatch a handler.');

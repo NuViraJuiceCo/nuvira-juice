@@ -47,6 +47,7 @@ const PREF_MAP: Record<string, string> = {
 
 // Operational subtypes that cannot be suppressed by prefs
 const ALWAYS_SEND = new Set([
+  'route_review',
   'order_confirmation',
   'subscription_payment_failed',
   'ready_for_pickup',
@@ -61,6 +62,7 @@ const ALWAYS_SEND = new Set([
 ]);
 
 const ELEVATED_TRANSACTIONAL_SUBTYPES = new Set([
+  'route_review',
   'order_confirmation',
   'scheduled_for_juicing',
   'in_production',

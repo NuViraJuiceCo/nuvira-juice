@@ -22,6 +22,80 @@
       "type": "number",
       "default": 0
     },
+    "points_ledger_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Monotonic conditional-write revision for balances, receipts and reservations."
+    },
+    "reserved_points": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Points held for uncompleted payments; available points equal total minus reserved."
+    },
+    "refund_review_holds": {
+      "type": "array",
+      "default": [],
+      "description": "Server-only refund loyalty review latches, written with points_ledger_revision. They do not debit points, restore rewards, or expire when a balance grows. Closing an operations review is not authorization to debit.",
+      "items": {
+        "type": "object",
+        "required": ["review_key", "payment_intent_id", "order_id", "earned_transaction_id", "points_to_review", "reason", "created_at"],
+        "properties": {
+          "review_key": { "type": "string" },
+          "payment_intent_id": { "type": "string" },
+          "order_id": { "type": "string" },
+          "earned_transaction_id": { "type": "string" },
+          "points_to_review": { "type": "integer", "minimum": 1 },
+          "reason": { "type": "string", "enum": ["spent_or_unavailable"] },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "reward_reservations": {
+      "type": "array",
+      "default": [],
+      "description": "Server-managed payment holds. Declines and local timeouts do not release a retryable payment hold.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reservation_id": { "type": "string" },
+          "context_hash": { "type": "string" },
+          "points": { "type": "integer", "minimum": 1 },
+          "status": { "type": "string", "enum": ["held", "consumed", "released"] },
+          "payment_intent_id": { "type": "string" },
+          "checkout_session_id": { "type": "string", "description": "Real Stripe no-cost Checkout Session; mutually exclusive with payment_intent_id." },
+          "preparation_attempt_id": { "type": "string", "description": "Server-only single-writer claim for no-cost checkout record creation, assigned atomically with the points hold." },
+          "created_at": { "type": "string" },
+          "settled_at": { "type": "string" }
+        }
+      }
+    },
+    "birthday_reservations": {
+      "type": "array",
+      "default": [],
+      "description": "Server-managed annual birthday gifts, serialized with points_ledger_revision but never debiting points. Only confirmed payment success/cancellation settles a hold. Full date of birth is not copied here.",
+      "items": {
+        "type": "object",
+        "required": ["reservation_id", "context_hash", "customer_app_user_id", "product_id", "retail_value_cents", "cycle_year", "month_day", "window_start", "window_end", "status", "created_at"],
+        "properties": {
+          "reservation_id": { "type": "string" },
+          "context_hash": { "type": "string" },
+          "customer_app_user_id": { "type": "string" },
+          "checkout_session_id": { "type": "string", "description": "Real zero-cost Stripe Session, mutually exclusive with payment_intent_id; enforced by annual entitlement runtime." },
+          "product_id": { "type": "string" },
+          "retail_value_cents": { "type": "integer", "minimum": 1 },
+          "payment_intent_id": { "type": "string" },
+          "cycle_year": { "type": "integer", "minimum": 1900, "maximum": 9998 },
+          "month_day": { "type": "string" },
+          "window_start": { "type": "string", "format": "date" },
+          "window_end": { "type": "string", "format": "date" },
+          "status": { "type": "string", "enum": ["held", "consumed", "released"] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "settled_at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
     "points_history": {
       "type": "array",
       "items": {
@@ -49,6 +123,14 @@
             "type": "string",
             "description": "Optional idempotency key used to prevent duplicate point awards"
           },
+          "transaction_id": { "type": "string" },
+          "transaction_type": { "type": "string" },
+          "balanceBefore": { "type": "integer" },
+          "balanceAfter": { "type": "integer" },
+          "lifetimeBefore": { "type": "integer" },
+          "lifetimeAfter": { "type": "integer" },
+          "redeemedBefore": { "type": "integer" },
+          "redeemedAfter": { "type": "integer" },
           "timestamp": {
             "type": "string"
           }
@@ -69,6 +151,15 @@
           },
           "reward_type": {
             "type": "string"
+          },
+          "points_required": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Canonical catalog cost at selection; selection itself does not debit points."
+          },
+          "status": {
+            "type": "string",
+            "description": "Selection lifecycle, including selected_pending_checkout; not proof of completed redemption."
           },
           "claimed_at": {
             "type": "string"

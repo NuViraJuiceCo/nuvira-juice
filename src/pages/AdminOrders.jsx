@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import RouteReviewRequests from '@/components/admin/RouteReviewRequests';
 import { AdminStatusLegend, AdminStatusPill } from '@/components/admin/AdminStatusPill';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
@@ -1396,6 +1397,7 @@ export default function AdminOrders() {
         onBack={() => navigate('/admin/operations')}
       />
 
+      {!showInternalTestValidation && <RouteReviewRequests />}
       {!showInternalTestValidation && (
         <section className="px-4 mt-4">
           <Link

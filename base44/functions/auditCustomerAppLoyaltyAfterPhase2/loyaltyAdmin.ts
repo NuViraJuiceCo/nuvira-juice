@@ -127,6 +127,10 @@ async function listMembers(base44: any) {
   }
   const transactionsByEmail = new Map();
   for (const row of transactions || []) {
+    // Pending/voided rows are audit attempts, not applied points movements.
+    // Concurrent webhook retries may leave a voided attempt beside the one
+    // canonical posted receipt; never present that attempt as a second debit.
+    if (row.status !== 'posted') continue;
     const key = email(row.customer_email);
     if (!key) continue;
     if (!transactionsByEmail.has(key)) transactionsByEmail.set(key, []);

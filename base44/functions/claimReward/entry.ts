@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { email, reward_id, reward_title, reward_type } = await req.json();
+    const { email, reward_id, reward_title, reward_type, validate_only } = await req.json();
 
     if (!email || !reward_id || !reward_title) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
@@ -38,7 +38,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Reward details do not match the active catalog' }, { status: 409 });
     }
 
-    const requiredPoints = Math.max(0, Number(reward.points_required || 0));
+    const requiredPoints = Number(reward.points_required);
+    if (!Number.isSafeInteger(requiredPoints) || requiredPoints <= 0) {
+      return Response.json({ error: 'Reward points configuration is unavailable' }, { status: 409 });
+    }
 
     // Reward selection is recorded here; points are deducted only after a
     // successfully paid checkout so abandoned carts never consume points.
@@ -46,23 +49,39 @@ Deno.serve(async (req) => {
       { customer_email: authenticatedEmail }
     );
 
-    let userPointsRecord = existing[0];
+    const userPointsRecord = existing[0];
 
     if (!userPointsRecord) {
       return Response.json({ error: 'Loyalty points account not found' }, { status: 404 });
     }
 
-    if (Number(userPointsRecord.total_points || 0) < requiredPoints) {
+    const reservedPoints = Number(userPointsRecord.reserved_points ?? 0);
+    if (existing.length !== 1 || !Number.isSafeInteger(Number(userPointsRecord.total_points))
+      || Number(userPointsRecord.total_points) < 0 || !Number.isSafeInteger(reservedPoints)
+      || reservedPoints < 0 || reservedPoints > Number(userPointsRecord.total_points)) {
+      return Response.json({ error: 'Your points balance needs review before a reward can be selected' }, { status: 409 });
+    }
+    const availablePoints = Number(userPointsRecord.total_points) - reservedPoints;
+    if (availablePoints < requiredPoints) {
       return Response.json({
         error: 'Not enough points for this reward',
         required_points: requiredPoints,
-        available_points: Number(userPointsRecord.total_points || 0),
+        available_points: availablePoints,
       }, { status: 409 });
     }
 
-    // Add to claimed_rewards
-    const claimedRewards = userPointsRecord.claimed_rewards || [];
-    const alreadyClaimed = claimedRewards.some(r => r.reward_id === reward_id);
+    // Cart/checkout refresh is read-only. Never append selection records while
+    // checking a stored reward, and never trust a client-supplied points cost.
+    if (validate_only === true) {
+      return Response.json({
+        success: true, validated_only: true, writes_performed: false,
+        reward_id: reward.id, reward_title: reward.title, reward_type: reward.reward_type,
+        points_required: requiredPoints, description: reward.description || '', icon: reward.icon || '🎁',
+        source: 'customer_app_native', hub_operational_dependency: false,
+      });
+    }
+    const claimedRewards = Array.isArray(userPointsRecord.claimed_rewards) ? [...userPointsRecord.claimed_rewards] : [];
+    const alreadyClaimed = claimedRewards.some(r => r.reward_id === reward_id && r.status === 'selected_pending_checkout');
 
     if (!alreadyClaimed) {
       claimedRewards.push({
@@ -85,6 +104,8 @@ Deno.serve(async (req) => {
       reward_title: reward.title,
       reward_type: reward.reward_type,
       points_required: requiredPoints,
+      description: reward.description || '',
+      icon: reward.icon || '🎁',
       already_selected: alreadyClaimed,
       source: 'customer_app_native',
       hub_operational_dependency: false,

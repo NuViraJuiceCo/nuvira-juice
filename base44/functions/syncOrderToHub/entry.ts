@@ -1,7 +1,46 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+// Bundle-local copy: tested byte-for-byte against stripeWebhook/rewardSettlement.js.
+function isVerifiedNoPaymentOrder(order) {
+  const receipt = order?.reward_settlement;
+  return Boolean(order?.id && order?.customer_email && order?.order_number
+    && order.total === 0 && order.payment_captured === false
+    && order.payment_status === 'paid' && order.financial_status === 'paid'
+    && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
+    && !['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+    && !order.stripe_payment_intent_id && !(Number(order.amount_refunded || 0) > 0)
+    && (receipt?.revision === '2026-09-08.reward-settlement-v1'
+    || (receipt?.revision === '2026-09-09.credit-settlement-v2'
+      && /^credit:[a-f0-9]{64}$/.test(receipt.credit_reservation_id || '')
+      && Number.isSafeInteger(receipt.credit_redeemed_cents) && receipt.credit_redeemed_cents > 0
+      && (receipt.points_redeemed === 0 ? receipt.reservation_id === receipt.credit_reservation_id
+        : /^(points|reward):[a-f0-9]{64}$/.test(receipt.reservation_id || ''))))
+    && /^cs_[A-Za-z0-9_]+$/.test(order.stripe_checkout_session_id || '')
+    && receipt.checkout_session_id === order.stripe_checkout_session_id
+    && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
+    && typeof receipt.reservation_id === 'string' && receipt.reservation_id.length > 0
+    && (() => {
+      const gifts = (Array.isArray(order.items) ? order.items : []).filter(item => item.isBirthdayReward || item.birthday_product_id);
+      if (!gifts.length) return !receipt.birthday_reservation_id && !receipt.birthday_product_id && !receipt.birthday_retail_cents;
+      const gift = gifts[0];
+      return gifts.length === 1 && /^birthday:[a-f0-9]{64}$/.test(receipt.birthday_reservation_id || '')
+        && gift.isBirthdayReward === true && gift.quantity === 1 && gift.price === 0
+        && gift.product_id === receipt.birthday_product_id && gift.birthday_product_id === receipt.birthday_product_id
+        && Number.isSafeInteger(receipt.birthday_retail_cents) && receipt.birthday_retail_cents > 0
+        && Math.round(gift.catalog_unit_price * 100) === receipt.birthday_retail_cents
+        && Math.round(gift.birthday_discount_amount * 100) === receipt.birthday_retail_cents;
+    })()
+    && Number.isSafeInteger(receipt.points_redeemed)
+    && receipt.points_redeemed >= (receipt.revision === '2026-09-09.credit-settlement-v2' ? 0 : 1)
+    && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
+    && typeof receipt.settled_at === 'string' && Number.isFinite(Date.parse(receipt.settled_at)));
+}
+
 import { handleNativeOrderOpsRequest } from './nativeOrderOps.ts';
 import productionMaterializationHandler from './productionMaterializer/handler.ts';
+import { readRewardNativeOrder } from './rewardNativeGuard.js';
 
+// Bundle revision: refund-native-recovery-20260909 (unreleased).
+// Bundle revision: reward-native-item-snapshots-20260908 (unreleased).
 // Bundle revision: g115h-local-production-materializer-20260812.
 // Bundle revision: g115g-bundle-safe-signed-production-materializer-20260812.
 // Bundle revision: g115f-direct-production-materializer-composition-20260812.
@@ -699,8 +738,10 @@ async function maybeRunNativeOrderOps({ req, payload, body }) {
         order: nativeOrder,
         request_id: body?.request_id || `syncOrderToHub:${eventType}:${nativeOrder?.id || orderNumber || Date.now()}`,
         idempotency_key: body?.idempotency_key || `native_order_ops:${source}:${eventType}:${orderNumber}${refundSuffix}`,
-        internal_secret: getCustomerAppSyncSecret(),
+        internal_secret: body?.reward_native_handoff
+          ? (Deno.env.get('NATIVE_ORDER_OPS_SECRET') || getCustomerAppSyncSecret()) : getCustomerAppSyncSecret(),
         actor_email: body?.actor_email || null,
+        ...(body?.reward_native_handoff ? { reward_native_handoff: body.reward_native_handoff } : {}),
       }),
     }));
     const result = await response.json().catch(() => null);
@@ -756,11 +797,36 @@ Deno.serve(async (req) => {
     return Response.json({ error: 'No order data' }, { status: 400 });
   }
 
+  if (body?.reward_native_handoff || (order.reward_settlement && !['order.refunded'].includes(body?.event_type || body?.event))) {
+    const secret = getCustomerAppSyncSecret();
+    if (!secret || req.headers.get('x-internal-secret') !== secret) {
+      return Response.json({ success: false, error_code: 'reward_native_internal_auth_required' }, { status: 403 });
+    }
+    if (body.native_only !== true || (body.event_type || body.event || 'order.created') !== 'order.created'
+      || body.native_order || body.native_source === 'shopify_pos') {
+      return Response.json({ success: false, error_code: 'reward_native_scope_invalid' }, { status: 409 });
+    }
+    try { order = await readRewardNativeOrder(base44.asServiceRole.entities, { ...body, order_id: order.id }); }
+    catch { return Response.json({ success: false, error_code: 'reward_native_claim_or_order_unconfirmed' }, { status: 409 }); }
+  }
+
   if (body?.native_only === true) {
     const nativeEventType = body?.event_type || body?.event || 'order.created';
     const source = ['customer_app_one_time', 'website_one_time', 'shopify_pos'].includes(body?.native_source)
       ? body.native_source
       : 'customer_app_one_time';
+    // Reward planning reads native mirrors/tasks. Create that exact projection
+    // first; otherwise a brand-new settled reward has no demand to materialize.
+    // Keep the established non-reward ordering unchanged.
+    let rewardNativeResult = null;
+    if (body.reward_native_handoff) {
+      rewardNativeResult = await maybeRunNativeOrderOps({ req, payload: { event: nativeEventType, order },
+        body: { ...body, native_order: order } });
+      if (rewardNativeResult?.success !== true) return Response.json({ success: false,
+        error_code: 'reward_native_projection_unconfirmed', native_only: true }, { status: 503 });
+      try { order = await readRewardNativeOrder(base44.asServiceRole.entities, { ...body, order_id: order.id }); }
+      catch { return Response.json({ success: false, error_code: 'reward_native_order_changed' }, { status: 409 }); }
+    }
     const productionBatchMaterialization = await materializePaidOrderProduction({
       base44,
       req,
@@ -769,7 +835,7 @@ Deno.serve(async (req) => {
       source,
       requestId: body?.request_id || order?.order_number || order?.id,
     });
-    const nativeResult = await maybeRunNativeOrderOps({
+    const nativeResult = rewardNativeResult || await maybeRunNativeOrderOps({
       req,
       payload: { event: nativeEventType, order },
       body: { ...body, native_order: body?.native_order || order },
@@ -795,7 +861,7 @@ Deno.serve(async (req) => {
   const customerAppSyncSecret = getCustomerAppSyncSecret();
 
   // HARD GATE: Never sync unpaid, pending, or abandoned checkout orders to Hub.
-  // Only payment_captured=true + payment_status='paid' orders may enter Hub operational flow.
+  // A captured payment OR an independently settled no-cash reward is required.
   // EXCEPT: Refunded orders (payment_status='refunded') — these MUST sync to Hub to cancel production/fulfillment
   if (order.status === 'pending_payment' || order.is_abandoned_checkout || order.do_not_recover) {
     console.log(`syncOrderToHub: BLOCKED — order ${order.order_number} is pending/abandoned (status=${order.status}, payment_captured=${order.payment_captured}). No Hub push.`);
@@ -805,7 +871,8 @@ Deno.serve(async (req) => {
   // Allow refunded orders to sync (critical for operational cancellation)
   const isRefundedOrder = order.payment_status === 'refunded' || order.status === 'refunded';
   
-  if (!isRefundedOrder && (!order.payment_captured || (order.payment_status !== 'paid' && order.financial_status !== 'paid'))) {
+  if (!isRefundedOrder && !isVerifiedNoPaymentOrder(order)
+    && (!order.payment_captured || (order.payment_status !== 'paid' && order.financial_status !== 'paid'))) {
     console.log(`syncOrderToHub: BLOCKED — order ${order.order_number} not paid (payment_captured=${order.payment_captured}, payment_status=${order.payment_status}). No Hub push.`);
     return Response.json({ success: true, skipped: true, reason: 'payment_not_captured' });
   }
@@ -836,7 +903,10 @@ Deno.serve(async (req) => {
 
   // Resolve payment_status from Stripe session (source of truth)
   let payment_status = 'pending';
-  if (stripeSession?.payment_status === 'paid') {
+  if (isVerifiedNoPaymentOrder(order)) {
+    // Operationally settled, but never report a card capture that did not occur.
+    payment_status = 'paid';
+  } else if (stripeSession?.payment_status === 'paid') {
     payment_status = 'paid';
   } else if (stripeSession?.payment_status === 'refunded') {
     payment_status = 'refunded';

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { firstOrderOfferIsConfigured } from '../../firstOrderEligibility.js';
 
 const VALID_ACTIONS = new Set(['list', 'upsert', 'toggle_active']);
 const VALID_KINDS = new Set(['promotion', 'referral']);
@@ -41,6 +42,7 @@ function row(value: any) {
     minimum_subtotal: number(value?.minimum_subtotal) ?? 0,
     maximum_discount: number(value?.maximum_discount) ?? 0,
     once_per_customer: value?.once_per_customer === true,
+    first_order_only: value?.first_order_only === true,
     starts_at: text(value?.starts_at, 80) || null,
     ends_at: text(value?.ends_at, 80) || null,
     active: value?.active === true,
@@ -104,6 +106,8 @@ function validatePayload(body: any) {
   const maximumDiscount = number(body.maximum_discount ?? 0);
   const startsAt = isoDate(body.starts_at);
   const endsAt = isoDate(body.ends_at);
+  if (body.first_order_only !== undefined && typeof body.first_order_only !== 'boolean') throw new Error('invalid_first_order_policy');
+  if (!firstOrderOfferIsConfigured({ ...body, ends_at: endsAt })) throw new Error('invalid_first_order_policy_requires_one_use');
 
   if (!/^[A-Z0-9_-]{3,32}$/.test(normalizedCode)) throw new Error('invalid_discount_code');
   if (!displayName) throw new Error('display_name_required');
@@ -124,6 +128,7 @@ function validatePayload(body: any) {
     minimum_subtotal: minimumSubtotal,
     maximum_discount: maximumDiscount,
     once_per_customer: body.once_per_customer === true,
+    first_order_only: body.first_order_only === true,
     starts_at: startsAt || '',
     ends_at: endsAt || '',
     active: body.active === true,
@@ -149,8 +154,19 @@ export default async function handler(req: Request) {
     }
 
     if (action === 'upsert') {
-      const payload = validatePayload(body);
       const recordId = text(body.discount_code_id, 180) || null;
+      // Older native/admin bundles omit new fields. Preserve an existing policy
+      // rather than silently removing the restriction through an old editor.
+      let stored = null;
+      if (recordId) {
+        const existing = await base44.asServiceRole.entities.DiscountCode.filter({ id: recordId }, '-created_date', 1);
+        stored = existing[0];
+        if (!stored) throw new Error('invalid_discount_code_id');
+      }
+      const payload = validatePayload({
+        ...body,
+        first_order_only: body.first_order_only ?? (stored?.first_order_only === true),
+      });
       const expectedConfirmation = `SAVE ${payload.code}`;
       if (text(body.confirmation, 200) !== expectedConfirmation) {
         return Response.json({ error: 'confirmation_required', confirmation_phrase: expectedConfirmation }, { status: 409 });
@@ -176,6 +192,11 @@ export default async function handler(req: Request) {
     const expectedConfirmation = `SET ${recordId} ${active ? 'ACTIVE' : 'INACTIVE'}`;
     if (text(body.confirmation, 240) !== expectedConfirmation) {
       return Response.json({ error: 'confirmation_required', confirmation_phrase: expectedConfirmation }, { status: 409 });
+    }
+    if (active) {
+      const rows = await base44.asServiceRole.entities.DiscountCode.filter({ id: recordId }, '-created_date', 1);
+      if (!rows[0]) throw new Error('invalid_discount_code_id');
+      if (!firstOrderOfferIsConfigured(rows[0])) throw new Error('invalid_first_order_policy_requires_one_use');
     }
     const commandState = await createCommand(base44, user, body, 'discount_code_toggle_active', recordId);
     if (commandState.replay) return Response.json(commandState.replay, { status: commandState.replay.error ? 409 : 200 });

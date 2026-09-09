@@ -1,5 +1,41 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+function isVerifiedNoPaymentOrder(order) {
+  const receipt = order?.reward_settlement;
+  return Boolean(order?.id && order?.customer_email && order?.order_number
+    && order.total === 0 && order.payment_captured === false
+    && order.payment_status === 'paid' && order.financial_status === 'paid'
+    && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
+    && !['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+    && !order.stripe_payment_intent_id && !(Number(order.amount_refunded || 0) > 0)
+    && (receipt?.revision === '2026-09-08.reward-settlement-v1'
+    || (receipt?.revision === '2026-09-09.credit-settlement-v2'
+      && /^credit:[a-f0-9]{64}$/.test(receipt.credit_reservation_id || '')
+      && Number.isSafeInteger(receipt.credit_redeemed_cents) && receipt.credit_redeemed_cents > 0
+      && (receipt.points_redeemed === 0 ? receipt.reservation_id === receipt.credit_reservation_id
+        : /^(points|reward):[a-f0-9]{64}$/.test(receipt.reservation_id || ''))))
+    && /^cs_[A-Za-z0-9_]+$/.test(order.stripe_checkout_session_id || '')
+    && receipt.checkout_session_id === order.stripe_checkout_session_id
+    && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
+    && typeof receipt.reservation_id === 'string' && receipt.reservation_id.length > 0
+    && (() => {
+      const gifts = (Array.isArray(order.items) ? order.items : []).filter(item => item.isBirthdayReward || item.birthday_product_id);
+      if (!gifts.length) return !receipt.birthday_reservation_id && !receipt.birthday_product_id && !receipt.birthday_retail_cents;
+      const gift = gifts[0];
+      return gifts.length === 1 && /^birthday:[a-f0-9]{64}$/.test(receipt.birthday_reservation_id || '')
+        && gift.isBirthdayReward === true && gift.quantity === 1 && gift.price === 0
+        && gift.product_id === receipt.birthday_product_id && gift.birthday_product_id === receipt.birthday_product_id
+        && Number.isSafeInteger(receipt.birthday_retail_cents) && receipt.birthday_retail_cents > 0
+        && Math.round(gift.catalog_unit_price * 100) === receipt.birthday_retail_cents
+        && Math.round(gift.birthday_discount_amount * 100) === receipt.birthday_retail_cents;
+    })()
+    && Number.isSafeInteger(receipt.points_redeemed)
+    && receipt.points_redeemed >= (receipt.revision === '2026-09-09.credit-settlement-v2' ? 0 : 1)
+    && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
+    && typeof receipt.settled_at === 'string' && Number.isFinite(Date.parse(receipt.settled_at)));
+}
+
+
 const SENDBLUE_API_KEY = Deno.env.get('SENDBLUE_API_KEY');
 const SENDBLUE_API_SECRET = Deno.env.get('SENDBLUE_API_SECRET');
 const SENDBLUE_PHONE_NUMBER = Deno.env.get('SENDBLUE_PHONE_NUMBER');
@@ -78,12 +114,36 @@ export default async (req: Request) => {
       return Response.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { order_id, phone_number, order_number, items, total, estimated_delivery_date, assigned_delivery_date, delivery_window_label } = await req.json();
+    const { order_id, phone_number, order_number, items, total, estimated_delivery_date, assigned_delivery_date,
+      delivery_window_label, reward_checkout_session_id } = await req.json();
     const idempotencyKey = buildOrderConfirmationSmsKey(order_id, order_number);
 
     const recipientNumber = normalizeE164(phone_number);
     const senderNumber = normalizeE164(SENDBLUE_PHONE_NUMBER);
     if (!recipientNumber) return Response.json({ error: 'valid_e164_phone_number_required' }, { status: 400 });
+    if (reward_checkout_session_id) {
+      const orders = await base44.asServiceRole.entities.Order.filter({ id: order_id }, undefined, 2);
+      const order = orders.length === 1 ? orders[0] : null;
+      if (!order || order.stripe_checkout_session_id !== reward_checkout_session_id
+        || order.reward_settlement?.checkout_session_id !== reward_checkout_session_id
+        || !isVerifiedNoPaymentOrder(order)
+        || order.total !== 0 || total !== 0 || order.payment_captured !== false || order.payment_status !== 'paid'
+        || order.financial_status !== 'paid' || order.stripe_payment_intent_id || order.is_test_order === true
+        || order.is_abandoned_checkout === true || order.do_not_recover === true || Number(order.amount_refunded || 0) > 0
+        || ['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+        || order.order_number !== order_number || normalizeE164(order.contact_phone) !== recipientNumber
+        || order.assigned_delivery_date !== assigned_delivery_date || order.delivery_window_label !== delivery_window_label
+        || JSON.stringify(order.items) !== JSON.stringify(items)) {
+        return Response.json({ error: 'reward_sms_order_unconfirmed' }, { status: 409 });
+      }
+      const profiles = await base44.asServiceRole.entities.UserProfile.filter({ customer_email: order.customer_email }, undefined, 2);
+      if (profiles.length > 1) return Response.json({ error: 'reward_sms_profile_not_unique' }, { status: 409 });
+      const profile = profiles[0];
+      if (!profile || profile.sms_consent !== true || normalizeE164(profile.phone) !== recipientNumber
+        || !Number.isFinite(Date.parse(profile.sms_consent_date || '')) || Date.parse(profile.sms_consent_date) > Date.now()) {
+        return Response.json({ success: true, skipped: true, reason: 'preference_opt_out' });
+      }
+    }
 
     if (!SENDBLUE_API_KEY || !SENDBLUE_API_SECRET || !senderNumber) {
       console.error('sendOrderSms: SendBlue credentials not set');
@@ -195,7 +255,7 @@ export default async (req: Request) => {
         order_number: order_number || null,
           customer_phone: recipientNumber,
         provider: 'sendblue',
-        provider_message_id: result?.message_id || null,
+        provider_message_id: result?.message_handle || result?.message_id || null,
         status: 'sent',
         sent_at: new Date().toISOString(),
         metadata: {
@@ -203,6 +263,7 @@ export default async (req: Request) => {
           provider_status: result?.status || null,
           delivery_date: assigned_delivery_date || estimated_delivery_date || null,
           delivery_window_label: delivery_window_label || null,
+          ...(reward_checkout_session_id ? { reward_checkout_session_id } : {}),
         },
       });
     }

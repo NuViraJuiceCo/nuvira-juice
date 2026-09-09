@@ -1,4 +1,10 @@
 // @ts-nocheck
+// Bundle revision: credit-settlement-receipt-20260909 (unreleased).
+// Bundle revision: checkout-credit-availability-20260908 (unreleased).
+// Bundle revision: reward-settlement-20260908 (no-cash eligibility; unreleased).
+// Bundle revision: reward-reserved-balance-20260908 (selection excludes held points; unreleased).
+// Bundle revision: reward-selection-validation-20260908 (read-only revalidation and canonical selection).
+// Bundle revision: first-order-offer-20260907 (opt-in policy; no offer activation).
 // Bundle revision: g174-guest-address-20260906 (public lookup only; account auth unchanged).
 // Bundle revision: g172-guest-loyalty-activation-20260902.
 // Bundle revision: g125-delivery-live-activity-20260822.

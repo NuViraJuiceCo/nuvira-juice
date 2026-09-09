@@ -166,7 +166,14 @@ assert.doesNotMatch(orderStatusEntry, /fullOrder\.total \|\| 0\)\.toFixed/);
 assert.ok(orderEmailTemplate.includes("NuVira Juice Company, 619 N. Main St., O'Fallon, MO 63366"));
 assert.doesNotMatch(orderEmailTemplate, /Wentzville, Missouri/);
 assert.match(orderConfirmation, /\['sent', 'delivered'\]\.includes/);
-for (const customerEmailSource of [zone3Approval, zone3Denial]) {
+assert.match(zone3Approval, /decideRouteReview/);
+assert.doesNotMatch(zone3Approval, /api.resend.com|Order.create/);
+const routeEmail = read('base44/shared/routeReviewNotifications.js');
+assert.match(routeEmail, /escape\(target.message\)/);
+assert.match(routeEmail, /\['sent', 'delivered'\]\.includes/);
+assert.ok(routeEmail.includes("619 N. Main St., O'Fallon, MO 63366"));
+assert.match(routeEmail, /name="viewport"/);
+for (const customerEmailSource of [zone3Denial]) {
   assert.match(customerEmailSource, /escapeHtml/);
   assert.match(customerEmailSource, /\['sent', 'delivered'\]\.includes/);
   assert.ok(customerEmailSource.includes("619 N. Main St., O'Fallon, MO 63366"));

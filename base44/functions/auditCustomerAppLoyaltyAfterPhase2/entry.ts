@@ -4,6 +4,9 @@ import { buildLoyaltyIntegrityReport } from './loyaltyIntegrity.js';
 import { buildAuthoritativeLoyaltyReconciliation } from './loyaltyReconciliation.js';
 import { handleLoyaltyAdminAction } from './loyaltyAdmin.ts';
 
+// Entrypoint marker includes nested-handler changes in deployment provenance.
+const LOYALTY_ADMIN_RUNTIME_REVISION = '2026-09-08.posted-transactions-only-v1';
+
 const PAGE_SIZE = 200;
 const MAX_ROWS_PER_ENTITY = 5000;
 const APPLY_CONFIRMATION = 'RECONCILE LOYALTY FROM AUTHORITATIVE ORDERS';
@@ -48,6 +51,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     if (['list', 'adjust_points', 'update_profile'].includes(String(body?.action || '').toLowerCase())) {
+      console.log('[loyalty-admin]', LOYALTY_ADMIN_RUNTIME_REVISION);
       return await handleLoyaltyAdminAction(base44, user, body);
     }
     const apply = body?.action === 'apply_reconciliation';

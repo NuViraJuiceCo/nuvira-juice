@@ -127,7 +127,9 @@ Deno.serve(async (req) => {
     }
 
     // Format items list
-    const itemsHtml = (Array.isArray(items) ? items : []).slice(0, 40).map(item => {
+    // Match the checkout's 50-line limit; do not silently omit the final ten
+    // items of an otherwise accepted order from its confirmation email.
+    const itemsHtml = (Array.isArray(items) ? items : []).slice(0, 50).map(item => {
       const quantity = Math.max(1, Number(item?.quantity || 1));
       const price = Number(item?.price || 0);
       return `<tr><td style="padding: 8px;">${escapeHtml(item?.title || item?.name || 'NuVira item')}</td><td style="padding: 8px;">x${quantity}</td><td style="padding: 8px;">$${money(price * quantity)}</td></tr>`;

@@ -1,5 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
+import { decideRouteReview } from '../../../../shared/routeReviewDecision.js';
+import { ROUTE_REVIEW_REVISION } from '../../../../shared/routeReview.js';
+import { notifyRouteReview } from '../../../../shared/routeReviewNotifications.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
@@ -65,6 +68,13 @@ export default async (req: Request) => {
     const dars = await base44.asServiceRole.entities.DeliveryApprovalRequest.filter({ id: dar_id });
     const dar = dars[0];
     if (!dar) return Response.json({ error: 'DeliveryApprovalRequest not found' }, { status: 404 });
+    if (dar.checkout_revision === ROUTE_REVIEW_REVISION) {
+      const kind = dar.status === 'expired' && dar.communications_pending === true
+        && dar.review_decision?.kind === 'expire' && dar.review_decision?.complete === true ? 'expire' : 'deny';
+      return Response.json(await decideRouteReview({ base44, stripe, darId: dar_id, kind,
+        actor: user.email, reason: admin_decision_reason, env: Deno.env,
+        notify: (proof, stage) => notifyRouteReview({ base44, proof, stage, env: Deno.env }) }));
+    }
 
     // Validate status
     if (!['pending_review', 'pending_authorization'].includes(dar.status)) {
@@ -96,6 +106,12 @@ export default async (req: Request) => {
       }
     }
 
+    // A cancellation acknowledgment alone is insufficient. Never report a
+    // released hold, deny the request or send email after an ambiguous cancel.
+    if (!dar.stripe_payment_intent_id || !['canceled', 'already_canceled'].includes(stripeAction)
+      || (await stripe.paymentIntents.retrieve(dar.stripe_payment_intent_id)).status !== 'canceled') {
+      return Response.json({ error: 'route_review_cancellation_unconfirmed', success: false }, { status: 503 });
+    }
     // Create DeliveryWaitlist record
     let waitlistId = null;
     try {

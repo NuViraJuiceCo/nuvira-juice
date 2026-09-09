@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { X } from 'lucide-react';
@@ -12,8 +12,11 @@ import { motion, AnimatePresence } from 'framer-motion';
  *  title: string
  *  category: string (optional filter, e.g. 'juice')
  */
-export default function FreeProductPicker({ open, onClose, onSelect, title = 'Choose Your Free Item', category }) {
-  const { data: products = [], isLoading } = useQuery({
+export default function FreeProductPicker({ open, onClose, onSelect, title = 'Choose Your Free Item', category, isEligible }) {
+  const selectingRef = useRef(false);
+  const [selecting, setSelecting] = useState(false);
+  const [selectionError, setSelectionError] = useState('');
+  const { data: products = [], isLoading, isError } = useQuery({
     queryKey: ['free-picker-products', category],
     queryFn: () => {
       const filter = { is_available: true };
@@ -23,10 +26,23 @@ export default function FreeProductPicker({ open, onClose, onSelect, title = 'Ch
     enabled: open,
   });
 
-  const handleSelect = (product) => {
-    onSelect(product);
-    onClose();
+  const handleSelect = async (product) => {
+    if (selectingRef.current) return;
+    selectingRef.current = true;
+    setSelecting(true);
+    setSelectionError('');
+    try {
+      const result = await onSelect(product);
+      if (result !== false) onClose();
+    } catch (error) {
+      setSelectionError(error?.message || 'Unable to select this item. Please try again.');
+    } finally {
+      selectingRef.current = false;
+      setSelecting(false);
+    }
   };
+  const closePicker = () => { if (!selectingRef.current) { setSelectionError(''); onClose(); } };
+  const eligibleProducts = isEligible ? products.filter(isEligible) : products;
 
   return (
     <AnimatePresence>
@@ -37,7 +53,7 @@ export default function FreeProductPicker({ open, onClose, onSelect, title = 'Ch
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={closePicker}
             className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
           />
 
@@ -57,21 +73,25 @@ export default function FreeProductPicker({ open, onClose, onSelect, title = 'Ch
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-border">
               <h2 className="font-heading text-lg font-bold">{title}</h2>
-              <button onClick={onClose} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+              <button type="button" aria-label="Close product picker" disabled={selecting} onClick={closePicker} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Product List */}
             <div className="overflow-y-auto flex-1 px-4 py-4 space-y-2">
+              {(selectionError || isError) && <p role="alert" className="text-sm text-destructive">{selectionError || 'Products could not be loaded. Please close and try again.'}</p>}
+              {!isLoading && !isError && eligibleProducts.length === 0 && <p className="text-sm text-muted-foreground">No eligible items are available right now. Your points have not been used.</p>}
               {isLoading && (
                 <div className="flex items-center justify-center py-10">
                   <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 </div>
               )}
-              {!isLoading && products.map(product => (
+              {!isLoading && eligibleProducts.map(product => (
                 <button
+                  type="button"
                   key={product.id}
+                  disabled={selecting}
                   onClick={() => handleSelect(product)}
                   className="w-full flex items-center gap-3 p-3 rounded-xl bg-secondary/40 hover:bg-primary/10 active:bg-primary/20 transition-colors text-left"
                 >

@@ -1,4 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { nativeItemSnapshot } from './nativeItemSnapshot.js';
+import { readRewardNativeOrder } from './rewardNativeGuard.js';
 
 const SUPPORTED_SOURCES = new Set(['customer_app_one_time', 'website_one_time', 'shopify_pos']);
 const MAX_LINE_ITEMS = 60;
@@ -79,13 +81,15 @@ function normalizePaymentStatus(order, source) {
   return status || 'pending';
 }
 
-function sanitizeLineItems(items) {
+function sanitizeLineItems(items, strict = false) {
   if (!Array.isArray(items)) return [];
+  if (strict && (items.length === 0 || items.length > MAX_LINE_ITEMS)) throw new Error('native_item_snapshot_invalid:count');
   return items.slice(0, MAX_LINE_ITEMS).map(item => {
     const title = sanitizeText(item?.title || item?.name || item?.product_title, 160);
     const quantity = safeNumber(item?.quantity, 0);
     const price = item?.price === undefined || item?.price === null ? null : safeNumber(item.price, 0);
     return {
+      ...nativeItemSnapshot(item, strict),
       shopify_line_item_id: sanitizeText(item?.shopify_line_item_id || item?.id, 120),
       title,
       variant_title: sanitizeText(item?.variant_title, 120),
@@ -252,17 +256,39 @@ async function resolveAuth({ base44, req, body, mode }) {
   return { ok: false };
 }
 
-async function findExistingOrder(base44, record) {
+async function findExistingOrder(base44, record, strict = false) {
   const candidates = [];
   if (record.base44_order_id) candidates.push({ base44_order_id: record.base44_order_id });
   if (record.shopify_order_id) candidates.push({ shopify_order_id: record.shopify_order_id });
   if (record.shopify_order_number) candidates.push({ shopify_order_number: record.shopify_order_number });
 
+  const found = new Map();
   for (const filter of candidates) {
-    const matches = await base44.asServiceRole.entities.ShopifyOrder.filter(filter, '-created_date', 5).catch(() => []);
+    const matches = strict
+      ? await base44.asServiceRole.entities.ShopifyOrder.filter(filter, '-created_date', 5)
+      : await base44.asServiceRole.entities.ShopifyOrder.filter(filter, '-created_date', 5).catch(() => []);
+    if (strict) {
+      if (!Array.isArray(matches) || matches.length >= 5) throw new Error('reward_native_mirror_read_incomplete');
+      for (const row of matches) found.set(row.id, row);
+      continue;
+    }
     if (Array.isArray(matches) && matches.length > 0) return matches[0];
   }
-
+  if (strict && found.size > 1) throw new Error('reward_native_mirror_not_unique');
+  if (strict && found.size === 1) {
+    const row: any = [...found.values()][0];
+    if (row.base44_order_id !== record.base44_order_id || row.shopify_order_number !== record.shopify_order_number
+      || row.customer_email !== record.customer_email || row.total_price !== 0
+      || row.payment_status !== 'paid' || !['pending', ''].includes(row.fulfillment_status || '')
+      || !['awaiting_production', ''].includes(row.production_status || '')
+      || row.stripe_checkout_session_id !== record.stripe_checkout_session_id
+      || row.assigned_delivery_date !== record.assigned_delivery_date || row.production_date !== record.production_date
+      || JSON.stringify(row.line_items) !== JSON.stringify(record.line_items)
+      || row.delivered_at || row.fulfilled_at || row.excluded_from_production === true) {
+      throw new Error('reward_native_existing_mirror_conflict');
+    }
+    return row;
+  }
   return null;
 }
 
@@ -272,7 +298,24 @@ async function findExistingOrderForIncoming(base44, order) {
     shopify_order_id: sanitizeText(order?.shopify_order_id, 140),
     shopify_order_number: sanitizeText(normalizeOrderNumber(order), 120),
   };
-  return findExistingOrder(base44, record);
+  const found = new Map();
+  for (const [key, value] of Object.entries(record).filter(([, value]) => Boolean(value))) {
+    const matches = await base44.asServiceRole.entities.ShopifyOrder.filter({ [key]: value }, undefined, 5);
+    if (!Array.isArray(matches) || matches.length >= 5) throw new Error('refund_mirror_read_incomplete');
+    for (const row of matches) {
+      if (!row.id) throw new Error('refund_mirror_identity_invalid');
+      found.set(row.id, row);
+    }
+  }
+  if (found.size > 1) throw new Error('refund_mirror_identity_ambiguous');
+  const existing: any = [...found.values()][0] || null;
+  if (existing && ((existing.base44_order_id && existing.base44_order_id !== record.base44_order_id)
+    || existing.shopify_order_number !== record.shopify_order_number
+    || (existing.stripe_payment_intent_id && existing.stripe_payment_intent_id !== order.stripe_payment_intent_id)
+    || (existing.customer_email && normalizeLower(existing.customer_email) !== normalizeLower(order.customer_email)))) {
+    throw new Error('refund_mirror_identity_mismatch');
+  }
+  return existing;
 }
 
 function buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus }) {
@@ -563,6 +606,10 @@ async function createCommandLog({ base44, record, action, status, idempotencyKey
 
 async function handleNativeRefundMirror({ base44, source, eventType, order, idempotencyKey, requestId, mode }) {
   const orderNumber = normalizeOrderNumber(order);
+  if (order?.is_partial_refund === true || order?.is_full_refund === false || order?.refund_type === 'partial') {
+    return Response.json({ success: false, action: 'queued_for_review',
+      error_code: 'partial_refund_cannot_cancel_fulfillment', dry_run: mode !== 'live' }, { status: 409 });
+  }
   if (!SUPPORTED_SOURCES.has(source)) {
     return Response.json({
       success: false,
@@ -587,7 +634,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
 
   const existing = await findExistingOrderForIncoming(base44, order);
   const now = new Date().toISOString();
-  const refundId = sanitizeText(order?.refund_id, 160) || sanitizeText(order?.stripe_charge_id, 160) || 'stripe_refund';
+  const refundId = sanitizeText(order?.stripe_refund_id || order?.refund_id, 160) || 'stripe_refund';
   const refundAmount = order?.refund_amount === undefined || order?.refund_amount === null ? null : safeNumber(order.refund_amount, 0);
 
   if (!existing) {
@@ -632,13 +679,29 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
     }, { status: 202 });
   }
 
-  const alreadyRefunded = normalizeLower(existing.payment_status) === 'refunded' &&
-    ['canceled', 'cancelled', 'refunded'].includes(normalizeLower(existing.production_status || existing.order_status));
-  const existingLogs = mode === 'live'
-    ? await base44.asServiceRole.entities.OrderSyncLog.filter({ idempotency_key: idempotencyKey }, '-created_date', 1).catch(() => [])
-    : [];
+  const isTerminalTask = task => ['cancelled', 'canceled', 'delivered'].includes(normalizeLower(task.status));
+  const readTasks = async () => {
+    const found = new Map();
+    for (const query of [{ order_id: existing.id }, ...(order.id ? [{ base44_order_id: order.id }, { order_id: order.id }] : [])]) {
+      const tasks = await base44.asServiceRole.entities.FulfillmentTask.filter(query, '-created_date', 501);
+      if (!Array.isArray(tasks) || tasks.length >= 501 || tasks.some(task => !task.id
+        || (task.order_id && ![existing.id, order.id].includes(task.order_id))
+        || (task.base44_order_id && task.base44_order_id !== order.id))) {
+        throw new Error('refund_fulfillment_read_incomplete');
+      }
+      for (const task of tasks) found.set(task.id, task);
+    }
+    return [...found.values()];
+  };
+  const isRefundedMirror = row => row?.payment_status === 'refunded' && row.financial_status === 'refunded'
+    && ['canceled', 'cancelled'].includes(row.production_status) && row.order_status === 'refunded'
+    && row.excluded_from_production === true && row.operational_visibility === 'archived';
+  const alreadyRefunded = isRefundedMirror(existing);
+  const tasksBefore = mode === 'live' ? await readTasks() : [];
 
-  if (alreadyRefunded && existingLogs.length > 0) {
+  // A status or old log is not proof that every task was canceled. Failed
+  // reads must be retried, never converted to an empty successful projection.
+  if (mode === 'live' && alreadyRefunded && tasksBefore.every(isTerminalTask)) {
     return Response.json({
       success: true,
       skipped: true,
@@ -662,7 +725,8 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
     refund_id: refundId,
   };
   const fulfillments = Array.isArray(existing.fulfillments)
-    ? existing.fulfillments.map(fulfillment => ({ ...fulfillment, status: 'cancelled', payment_status: 'refunded' }))
+    ? existing.fulfillments.map(fulfillment => ({ ...fulfillment,
+      status: normalizeLower(fulfillment.status) === 'delivered' ? fulfillment.status : 'cancelled', payment_status: 'refunded' }))
     : existing.fulfillments;
   const patch = compactObject({
     payment_status: 'refunded',
@@ -676,7 +740,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
     excluded_from_production: true,
     refunded_at: sanitizeText(order?.refunded_at, 80) || now,
     cancel_type: 'stripe_refund',
-    stripe_charge_id: sanitizeText(order?.refund_id, 160) || existing.stripe_charge_id,
+    stripe_charge_id: sanitizeText(order?.stripe_charge_id, 160) || existing.stripe_charge_id,
     stripe_payment_intent_id: sanitizeText(order?.stripe_payment_intent_id, 160) || existing.stripe_payment_intent_id,
     tags,
     fulfillments,
@@ -689,18 +753,31 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
   let taskUpdateResult = { action: mode === 'live' ? 'not_run' : 'would_cancel', count: 0 };
 
   if (mode === 'live') {
-    writtenRecord = await base44.asServiceRole.entities.ShopifyOrder.update(existing.id, patch);
-    const tasks = await base44.asServiceRole.entities.FulfillmentTask.filter({ order_id: existing.id }, '-created_date', 20).catch(() => []);
+    const conditionalWrite = async (entity, row, fields, changes) => {
+      if (typeof entity.updateMany !== 'function') throw new Error('refund_native_conditional_update_required');
+      const query = { id: row.id };
+      for (const field of [...fields, 'updated_date']) query[field] = row[field] === undefined ? { $exists: false } : row[field];
+      const result = await entity.updateMany(query, { $set: changes });
+      if (result?.success !== true || result.has_more !== false || result.updated !== 1) {
+        throw new Error('refund_native_write_raced_or_unconfirmed');
+      }
+    };
+    if (!alreadyRefunded) await conditionalWrite(base44.asServiceRole.entities.ShopifyOrder, existing,
+      ['payment_status', 'production_status', 'fulfillment_status'], patch);
     let cancelledCount = 0;
-    for (const task of tasks || []) {
-      if (normalizeLower(task.status) === 'cancelled' || normalizeLower(task.status) === 'delivered') continue;
-      await base44.asServiceRole.entities.FulfillmentTask.update(task.id, {
+    for (const task of tasksBefore) {
+      if (isTerminalTask(task)) continue;
+      await conditionalWrite(base44.asServiceRole.entities.FulfillmentTask, task, ['status'], {
         status: 'cancelled',
         notes: sanitizeText(`${task.notes || ''}\nCancelled by native refund mirror for ${orderNumber || existing.shopify_order_number}.`, 500),
       });
       cancelledCount += 1;
     }
     taskUpdateResult = { action: 'cancelled', count: cancelledCount };
+    const mirrors = await base44.asServiceRole.entities.ShopifyOrder.filter({ id: existing.id }, undefined, 2);
+    if (!Array.isArray(mirrors) || mirrors.length !== 1 || !isRefundedMirror(mirrors[0])
+      || !(await readTasks()).every(isTerminalTask)) throw new Error('refund_native_projection_readback_failed');
+    writtenRecord = mirrors[0];
 
     await createOrderSyncLog({
       base44,
@@ -758,7 +835,7 @@ async function handleNativeRefundMirror({ base44, source, eventType, order, idem
   });
 }
 
-async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outputs, idempotencyKey, requestId, source, eventType, mode }) {
+async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outputs, idempotencyKey, requestId, source, eventType, mode, strict = false }) {
   const fulfillmentNeed = outputs?.fulfillment_need || {};
   if (!fulfillmentNeed.requires_fulfillment_task) {
     return { action: 'not_required', record: null };
@@ -775,7 +852,8 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
 
   const taskItems = Array.isArray(outputs.record.line_items)
     ? outputs.record.line_items.map(item => ({
-        product_id: item.shopify_line_item_id || '',
+        ...nativeItemSnapshot(item),
+        product_id: item.product_id || item.shopify_line_item_id || '',
         title: item.title || 'Item',
         price: item.price ?? 0,
         quantity: item.quantity ?? 0,
@@ -850,10 +928,14 @@ async function createOrUpdateNativeFulfillmentTask({ base44, shopifyOrder, outpu
 
   if (mode !== 'live') return { action: 'would_create_or_update', draft };
 
-  const existing = await base44.asServiceRole.entities.FulfillmentTask.filter({
+  const filter = {
     order_id: shopifyOrder.id,
     fulfillment_number: 1,
-  }, '-created_date', 1).catch(() => []);
+  };
+  const existing = strict
+    ? await base44.asServiceRole.entities.FulfillmentTask.filter(filter, '-created_date', 2)
+    : await base44.asServiceRole.entities.FulfillmentTask.filter(filter, '-created_date', 1).catch(() => []);
+  if (strict && (!Array.isArray(existing) || existing.length > 1)) throw new Error('reward_native_task_not_unique');
 
   if (Array.isArray(existing) && existing.length > 0) {
     return { action: 'deduped_existing_task_not_backfilled', record: existing[0] };
@@ -914,8 +996,13 @@ export async function handleNativeOrderOpsRequest(req: Request) {
 
     const source = normalizeLower(body?.source || body?.order?.source_type || 'customer_app_one_time');
     const eventType = normalizeText(body?.event_type || body?.event || 'order.created') || 'order.created';
-    const order = body?.order && typeof body.order === 'object' ? body.order : {};
-    const lineItems = sanitizeLineItems(order.line_items || order.items);
+    const strict = Boolean(body?.reward_native_handoff);
+    const order = strict ? await readRewardNativeOrder(base44.asServiceRole.entities, body)
+      : body?.order && typeof body.order === 'object' ? body.order : {};
+    if (!strict && order.reward_settlement && !isRefundEvent(eventType)) {
+      return Response.json({ success: false, error_code: 'reward_native_claim_required' }, { status: 409 });
+    }
+    const lineItems = sanitizeLineItems(order.line_items || order.items, strict);
     const paymentStatus = normalizePaymentStatus(order, source);
     const fulfillmentMethod = source === 'shopify_pos'
       ? 'pos'
@@ -976,7 +1063,7 @@ export async function handleNativeOrderOpsRequest(req: Request) {
     const outputs: any = source === 'shopify_pos'
       ? buildPosRecord({ order, source, eventType, lineItems, paymentStatus })
       : buildOneTimeRecord({ order, source, eventType, lineItems, paymentStatus });
-    const existing = await findExistingOrder(base44, outputs.record);
+    const existing = await findExistingOrder(base44, outputs.record, strict);
     const planner = await runPlanner({ base44, source, record: outputs.record, existing, idempotencyKey });
 
     if (!planner?.success || planner?.would_reject === true) {
@@ -1036,7 +1123,13 @@ export async function handleNativeOrderOpsRequest(req: Request) {
     };
 
     if (mode === 'live') {
-      if (existing) {
+      if (strict) await readRewardNativeOrder(base44.asServiceRole.entities, body);
+      if (existing && strict) {
+        // The exact settled snapshot already exists. Never reset its lifecycle
+        // or rewrite its audit trail while recovering a missing task receipt.
+        writtenRecord = existing;
+        writeAction = 'skipped';
+      } else if (existing) {
         const updatePayload = compactObject({
           ...planner.accepted_fields,
           sync_status: 'native_ops_ready',
@@ -1062,7 +1155,9 @@ export async function handleNativeOrderOpsRequest(req: Request) {
         source,
         eventType,
         mode,
+        strict,
       }).catch(error => {
+        if (strict) throw error;
         console.warn(`[syncOrderToHub:nativeOrderOps] FulfillmentTask mirror failed safely: ${error?.message || 'unknown'}`);
         return { action: 'failed', record: null, reason: 'fulfillment_task_write_failed' };
       });

@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import ts from 'typescript';
 
 const read = (path) => fs.readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 const analytics = read('src/lib/googleAnalytics.js');
@@ -26,10 +27,17 @@ assert.match(checkout, /google_measurement_context: googleMeasurementContext/);
 assert.match(createPaymentIntent, /normalizeGoogleMeasurementContext/);
 assert.match(createPaymentIntent, /analytics_measurement_consent === 'granted'/);
 assert.match(createPaymentIntent, /google_measurement_context: normalizedGoogleMeasurementContext/);
-const stripeMetadataBlock = createPaymentIntent.slice(
-  createPaymentIntent.indexOf('const intentMetadata = {'),
-  createPaymentIntent.indexOf('const amountCents ='),
-);
+// Inspect the actual metadata initializer, not every local checkout snapshot
+// between it and PaymentIntent creation (a no-cost Session returns before that).
+const metadataTree = ts.createSourceFile('entry.ts', createPaymentIntent, ts.ScriptTarget.Latest, true);
+let metadataInitializer;
+function findMetadata(node) {
+  if (ts.isVariableDeclaration(node) && node.name.getText(metadataTree) === 'intentMetadata') metadataInitializer = node.initializer;
+  ts.forEachChild(node, findMetadata);
+}
+findMetadata(metadataTree);
+assert.ok(metadataInitializer && ts.isObjectLiteralExpression(metadataInitializer));
+const stripeMetadataBlock = metadataInitializer.getText(metadataTree);
 assert.doesNotMatch(stripeMetadataBlock, /google_measurement_context|google_client_id|google_session_id/);
 assert.match(stripeWebhook, /import \{ sendGooglePurchaseMeasurement \} from '\.\/googleMeasurement\.js'/);
 assert.match(stripeWebhook, /async function attemptGooglePurchaseMeasurement/);

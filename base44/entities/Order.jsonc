@@ -12,6 +12,10 @@
       "type": "string",
       "description": "Customer's full name"
     },
+    "bag_return_request_id": {
+      "type": "string",
+      "description": "Exact customer-requested BagReturn reference preserved from the verified checkout snapshot; linkage does not verify collection or issue credits"
+    },
     "items": {
       "type": "array",
       "items": {
@@ -38,6 +42,30 @@
           "size": {
             "type": "string"
           },
+          "cart_line_key": {
+            "type": "string",
+            "description": "Line identity distinct from the real Product ID, so paid and earned units can coexist"
+          },
+          "reward_id": {
+            "type": "string",
+            "description": "Server-verified RewardTier ID for this earned line"
+          },
+          "reward_type": { "type": "string" },
+          "isFreeReward": { "type": "boolean" },
+          "isBirthdayReward": { "type": "boolean" },
+          "birthday_product_id": { "type": "string", "description": "Server-verified real Product ID of the annual birthday gift" },
+          "birthday_discount_amount": { "type": "number", "description": "Catalog retail value of this complimentary birthday bottle; already excluded from line price" },
+          "catalog_unit_price": {
+            "type": "number",
+            "description": "Verified pre-reward unit price in USD at checkout"
+          },
+          "reward_discount_amount": {
+            "type": "number",
+            "description": "Server-calculated earned discount for this complete line, in USD"
+          },
+          "shopify_product_id": { "type": "string" },
+          "shopify_variant_id": { "type": "string" },
+          "meta_catalog_content_id": { "type": "string" },
           "is_program": {
             "type": "boolean"
           },
@@ -278,6 +306,43 @@
       "type": "boolean",
       "default": false
     },
+    "reward_settlement": {
+      "type": "object",
+      "description": "Server-only verified zero-cash reward settlement. Never implies that a card payment was captured.",
+      "properties": {
+        "revision": { "type": "string" },
+        "checkout_session_id": { "type": "string" },
+        "context_hash": { "type": "string" },
+        "reservation_id": { "type": "string" },
+        "points_redeemed": { "type": "number" },
+        "credit_reservation_id": { "type": "string" },
+        "credit_redeemed_cents": { "type": "number" },
+        "birthday_reservation_id": { "type": "string" },
+        "birthday_product_id": { "type": "string" },
+        "birthday_retail_cents": { "type": "number" },
+        "provider_event_id": { "type": "string" },
+        "settled_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "reward_handoff_status": {
+      "type": "string",
+      "enum": ["pending", "complete", "review_required"],
+      "description": "Durable downstream handoff state for a verified no-payment reward checkout. Not a payment-capture flag."
+    },
+    "reward_handoff_revision": {
+      "type": "number",
+      "description": "Server-only compare-and-set revision for reward handoff progress."
+    },
+    "reward_handoff": {
+      "type": "object",
+      "description": "Server-only per-stage dispatch claims and bounded evidence receipts. No provider payloads or secrets.",
+      "properties": {
+        "revision": { "type": "string" },
+        "checkout_session_id": { "type": "string" },
+        "context_hash": { "type": "string" },
+        "steps": { "type": "object", "additionalProperties": true }
+      }
+    },
     "production_date": {
       "type": "string",
       "format": "date",
@@ -376,6 +441,15 @@
         "ignored_duplicate"
       ],
       "description": "Optional refund/payment reversal state. Does not replace lifecycle Order.status."
+    },
+    "refund_processing_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Server-only conditional revision for verified refund projection/recovery."
+    },
+    "refund_processing": {
+      "type": "object",
+      "description": "Server-only bounded refund stage receipts and dispatch claim; never raw provider payloads or secrets."
     },
     "refund_type": {
       "type": "string",
@@ -488,16 +562,7 @@
   ],
   "rls": {
     "create": {
-      "$or": [
-        {
-          "data.customer_email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": { "role": "admin" }
     },
     "read": {
       "$or": [

@@ -26,6 +26,9 @@
       "default": 0,
       "description": "Total points ever redeemed"
     },
+    "points_account_id": { "type": "string", "description": "Authoritative UserPoints record for this projection." },
+    "points_ledger_revision": { "type": "integer", "minimum": 0, "default": 0 },
+    "reserved_points": { "type": "integer", "minimum": 0, "default": 0 },
     "points_history": {
       "type": "array",
       "default": [],
@@ -50,7 +53,17 @@
           },
           "timestamp": {
             "type": "string"
-          }
+          },
+          "event_key": { "type": "string" },
+          "idempotency_key": { "type": "string" },
+          "transaction_id": { "type": "string" },
+          "transaction_type": { "type": "string" },
+          "balanceBefore": { "type": "integer" },
+          "balanceAfter": { "type": "integer" },
+          "lifetimeBefore": { "type": "integer" },
+          "lifetimeAfter": { "type": "integer" },
+          "redeemedBefore": { "type": "integer" },
+          "redeemedAfter": { "type": "integer" }
         }
       }
     }

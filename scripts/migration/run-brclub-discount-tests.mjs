@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { transformSync } from 'esbuild';
+import { firstOrderOfferIsConfigured } from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
 
 const checkoutSource = fs.readFileSync('src/pages/Checkout.jsx', 'utf8');
 const paymentIntentSource = fs.readFileSync('base44/functions/createPaymentIntent/entry.ts', 'utf8');
@@ -30,8 +32,8 @@ const resolverSource = paymentIntentSource
     paymentIntentSource.indexOf('function normalizeNamePart'),
   )
   .concat('\nresult = { resolvePromotion, customerHasConsumedDiscount };');
-const resolverContext = { result: null };
-vm.runInNewContext(resolverSource, resolverContext);
+const resolverContext = { result: null, firstOrderOfferIsConfigured };
+vm.runInNewContext(transformSync(resolverSource, { loader: 'ts', target: 'es2022' }).code, resolverContext);
 
 function discountBackend(rows) {
   return {
@@ -164,7 +166,11 @@ assert.doesNotMatch(checkoutSource, /BRClub \(10% off\)/);
 assert.doesNotMatch(paymentIntentSource, /const BRCLUB_CODE/);
 assert.match(paymentIntentSource, /entities\.DiscountCode\.filter/);
 assert.match(paymentIntentSource, /mode === 'validate_discount_code'/);
-assert.match(paymentIntentSource, /legacyReferralAdjustment/);
+// The old legacy-total adjustment is no longer needed: member benefit pricing
+// is recomputed before applying the canonical code once. Actual legacy/new
+// request arithmetic is covered by the checkout-record handler fixture.
+assert.match(paymentIntentSource, /await priceMemberPayment\(/);
+assert.doesNotMatch(paymentIntentSource, /Number\(total\)\s*-\s*Number\(delivery_fee/);
 assert.match(paymentIntentSource, /promotionDiscountAmt = promotion\.type === 'promotion'/);
 assert.match(
   paymentIntentSource,
@@ -183,13 +189,13 @@ assert.doesNotMatch(
 assert.match(webhookSource, /promotion_code:\s*meta\.promotion_code/);
 assert.match(shopifyPushSource, /order\.total_discounts \|\| order\.promotion_discount_amount/);
 assert.match(shopifyPushSource, /applied_discount:\s*totalDiscountAmount > 0/);
-assert.match(zone3Source, /entities\.DiscountCode\.filter/);
-assert.match(zone3Source, /discount_eligible_subtotal/);
-assert.match(zone3Source, /discount_amount:\s*discount\.amount/);
-assert.match(zone3Source, /DISCOUNT_ALREADY_REDEEMED/);
-assert.match(zone3Source, /customerHasConsumedDiscount/);
-assert.match(zone3ApprovalSource, /captureMerchandiseTotal/);
-assert.match(zone3ApprovalSource, /discount_codes:\s*dar\.discount_code/);
+assert.match(zone3Source, /base44.functions.invoke\('createPaymentIntent'/);
+assert.match(zone3Source, /mode: 'prepare_route_review'/);
+assert.doesNotMatch(zone3Source, /paymentIntents.create|DeliveryApprovalRequest.create/);
+assert.match(zone3ApprovalSource, /decideRouteReview/);
+assert.doesNotMatch(zone3ApprovalSource, /entities.Order.create|paymentIntents.capture/);
+const routeDecision = fs.readFileSync('base44/shared/routeReviewDecision.js', 'utf8');
+assert.match(routeDecision, /route_review_fee_change_requires_customer_confirmation/);
 assert.doesNotMatch(adminPageSource, /entities\.DiscountCode\.(create|update|delete)/);
 assert.match(adminPageSource, /functions\.invoke\('manageAdminDiscountCode'/);
 assert.match(adminCommandSource, /VALID_ACTIONS = new Set\(\['list', 'upsert', 'toggle_active'\]\)/);

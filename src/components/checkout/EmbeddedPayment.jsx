@@ -30,6 +30,7 @@ function PaymentForm({
   onPaymentAttempt,
   confirmLabel,
   showWalletDiagnostics,
+  recoverOnReturn,
 }) {
   const stripe   = useStripe();
   const elements = useElements();
@@ -102,7 +103,7 @@ function PaymentForm({
       elements,
       clientSecret,
       confirmParams: {
-        return_url: window.location.origin + '/order-confirmation',
+        return_url: window.location.origin + (recoverOnReturn ? '/checkout' : '/order-confirmation'),
         payment_method_data: {
           billing_details: {
             name: customerName || undefined,
@@ -410,6 +411,7 @@ export default function EmbeddedPayment({
   onPaymentAttempt = undefined,
   confirmLabel = undefined,
   showWalletDiagnostics = false,
+  recoverOnReturn = false,
 }) {
   const stripePromise = useMemo(() => publishableKey ? loadStripe(publishableKey) : null, [publishableKey]);
   const [walletStatus, setWalletStatus] = useState(null); // { mounted: bool, methods: { applePay, googlePay, link, ... } }
@@ -477,6 +479,7 @@ export default function EmbeddedPayment({
           onPaymentAttempt={onPaymentAttempt}
           confirmLabel={confirmLabel}
           showWalletDiagnostics={showWalletDiagnostics}
+          recoverOnReturn={recoverOnReturn}
         />
       </Elements>
     </div>

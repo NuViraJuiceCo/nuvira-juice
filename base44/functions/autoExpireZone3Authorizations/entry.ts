@@ -1,5 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.21.0';
+import { decideRouteReview } from '../../shared/routeReviewDecision.js';
+import { ROUTE_REVIEW_REVISION, routeReviewExpiryAction } from '../../shared/routeReview.js';
+import { notifyRouteReview } from '../../shared/routeReviewNotifications.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 
@@ -33,15 +36,38 @@ Deno.serve(async (req) => {
     const cutoffTime = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     console.log(`[Zone3 Expire] Checking for pending_review requests older than ${cutoffTime}`);
 
-    // Get all pending_review requests
-    const pendingRequests = await base44.asServiceRole.entities.DeliveryApprovalRequest.filter({ status: 'pending_review' });
-
-    const expired = pendingRequests.filter(dar => dar.created_date && dar.created_date < cutoffTime);
+    // Complete, bounded pagination before any decision. Include interrupted
+    // preparation and closed requests still awaiting their customer update.
+    const pendingRequests = [];
+    const seen = new Set();
+    for (let offset = 0; ; offset += 100) {
+      if (offset >= 10000) throw new Error('route_review_expiry_pagination_limit');
+      const page = await base44.asServiceRole.entities.DeliveryApprovalRequest.filter({}, '-created_date', 100, offset);
+      if (!Array.isArray(page)) throw new Error('route_review_expiry_read_unconfirmed');
+      for (const row of page) {
+        if (!row.id || seen.has(row.id)) throw new Error('route_review_expiry_pagination_repeated');
+        seen.add(row.id); pendingRequests.push(row);
+      }
+      if (page.length < 100) break;
+    }
+    const now = Date.now();
+    const expired = pendingRequests.filter(dar => routeReviewExpiryAction(dar, now));
     console.log(`[Zone3 Expire] Found ${pendingRequests.length} pending, ${expired.length} older than 48h`);
 
     const results = [];
 
     for (const dar of expired) {
+      if (dar.checkout_revision === ROUTE_REVIEW_REVISION) {
+        try {
+          const result = await decideRouteReview({ base44, stripe, darId: dar.id, kind: routeReviewExpiryAction(dar, now),
+            actor: user.email, reason: 'Route review or its authorization expired without approval.', env: Deno.env,
+            notify: (proof, stage) => notifyRouteReview({ base44, proof, stage, env: Deno.env }) });
+          results.push(result);
+        } catch {
+          results.push({ dar_id: dar.id, success: false, reason: 'route_review_expiry_unconfirmed' });
+        }
+        continue;
+      }
       let stripeAction = 'no_pi';
       if (dar.stripe_payment_intent_id) {
         try {
@@ -60,6 +86,11 @@ Deno.serve(async (req) => {
         }
       }
 
+      if (!dar.stripe_payment_intent_id || !['canceled', 'already_canceled'].includes(stripeAction)
+        || (await stripe.paymentIntents.retrieve(dar.stripe_payment_intent_id)).status !== 'canceled') {
+        results.push({ dar_id: dar.id, success: false, reason: 'route_review_cancellation_unconfirmed' });
+        continue;
+      }
       await base44.asServiceRole.entities.DeliveryApprovalRequest.update(dar.id, {
         status: 'expired',
         stripe_authorization_status: stripeAction.includes('cancel') ? 'canceled' : dar.stripe_authorization_status,
@@ -77,7 +108,7 @@ Deno.serve(async (req) => {
           customer_email: dar.customer_email,
           type: 'general',
           title: 'Route Review Expired',
-          message: `Your Zone 3 delivery request for ${dar.delivery_address || 'your address'} has expired after 48 hours without a decision. The authorization hold on your card has been fully released — no charge was made. You're welcome to place a new request or contact us for more information.`,
+          message: `Your delivery route request has expired without approval. No payment was captured. We canceled the card authorization; your bank controls when the pending hold disappears. You can place a new request or contact us for help.`,
           deep_link: '/account',
           idempotency_key: `zone3_expired_${dar.id}`,
         }).catch(() => {});
@@ -87,7 +118,8 @@ Deno.serve(async (req) => {
       console.log(`[Zone3 Expire] Expired DAR ${dar.request_number} (${dar.id}), stripe: ${stripeAction}`);
     }
 
-    return Response.json({ expired_count: results.length, results });
+    return Response.json({ expired_count: results.filter(result => result.success !== false).length,
+      pending_review_count: results.filter(result => result.success === false).length, results });
 
   } catch (error) {
     console.error('[Zone3 Expire] Error:', error.message);

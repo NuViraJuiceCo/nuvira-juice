@@ -98,7 +98,10 @@ try {
   await member.setViewportSize({width:390,height:844});
   await member.screenshot({path:'release-evidence/checkout-design/payment-dark.png'});
   await member.getByRole('button',{name:/Edit order details/}).click();
-  await member.getByRole('button',{name:'Edit delivery'}).click();
+  await member.getByRole('button',{name:'Cancel this attempt and edit my cart'}).click();
+  check((await member.evaluate(()=>window.__checkoutCalls)).some(call => call.name === 'createPaymentIntent'
+    && call.data.mode === 'cancel_paid_checkout'), 'editing a prepared payment first confirms cancellation');
+  await member.getByRole('button',{name:/Saturday, September 12/}).waitFor();
   check(await member.getByRole('button',{name:/Saturday, September 12/}).getAttribute('aria-pressed')==='true','delivery persists after returning from payment');
   await member.close();
 
@@ -123,7 +126,7 @@ try {
   await guest.getByRole('button',{name:/Review Payment/}).click();
   await guest.getByRole('button',{name:'Pay $41.00',exact:true}).waitFor();
   const guestCalls=await guest.evaluate(()=>window.__checkoutCalls);
-  check(guestCalls.find(call=>call.name==='createPaymentIntent').data.guest_checkout===true,'guest reaches original payment without sign-in');
+  check(guestCalls.find(call=>call.name==='createPaymentIntent' && !call.data.mode).data.guest_checkout===true,'guest reaches original payment without sign-in');
   check(!guestCalls.some(call=>call.name.startsWith('UserProfile.')),'no member profile write for guest');
   await guest.close();
   for(const scenario of ['blocked','no-dates']) {
@@ -135,15 +138,26 @@ try {
   }
   const route=await open('mode=member&scenario=route');
   await continueDelivery(route);
+  await route.getByRole('heading',{name:'Delivery route review',exact:true}).waitFor();
   check(await route.getByRole('button',{name:/Review Payment/}).count()===0,'route review cannot use normal payment');
-  check((await route.locator('body').innerText()).includes('Route'),'route-review panel still reachable');
+  check(await route.getByRole('heading',{name:'Delivery route review',exact:true}).isVisible(),'route-review panel still reachable');
+  check(await route.getByRole('button',{name:'Continue to route review'}).isDisabled(),'route agreement is explicit');
+  await health(route).check();
+  await route.getByRole('checkbox',{name:/I agree to reserve my selected benefits/}).check();
+  await route.getByRole('button',{name:'Continue to route review'}).click();
+  await route.getByRole('button',{name:'Authorize Hold · $41.00'}).waitFor();
+  const routeCalls = await route.evaluate(() => window.__checkoutCalls);
+  check(routeCalls.filter(call => call.name === 'createPaymentIntent' && call.data.mode === 'prepare_route_review').length === 1,
+    'route review uses one canonical preparation with customer consent');
+  check(!routeCalls.some(call => call.name === 'createZone3AuthorizationIntent'), 'no legacy separate-price request');
   await route.close();
   const unknown=await open('mode=member&scenario=unknown');
   await continueDelivery(unknown);await health(unknown).check();await unknown.getByRole('button',{name:/Review Payment/}).click();
-  await unknown.getByText('Checkout status needs review').waitFor();
-  check(await unknown.getByRole('button',{name:'Checkout status unknown',exact:true}).isDisabled(),'ambiguous start cannot retry');
-  check(await unknown.getByRole('button',{name:'Edit delivery'}).isDisabled(),'ambiguous start cannot change step');
-  check((await unknown.evaluate(()=>window.__checkoutCalls)).filter(call=>call.name==='createPaymentIntent').length===1,'ambiguous start not automatically retried');
+  await unknown.getByText(/We could not confirm this checkout action/).waitFor();
+  check(await unknown.getByRole('button',{name:'Resume this secure payment'}).count()===0,'ambiguous start cannot retry');
+  check(await unknown.getByRole('button',{name:'Cancel this attempt and edit my cart'}).count()===0,'unconfirmed recovery cannot cancel');
+  check(await unknown.getByRole('button',{name:'Edit delivery'}).count()===0,'ambiguous start cannot change step');
+  check((await unknown.evaluate(()=>window.__checkoutCalls)).filter(call=>call.name==='createPaymentIntent' && !call.data.mode).length===1,'ambiguous start not automatically retried');
   await unknown.close();
   check(errors.length===0,'no browser runtime errors: '+errors.join('; '));
   check(externalRequests.every(request=>['image','font'].includes(request.type)),'no external provider/API/analytics transport even attempted');

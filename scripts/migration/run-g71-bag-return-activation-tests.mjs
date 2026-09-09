@@ -55,6 +55,11 @@ function makeStore({ role = 'admin', bagReturn = {}, creditAccounts = [] } = {})
     CommandLog: [],
   };
   const writes = [];
+  const matches = (row, query) => Object.entries(query).every(([key, value]) => {
+    if (key === '$or') return value.some(clause => matches(row, clause));
+    if (value && typeof value === 'object' && '$exists' in value) return (row[key] !== undefined) === value.$exists;
+    return row[key] === value;
+  });
   const api = name => ({
     get: async id => rows[name].find(row => row.id === id) || null,
     filter: async filter => rows[name].filter(row => Object.entries(filter).every(([key, value]) => row[key] === value)),
@@ -70,6 +75,14 @@ function makeStore({ role = 'admin', bagReturn = {}, creditAccounts = [] } = {})
       Object.assign(row, patch);
       writes.push({ entity: name, action: 'update', id, patch });
       return row;
+    },
+    updateMany: async (query, payload) => {
+      assert.equal(name, 'NuViraCredit');
+      const selected = rows[name].filter(row => matches(row, query));
+      assert.ok(selected.length <= 1);
+      for (const row of selected) Object.assign(row, payload.$set);
+      writes.push({ entity: name, action: 'updateMany', query, payload });
+      return { success: true, updated: selected.length, has_more: false };
     },
   });
   return {
@@ -169,7 +182,7 @@ assert.ok(adminSource.includes("functions.invoke('getBagReturnsForSync'"));
 assert.ok(adminSource.includes("action: 'verify_return'"));
 assert.ok(adminSource.includes('Verify Return & Apply Credit'));
 assert.ok(checkoutSource.includes('bag_return_request_id: pendingBagReturnId'));
-assert.ok(intentSource.includes('bag_return_request_id:      String(bag_return_request_id'));
+assert.match(intentSource, /bag_return_request_id:\s+isGuestCheckout \? '' : String\(bag_return_request_id/);
 assert.ok(intentSource.includes('bag_return_request_id: bag_return_request_id || null'));
 assert.ok(webhookSource.includes('linkPendingBagReturn'));
 

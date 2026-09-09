@@ -5,6 +5,8 @@ const stripe = {
 const elements = {getElement:()=>({}),submit:async()=>({})};
 export const loadStripe = async()=>stripe;
 export const Elements = ({children})=>children;
+export const EmbeddedCheckoutProvider = ({children})=>children;
+export const EmbeddedCheckout = () => <div>Isolated reward checkout placeholder</div>;
 export const useStripe = ()=>stripe;
 export const useElements = ()=>elements;
 export const CardNumberElement = ()=> <input style={{width:'100%'}} aria-label="Synthetic card number" placeholder="Test card field" />;

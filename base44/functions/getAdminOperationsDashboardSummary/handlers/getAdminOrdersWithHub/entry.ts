@@ -1,4 +1,40 @@
 // @ts-nocheck
+// Bundle-local copy: tested byte-for-byte against stripeWebhook/rewardSettlement.js.
+function isVerifiedNoPaymentOrder(order) {
+  const receipt = order?.reward_settlement;
+  return Boolean(order?.id && order?.customer_email && order?.order_number
+    && order.total === 0 && order.payment_captured === false
+    && order.payment_status === 'paid' && order.financial_status === 'paid'
+    && order.is_test_order !== true && order.is_abandoned_checkout !== true && order.do_not_recover !== true
+    && !['pending_payment', 'cancelled', 'canceled', 'failed', 'refunded'].includes(order.status)
+    && !order.stripe_payment_intent_id && !(Number(order.amount_refunded || 0) > 0)
+    && (receipt?.revision === '2026-09-08.reward-settlement-v1'
+    || (receipt?.revision === '2026-09-09.credit-settlement-v2'
+      && /^credit:[a-f0-9]{64}$/.test(receipt.credit_reservation_id || '')
+      && Number.isSafeInteger(receipt.credit_redeemed_cents) && receipt.credit_redeemed_cents > 0
+      && (receipt.points_redeemed === 0 ? receipt.reservation_id === receipt.credit_reservation_id
+        : /^(points|reward):[a-f0-9]{64}$/.test(receipt.reservation_id || ''))))
+    && /^cs_[A-Za-z0-9_]+$/.test(order.stripe_checkout_session_id || '')
+    && receipt.checkout_session_id === order.stripe_checkout_session_id
+    && /^[a-f0-9]{64}$/.test(receipt.context_hash || '')
+    && typeof receipt.reservation_id === 'string' && receipt.reservation_id.length > 0
+    && (() => {
+      const gifts = (Array.isArray(order.items) ? order.items : []).filter(item => item.isBirthdayReward || item.birthday_product_id);
+      if (!gifts.length) return !receipt.birthday_reservation_id && !receipt.birthday_product_id && !receipt.birthday_retail_cents;
+      const gift = gifts[0];
+      return gifts.length === 1 && /^birthday:[a-f0-9]{64}$/.test(receipt.birthday_reservation_id || '')
+        && gift.isBirthdayReward === true && gift.quantity === 1 && gift.price === 0
+        && gift.product_id === receipt.birthday_product_id && gift.birthday_product_id === receipt.birthday_product_id
+        && Number.isSafeInteger(receipt.birthday_retail_cents) && receipt.birthday_retail_cents > 0
+        && Math.round(gift.catalog_unit_price * 100) === receipt.birthday_retail_cents
+        && Math.round(gift.birthday_discount_amount * 100) === receipt.birthday_retail_cents;
+    })()
+    && Number.isSafeInteger(receipt.points_redeemed)
+    && receipt.points_redeemed >= (receipt.revision === '2026-09-09.credit-settlement-v2' ? 0 : 1)
+    && /^evt_[A-Za-z0-9_]+$/.test(receipt.provider_event_id || '')
+    && typeof receipt.settled_at === 'string' && Number.isFinite(Date.parse(receipt.settled_at)));
+}
+
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { buildAdminOrderLifecycleReadModel } from './adminOrderLifecycleReadModel.js';
 
@@ -405,6 +441,7 @@ function compactAdminOrderRow(order = {}) {
     payment_status: order.payment_status || order.financial_status || null,
     financial_status: order.financial_status || null,
     payment_captured: order.payment_captured === true,
+    reward_payment_settled: isVerifiedNoPaymentOrder(order) || order.reward_payment_settled === true,
     fulfillment_type: order.fulfillment_type || null,
     estimated_delivery_date: order.estimated_delivery_date || order.assigned_delivery_date || order.delivery_date || null,
     assigned_delivery_date: order.assigned_delivery_date || null,
@@ -446,6 +483,7 @@ function compactAdminOrderRow(order = {}) {
     customer_app_order_status: order.customer_app_order_status || null,
     customer_app_payment_status: order.customer_app_payment_status || null,
     customer_app_payment_captured: order.customer_app_payment_captured === true,
+    customer_app_reward_settled: order.customer_app_reward_settled === true,
     customer_app_line_item_count: Number.isFinite(Number(order.customer_app_line_item_count)) ? Number(order.customer_app_line_item_count) : null,
     native_shopify_order_id: order.native_shopify_order_id || null,
     native_payment_status: order.native_payment_status || null,
@@ -943,7 +981,9 @@ function evaluateAdminOrderLimitedNativePrimaryEligibility(order, nativeCandidat
   if (isSubscriptionOrMultiDelivery(order) || classification === 'subscription_or_multi_delivery') addBlocker('subscription_or_multi_delivery_hub_source_of_truth');
   if (classification === 'refunded_or_cancelled' || statusLooksTerminalOrRefunded(order)) addBlocker('refund_cancel_payment_source_of_truth');
   if (classification === 'payment_not_ready' || isPendingPaymentOrder(order) || !isPaidOrder(order)) addBlocker('payment_not_ready');
-  if (order?.payment_captured !== true && order?.customer_app_payment_captured !== true) addBlocker('payment_not_captured');
+  if (order?.payment_captured !== true && order?.customer_app_payment_captured !== true
+    && !isVerifiedNoPaymentOrder(order) && order?.reward_payment_settled !== true
+    && order?.customer_app_reward_settled !== true) addBlocker('payment_not_captured');
   if (classification === 'repair_replay_context' || isRepairReplayContext(order)) addBlocker('repair_replay_manual_review');
   if (sourceOfTruth === 'payment_provider_hub') addBlocker('payment_provider_hub_source_of_truth');
   if (sourceOfTruth === 'subscription_hub') addBlocker('subscription_hub_source_of_truth');
@@ -1480,6 +1520,7 @@ export default async function handler(req: Request) {
             payment_status: order.payment_status || order.financial_status || null,
             financial_status: order.financial_status || order.payment_status || null,
             payment_captured: order.payment_captured === true,
+            reward_payment_settled: isVerifiedNoPaymentOrder(order),
             total: order.total ? order.total / tasksForOrder.length : 0,
             subtotal: order.subtotal === null || order.subtotal === undefined ? null : order.subtotal / tasksForOrder.length,
             delivery_fee: order.delivery_fee ?? null,
@@ -1870,6 +1911,7 @@ function summarizeCustomerAppOrder(order) {
     status: order.status || null,
     payment_status: order.payment_status || order.financial_status || null,
     payment_captured: order.payment_captured === true,
+    reward_payment_settled: isVerifiedNoPaymentOrder(order) || order.reward_payment_settled === true,
     fulfillment_type: order.fulfillment_type || null,
     estimated_delivery_date: order.estimated_delivery_date || null,
     line_item_count: Array.isArray(order.items) ? order.items.length : (Array.isArray(order.line_items) ? order.line_items.length : null),
@@ -1955,6 +1997,7 @@ function attachCustomerAppContext(target, customerAppOrder) {
     customer_app_order_status: customerAppOrder.status || null,
     customer_app_payment_status: customerAppOrder.payment_status || null,
     customer_app_payment_captured: customerAppOrder.payment_captured === true,
+    customer_app_reward_settled: isVerifiedNoPaymentOrder(customerAppOrder) || customerAppOrder.reward_payment_settled === true,
     customer_app_fulfillment_type: customerAppOrder.fulfillment_type || null,
     customer_app_estimated_delivery_date: customerAppOrder.estimated_delivery_date || null,
     customer_app_line_item_count: customerAppOrder.line_item_count ?? null,
