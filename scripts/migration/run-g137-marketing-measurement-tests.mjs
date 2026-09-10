@@ -27,7 +27,8 @@ const checks = [
     assert.match(consent, /Website analytics/);
     assert.match(consent, /Ad insights/);
     assert.match(consent, /No thanks/);
-    assert.match(consent, />\s*Save\s*</);
+    assert.match(consent, /showPreferences \? 'Save choices' : 'Accept all'/);
+    assert.match(consent, /onClick=\{showPreferences \? saveChoices : acceptAll\}/);
   }],
   ['Meta never emits Purchase from a customer browser', () => {
     assert.doesNotMatch(meta, /['"]Purchase['"]/);

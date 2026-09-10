@@ -31,7 +31,8 @@ const checks = [
     assert.match(analytics, /isNativeAppRuntime\(\)/);
     assert.match(consent, /No thanks/);
     assert.match(consent, /Website analytics/);
-    assert.match(consent, />\s*Save\s*</);
+    assert.match(consent, /showPreferences \? 'Save choices' : 'Accept all'/);
+    assert.match(consent, /onClick=\{showPreferences \? saveChoices : acceptAll\}/);
   }],
   ['advertising defaults stay denied and personalization remains disabled', () => {
     assert.match(analytics, /ad_storage: 'denied'/);
