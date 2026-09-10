@@ -5,8 +5,13 @@ import { base44 } from '@/api/base44Client';
 import {
   getDeliveryAvailability,
   setDeliveryAvailability,
-  getEligibilityStatus,
+  clearDeliveryAvailability,
 } from '@/lib/deliveryAvailability';
+import {
+  PRELIMINARY_DELIVERY_CHECK_VERSION,
+  classifyPreliminaryDeliveryAvailability,
+  restorePreliminaryDeliveryAvailability,
+} from '@/lib/preliminaryDeliveryAvailability';
 import WaitlistForm from '@/components/delivery/WaitlistForm';
 import { Link } from 'react-router-dom';
 import { trackGoogleRetentionEvent } from '@/lib/googleAnalytics';
@@ -16,23 +21,27 @@ export default function DeliveryAvailabilityCard() {
   const [status, setStatus] = useState('idle'); // idle | checking | eligible | ineligible | error
   const [showWaitlist, setShowWaitlist] = useState(false);
   const [zipError, setZipError] = useState('');
+  const [areaDetails, setAreaDetails] = useState(null);
 
   // On mount, restore any prior session check
   useEffect(() => {
     const saved = getDeliveryAvailability();
     if (saved?.checked_zip_code) {
       setZip(saved.checked_zip_code);
-      setStatus(saved.delivery_eligibility_status === 'eligible' ? 'eligible' : 'ineligible');
+      const restored = restorePreliminaryDeliveryAvailability(saved);
+      if (restored) {
+        setStatus(restored.status);
+        setAreaDetails(restored);
+      } else {
+        // Previous checks may have mistaken an unmet subtotal for out-of-area.
+        // Keep the ZIP to make rechecking easy, but never restore that old result.
+        clearDeliveryAvailability();
+      }
     }
   }, []);
 
-  // If already confirmed eligible this session, show compact success state
-  const sessionStatus = getEligibilityStatus();
-  if (sessionStatus === 'eligible' && status === 'idle') {
-    // Will be caught by the useEffect above
-  }
-
   const handleCheck = async () => {
+    if (status === 'checking') return;
     setZipError('');
     const clean = zip.trim();
     if (!/^\d{5}$/.test(clean)) {
@@ -41,6 +50,8 @@ export default function DeliveryAvailabilityCard() {
     }
 
     setStatus('checking');
+    setAreaDetails(null);
+    clearDeliveryAvailability();
     try {
       const res = await base44.functions.invoke('validateDeliveryEligibility', {
         delivery_address: clean,
@@ -50,20 +61,26 @@ export default function DeliveryAvailabilityCard() {
         zip_only_check: true,
       });
       const eligibility = res.data;
-      const isEligible = !!eligibility?.checkout_allowed && (
-        eligibility.zone_type === 'core' ||
-        eligibility.zone_type === 'extended' ||
-        eligibility.zone_type === 'route_review'
-      );
+      const preview = classifyPreliminaryDeliveryAvailability(eligibility);
+      if (preview.status === 'error') {
+        setStatus('idle');
+        setZipError('We could not confirm this ZIP right now. Please try again. Your full address is checked at checkout.');
+        return;
+      }
+      const isEligible = preview.status === 'eligible';
 
       setDeliveryAvailability({
         checked_zip_code: clean,
         delivery_eligibility_status: isEligible ? 'eligible' : 'ineligible',
         matched_delivery_zone_id: eligibility?.zone_key || null,
         matched_delivery_zone_name: eligibility?.zone_name || null,
+        preliminary_check_version: PRELIMINARY_DELIVERY_CHECK_VERSION,
+        preliminary_minimum_order: preview.minimumOrder,
+        preliminary_route_review: preview.routeReview,
       });
 
-      setStatus(isEligible ? 'eligible' : 'ineligible');
+      setAreaDetails(preview);
+      setStatus(preview.status);
       trackGoogleRetentionEvent('delivery_area_check', {
         availability_outcome: isEligible ? 'eligible' : 'waitlist',
         zone_type: ['core', 'extended', 'route_review'].includes(eligibility?.zone_type)
@@ -82,6 +99,8 @@ export default function DeliveryAvailabilityCard() {
     setZip('');
     setZipError('');
     setShowWaitlist(false);
+    setAreaDetails(null);
+    clearDeliveryAvailability();
   };
 
   return (
@@ -114,6 +133,12 @@ export default function DeliveryAvailabilityCard() {
                   <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                     NuVira currently serves select areas near ZIP {zip}. Your full delivery address will be confirmed at checkout.
                   </p>
+                  <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                    {areaDetails?.minimumOrder
+                      ? `This preliminary area has a $${areaDetails.minimumOrder.toFixed(2)} order minimum. Delivery fees and applicable taxes still apply.`
+                      : 'Order minimums, delivery fees and applicable taxes apply.'}
+                  </p>
+                  {areaDetails?.routeReview && <p className="text-xs text-muted-foreground mt-2 leading-relaxed">This extended area requires sign-in and route review. Delivery is not confirmed until the route is approved.</p>}
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
@@ -244,7 +269,7 @@ export default function DeliveryAvailabilityCard() {
               </div>
 
               {zipError && (
-                <p className="text-xs text-destructive mt-1.5 font-medium">{zipError}</p>
+                <p role="alert" className="text-xs text-destructive dark:text-red-300 mt-1.5 font-medium">{zipError}</p>
               )}
             </motion.div>
           )}

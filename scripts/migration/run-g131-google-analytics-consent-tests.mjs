@@ -33,7 +33,7 @@ const checks = [
     assert.match(consent, /Website analytics/);
     assert.match(consent, />\s*Save\s*</);
   }],
-  ['advertising storage and personalization remain denied', () => {
+  ['advertising defaults stay denied and personalization remains disabled', () => {
     assert.match(analytics, /ad_storage: 'denied'/);
     assert.match(analytics, /ad_user_data: 'denied'/);
     assert.match(analytics, /ad_personalization: 'denied'/);

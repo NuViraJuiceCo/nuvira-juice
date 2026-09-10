@@ -52,8 +52,11 @@ test('home navigation and discovery controls meet a 44px target floor', () => {
 
 test('consent choices and actions expose 44px controls', () => {
   const source = read('src/components/AnalyticsConsent.jsx');
-  assert.equal((source.match(/relative h-11 w-11 border-0/g) || []).length, 2);
-  assert.equal((source.match(/className="[^"]*h-11[^"]*"/g) || []).length >= 4, true);
+  assert.equal((source.match(/relative h-11 w-11 border-0/g) || []).length, 3);
+  assert.equal((source.match(/className="[^"]*h-11[^"]*"/g) || []).length >= 5, true);
+  for (const label of ['Allow Google Analytics', 'Allow advertising measurement', 'Allow Google ad measurement']) {
+    assert.ok(source.includes(`aria-label="${label}"`));
+  }
 });
 
 let passed = 0;
