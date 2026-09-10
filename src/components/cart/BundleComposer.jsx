@@ -1,5 +1,7 @@
 import React from 'react';
 import { Minus, Plus } from 'lucide-react';
+import ProductPhoto from '@/components/shop/ProductPhoto';
+import { productThumbnailImage } from '@/lib/approved-product-media';
 
 export default function BundleComposer({ bundleSize, composition, juices, onChange }) {
   const used = composition.reduce((sum, c) => sum + c.quantity, 0);
@@ -30,8 +32,8 @@ export default function BundleComposer({ bundleSize, composition, juices, onChan
       </div>
       {juices.map(juice => (
         <div key={juice.id} className="flex items-center gap-3 bg-card rounded-lg px-3 py-2">
-          {juice.image_url && (
-            <img src={juice.image_url} alt={juice.title} className="w-8 h-8 rounded-md object-cover shrink-0" />
+          {productThumbnailImage(juice) && (
+            <ProductPhoto product={juice} thumbnail alt={juice.title} className="w-8 h-8 rounded-md object-cover shrink-0" />
           )}
           <p className="text-xs font-medium flex-1 truncate">{juice.title}</p>
           <div className="flex items-center gap-2">

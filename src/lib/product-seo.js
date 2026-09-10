@@ -1,6 +1,7 @@
 import { PUBLIC_PRODUCT_FALLBACKS } from './public-product-catalog.js';
 import { MERCHANT_RETURN_POLICY_ID } from './merchant-policy.js';
 import { buildProductGallery } from './product-gallery-images.js';
+import { productPrimaryImage } from './approved-product-media.js';
 import { SITE_URL, productLookupKeys, productPath, slugifyProductTitle } from './seo-slugs.js';
 
 const SITE_NAME = 'NuVira Juice Co.';
@@ -14,7 +15,7 @@ function productCategoryLabel(product = {}) {
 }
 
 export function productImageUrl(product = {}) {
-  const image = String(product.image_url || '').trim();
+  const image = String(productPrimaryImage(product)).trim();
   if (!image) return `${SITE_URL}/icons/icon-512.png`;
   return image.startsWith('http://') || image.startsWith('https://')
     ? image

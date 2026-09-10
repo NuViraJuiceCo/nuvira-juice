@@ -6,6 +6,8 @@ import { productPath } from '@/lib/seo-slugs';
 import { motion } from 'framer-motion';
 import { trackGoogleSelectItem } from '@/lib/googleAnalytics';
 import { productCardImage } from '@/lib/product-card-images';
+import { approvedProductMedia } from '@/lib/approved-product-media';
+import ProductPhoto from '@/components/shop/ProductPhoto';
 
 // Tap-vs-scroll guard: only fire click if touch didn't move more than 8px
 function useTapGuard() {
@@ -27,6 +29,7 @@ export default function ProductCard({ product, compact = false }) {
   const tapGuard = useTapGuard();
   const detailPath = productPath(product);
   const cardImage = productCardImage(product);
+  const approvedMedia = approvedProductMedia(product);
   const fallbackIcon = product.category === 'merch' || product.category === 'apparel' ? '🛍️' : '🍊';
 
   const handleQuickAdd = (e) => {
@@ -62,18 +65,22 @@ export default function ProductCard({ product, compact = false }) {
         style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)' }}
       >
         <div className="relative overflow-hidden" style={{ aspectRatio: '1/1' }}>
-          {cardImage ? (
-            <motion.img
+          {cardImage ? approvedMedia ? (
+            <ProductPhoto
+              product={product}
+              thumbnail
               src={cardImage}
               alt=""
               className="h-full w-full object-cover"
-              whileHover={{ scale: 1.05 }}
-              transition={{ duration: 0.4 }}
               width="300"
-              height="400"
+              height="300"
               loading="lazy"
               decoding="async"
             />
+          ) : (
+            <motion.img src={cardImage} alt="" className="h-full w-full object-cover"
+              whileHover={{ scale: 1.05 }} transition={{ duration: 0.4 }}
+              width="300" height="400" loading="lazy" decoding="async" />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-secondary/50 text-4xl" aria-hidden="true">{fallbackIcon}</div>
           )}
@@ -120,8 +127,9 @@ export default function ProductCard({ product, compact = false }) {
       style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)' }}
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-secondary/50">
+        {approvedMedia && <img src={cardImage} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-xl" loading="lazy" decoding="async" onError={event => { event.currentTarget.hidden = true; }} />}
         {cardImage ? (
-          <img src={cardImage} alt="" className="h-full w-full object-cover" width="400" height="300" loading="lazy" decoding="async" />
+          <ProductPhoto product={product} thumbnail src={cardImage} alt="" className="relative h-full w-full object-cover" width="400" height="300" loading="lazy" decoding="async" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-5xl" aria-hidden="true">{fallbackIcon}</div>
         )}

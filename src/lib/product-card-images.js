@@ -1,4 +1,5 @@
 import { slugifyProductTitle } from '@/lib/seo-slugs';
+import { approvedProductMedia } from './approved-product-media.js';
 
 const PRODUCT_CARD_IMAGES = Object.freeze({
   aura: '/images/products/cards/aura.webp',
@@ -16,6 +17,8 @@ const PRODUCT_CARD_IMAGES = Object.freeze({
 });
 
 export function productCardImage(product) {
+  const approved = approvedProductMedia(product);
+  if (approved) return approved.card;
   const titleKey = slugifyProductTitle(product?.title || product?.name || '');
   return PRODUCT_CARD_IMAGES[titleKey] || product?.image_url || '';
 }

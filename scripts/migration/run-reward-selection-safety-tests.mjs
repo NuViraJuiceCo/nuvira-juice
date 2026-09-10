@@ -252,7 +252,12 @@ await test('actual picker refetches availability, awaits save, limits quantity, 
   assert.match(source, /selectedCount !== required/);
   assert.match(source, /DialogTitle/); assert.match(source, /DialogDescription/);
   assert.match(source, /DialogContent className="block/);
-  assert.match(source, /onError=\{\(\) => setFailed\(true\)\}/);
+  assert.match(source, /<ProductPhoto product=\{product\} thumbnail/);
+  assert.match(source, /fallback=\{<Gift/);
+  const photo = read('src/components/shop/ProductPhoto.jsx');
+  assert.match(photo, /onError=\{\(\) => setFailed/);
+  assert.match(photo, /candidates\.find\(candidate => !failed\.includes\(candidate\)\)/);
+  assert.match(photo, /if \(!image\) return fallback/);
   assert.doesNotMatch(source, /functions\.invoke|entities\.\w+\.(create|update|delete)/);
 });
 await test('actual Rewards picker save validates the full selection and leaves prior cart intact on failed validation', async () => {

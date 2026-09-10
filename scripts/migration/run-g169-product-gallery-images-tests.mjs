@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { PUBLIC_PRODUCT_FALLBACKS } from '../../src/lib/public-product-catalog.js';
 import { buildProductGallery, productAdditionalImageUrls } from '../../src/lib/product-gallery-images.js';
 import { buildProductStructuredData } from '../../src/lib/product-seo.js';
+import { approvedProductMedia } from '../../src/lib/approved-product-media.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const productDetailSource = fs.readFileSync(path.join(repoRoot, 'src/pages/ProductDetail.jsx'), 'utf8');
@@ -41,23 +42,27 @@ for (const product of consumables) {
   const additional = productAdditionalImageUrls(product);
   const absoluteAdditional = productAdditionalImageUrls(product, { absolute: true });
   const structuredData = buildProductStructuredData(product);
+  const approved = approvedProductMedia(product);
+  const approvedPrimaryCount = approved ? 1 : 0;
 
   const existingSecondaryCount = product.secondary_images?.length || 0;
   const expectedAdditional = expectedGalleryPathsByTitle[product.title] || [];
   assert.equal(
     gallery.length,
-    1 + existingSecondaryCount + expectedAdditional.length,
+    approvedPrimaryCount + 1 + existingSecondaryCount + expectedAdditional.length,
     `${product.title} should render only its verified catalog and authentic supplemental photos`,
   );
-  assert.equal(gallery[0].src, product.image_url, `${product.title} must preserve the real catalog image as primary`);
+  assert.equal(gallery[0].src, approved?.primary || product.image_url, `${product.title} must use its approved primary or existing catalog image`);
+  assert.equal(gallery[approvedPrimaryCount].src, product.image_url, `${product.title} must preserve the real catalog original`);
   assert.deepEqual(additional, expectedAdditional, `${product.title} must never receive another product's photos`);
   assert.equal(absoluteAdditional.length, expectedAdditional.length, `${product.title} absolute supplemental count must match`);
   assert.equal(
     structuredData.image.length,
-    1 + existingSecondaryCount + expectedAdditional.length,
+    approvedPrimaryCount + 1 + existingSecondaryCount + expectedAdditional.length,
     `${product.title} structured data should include the complete gallery`,
   );
-  assert.equal(structuredData.image[0], product.image_url, `${product.title} structured data must keep the real image first`);
+  assert.equal(structuredData.image[0], approved ? `https://nuvirajuice.com${approved.primary}` : product.image_url, `${product.title} structured data must match the visible primary`);
+  assert.equal(structuredData.image[approvedPrimaryCount], product.image_url, `${product.title} structured data must retain its real catalog original`);
 
   for (const imagePath of additional) {
     const localPath = path.join(repoRoot, 'public', imagePath.replace(/^\//, ''));
@@ -82,12 +87,13 @@ const oasisWithExistingSecondary = {
   ],
 };
 const oasisGallery = buildProductGallery(oasisWithExistingSecondary);
-assert.equal(oasisGallery.length, 6, 'OASIS should retain unique real secondary photos before authentic scenes');
-assert.equal(oasisGallery[1].src, 'https://example.com/oasis-real-secondary.jpg');
-assert.equal(oasisGallery[2].src, '/images/oasis-detail.jpg');
-assert.equal(oasisGallery[3].src, '/images/authentic-products/oasis/oasis-event-cooler.jpg');
+assert.equal(oasisGallery.length, 7, 'OASIS should retain the approved primary, catalog original and unique real secondary photos before authentic scenes');
+assert.equal(oasisGallery[1].src, oasisWithExistingSecondary.image_url);
+assert.equal(oasisGallery[2].src, 'https://example.com/oasis-real-secondary.jpg');
+assert.equal(oasisGallery[3].src, '/images/oasis-detail.jpg');
+assert.equal(oasisGallery[4].src, '/images/authentic-products/oasis/oasis-event-cooler.jpg');
 const absoluteOasisGallery = buildProductGallery(oasisWithExistingSecondary, { absolute: true });
-assert.equal(absoluteOasisGallery[2].src, 'https://nuvirajuice.com/images/oasis-detail.jpg');
+assert.equal(absoluteOasisGallery[3].src, 'https://nuvirajuice.com/images/oasis-detail.jpg');
 
 assert.match(productDetailSource, /buildProductGallery\(product\)/, 'Product detail should resolve the curated gallery');
 assert.match(productDetailSource, /setSelectedImageIndex\(index\)/, 'Product detail should support thumbnail selection');
@@ -102,7 +108,8 @@ console.log(JSON.stringify({
   authentically_enriched_products: Object.keys(expectedGalleryPathsByTitle).length,
   primary_only_products: consumables.length - Object.keys(expectedGalleryPathsByTitle).length,
   existing_secondary_images_preserved: true,
-  real_primary_preserved: true,
+  real_catalog_original_preserved: true,
+  approved_primary_products: consumables.filter(product => approvedProductMedia(product)).length,
   product_assignment_matrix_locked: true,
   structured_data_gallery_enabled: true,
   provider_calls_performed: false,

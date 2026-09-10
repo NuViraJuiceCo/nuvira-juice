@@ -1,0 +1,33 @@
+{
+  "approval_date": "2026-09-10",
+  "scope": "Owner-approved OASIS, AURA and RE-NU website/native primary images. Render-time mapping only; no provider product records changed.",
+  "digital_source_type": "http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia",
+  "preparation": "Reuse approved headspace-corrected composites. Full masters encoded as 1600x2000 WebP quality 86; existing approved 1080x1080 square exports proportionally resized to 640x640 WebP quality 82. No new crop, generation, relabeling, lighting/color adjustment or retouching in this release. XMP truthfully identifies AI-assisted composite origin.",
+  "visual_review": "All three full masters, square exports and headspace details inspected. Correct juice colors and labels; full caps, bases and proportions retained; background visible through clear headspace; natural contact shadows and compatible light direction. Do not sharpen away original texture or overwrite authentic-photo assets.",
+  "assets": {
+    "aura": {
+      "source": "marketing/meta-carousel-vertical-20260907.dc63LD/approval-aura-picnic-v4-20260910/aura-picnic-headspace-corrected.png",
+      "source_sha256": "fec789f74300c3b540f3224f1c2e8ad24f4ca491dd71710e7435d18f464a8a37",
+      "primary": "public/images/approved-lifestyle/20260910/aura-primary.webp",
+      "primary_sha256": "3d88d5f6d06daa9bf2cf0174b11c4c6c4415b8ddaa1eed845b1d7e598e4aacce",
+      "card": "public/images/approved-lifestyle/20260910/aura-card.webp",
+      "card_sha256": "0995f7a0c30fa196b07a8179a71745fd9e7f461aca1004f91e32697880f4ca09"
+    },
+    "oasis": {
+      "source": "marketing/meta-carousel-vertical-20260907.dc63LD/approval-oasis-renu-v4-20260910/oasis-lifestyle-final.png",
+      "source_sha256": "493e080a27f34928b1376e9a7e859093295117853f5d0185795c7b1e68de424a",
+      "primary": "public/images/approved-lifestyle/20260910/oasis-primary.webp",
+      "primary_sha256": "1449544865d52189ceb9116013852374b2b62752964473f6b9086fee3a2672fc",
+      "card": "public/images/approved-lifestyle/20260910/oasis-card.webp",
+      "card_sha256": "6e95ef0ed9c6bdb616af50fe1db1f62678db5f5a2153f612d976ab6aaa9242d2"
+    },
+    "re-nu": {
+      "source": "marketing/meta-carousel-vertical-20260907.dc63LD/approval-oasis-renu-v4-20260910/re-nu-lifestyle-final.png",
+      "source_sha256": "1c5de2b32ccf5af91e8d914dcb4bed67033ccae06b0ee3a769a4025721c1fe34",
+      "primary": "public/images/approved-lifestyle/20260910/re-nu-primary.webp",
+      "primary_sha256": "8d6c27b2a3e8cfff8d330d7b8281258cc155811aa1b4282f60f40218a9c8357a",
+      "card": "public/images/approved-lifestyle/20260910/re-nu-card.webp",
+      "card_sha256": "a1d243cd22e625d6c6fee7c8bb031c4fbe5c17d74cb4bb59f7aba80ad7cd7577"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { SITE_URL, slugifyProductTitle } from './seo-slugs.js';
+import { approvedProductMedia } from './approved-product-media.js';
 
 const TRIO_GALLERY = Object.freeze([
   {
@@ -106,10 +107,14 @@ export function buildProductGallery(product = {}, { absolute = false } = {}) {
   const title = String(product.title || product.name || 'NuVira product').trim();
   const key = productGalleryKey(product);
   const primary = String(product.image_url || '').trim();
+  const approved = approvedProductMedia(product);
   const existingSecondaryImages = Array.isArray(product.secondary_images)
     ? product.secondary_images.map(image => String(image || '').trim()).filter(Boolean)
     : [];
-  const items = primary ? [{ src: absolute ? absoluteImageUrl(primary) : primary, alt: title, scene: 'primary' }] : [];
+  const items = approved ? [{ src: absolute ? absoluteImageUrl(approved.primary) : approved.primary, alt: approved.alt, scene: 'approved-primary', fit: 'contain' }] : [];
+  if (primary && primary !== approved?.primary && primary !== absoluteImageUrl(approved?.primary)) {
+    items.push({ src: absolute ? absoluteImageUrl(primary) : primary, alt: title, scene: approved ? 'catalog-original' : 'primary' });
+  }
 
   existingSecondaryImages.forEach((src, index) => {
     items.push({

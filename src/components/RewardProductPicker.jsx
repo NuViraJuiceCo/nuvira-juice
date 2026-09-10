@@ -4,13 +4,10 @@ import { Minus, Plus, Gift, Loader2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { earnedRewardCartItems, rewardProductEligible, rewardSelectionCount } from '@/lib/rewardSelection';
+import ProductPhoto from '@/components/shop/ProductPhoto';
 
 function BottleImage({ product }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [product.image_url]);
-  return product.image_url && !failed
-    ? <img src={product.image_url} onError={() => setFailed(true)} alt={product.title} className="h-full w-full object-contain p-1" />
-    : <Gift aria-hidden="true" className="h-6 w-6 text-primary/60" />;
+  return <ProductPhoto product={product} thumbnail alt={product.title} className="h-full w-full object-contain p-1" fallback={<Gift aria-hidden="true" className="h-6 w-6 text-primary/60" />} />;
 }
 
 export default function RewardProductPicker({ open, onClose, onSelect, reward }) {

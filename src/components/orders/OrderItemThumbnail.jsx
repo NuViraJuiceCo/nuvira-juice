@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Package } from 'lucide-react';
 import { resolveOrderItemImageCandidates } from '@/lib/order-item-images';
+import { isApprovedProductImage } from '@/lib/approved-product-media';
 
 const SIZE_CLASSES = {
   compact: 'h-7 w-7 rounded-full',
@@ -23,6 +24,7 @@ export default function OrderItemThumbnail({ item, size = 'default', className =
           src={imageUrl}
           alt={`${item?.title || item?.name || 'Ordered item'} product`}
           className="h-full w-full object-cover"
+          style={isApprovedProductImage(imageUrl) ? { objectFit: 'contain' } : undefined}
           loading="lazy"
           decoding="async"
           onError={() => setFailedImageUrls(current => current.includes(imageUrl) ? current : [...current, imageUrl])}

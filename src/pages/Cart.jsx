@@ -21,6 +21,8 @@ import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewCart } from '@/lib/googleAnalytics';
 import { orderMinimumStatus } from '@/lib/orderMinimums';
 import { isEarnedRewardItem } from '@/lib/rewardSelection';
+import ProductPhoto from '@/components/shop/ProductPhoto';
+import { productThumbnailImage } from '@/lib/approved-product-media';
 
 export default function Cart() {
   const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem, clearEarnedRewardItems } = useCart();
@@ -283,8 +285,8 @@ export default function Cart() {
                 >
                   <div className="flex gap-3">
                     <div className="w-16 h-16 bg-secondary/50 rounded-xl overflow-hidden shrink-0">
-                      {item.image_url ? (
-                        <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
+                      {productThumbnailImage(item) ? (
+                        <ProductPhoto product={item} thumbnail alt={item.title} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-muted-foreground">
                           {item.category === 'merch' || item.category === 'apparel' ? <ShoppingBag className="w-6 h-6" /> : <span className="text-2xl">🍊</span>}
@@ -337,8 +339,8 @@ export default function Cart() {
                               }}
                             >
                               <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-muted shadow-sm">
-                                {juice?.image_url ? (
-                                  <img src={juice.image_url} alt={comp.product_name} className="w-full h-full object-cover" />
+                                {productThumbnailImage(juice) ? (
+                                  <ProductPhoto product={juice} thumbnail alt={comp.product_name} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-sm">🍊</div>
                                 )}

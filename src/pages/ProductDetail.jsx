@@ -368,7 +368,7 @@ export default function ProductDetail() {
           >
             {selectedProductImage?.src ? (
               <>
-                {isMerchProduct && (
+                {(isMerchProduct || selectedProductImage.fit === 'contain') && (
                   <img
                     src={selectedProductImage.src}
                     alt=""
@@ -380,7 +380,8 @@ export default function ProductDetail() {
                   src={selectedProductImage.src}
                   alt={selectedProductImage.alt}
                   onError={() => handleGalleryImageError(selectedProductImage.src, selectedImageIndex)}
-                  className={`relative h-full w-full ${isMerchProduct ? 'object-contain p-3 md:p-8' : 'object-cover'}`}
+                  className={`relative h-full w-full ${isMerchProduct ? 'object-contain p-3 md:p-8' : selectedProductImage.fit === 'contain' ? 'object-contain' : 'object-cover'}`}
+                  data-approved-product-photo={selectedProductImage.scene === 'approved-primary' || undefined}
                 />
               </>
             ) : (
@@ -434,7 +435,7 @@ export default function ProductDetail() {
                     aria-hidden="true"
                     loading={index === 0 ? 'eager' : 'lazy'}
                     onError={() => handleGalleryImageError(image.src, index)}
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                    className={`h-full w-full ${image.fit === 'contain' ? 'object-contain' : 'object-cover transition-transform duration-300 group-hover:scale-[1.03]'}`}
                   />
                   <span className="sr-only">{image.alt}</span>
                 </button>
