@@ -5,6 +5,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import {
   ANALYTICS_CONSENT_EVENT,
+  ANALYTICS_CONSENT_STORAGE_KEY,
+  GOOGLE_ADS_CONSENT_EVENT,
+  GOOGLE_ADS_CONSENT_STORAGE_KEY,
+  getGoogleAdsMeasurementConsent,
+  setGoogleAdsMeasurementConsent,
+  syncGoogleMeasurementConsent,
   getAnalyticsConsent,
   setAnalyticsConsent,
   isTrackableAnalyticsPath,
@@ -22,10 +28,11 @@ export default function AnalyticsConsent() {
   const location = useLocation();
   const isNative = isNativeAppRuntime();
   const [showBanner, setShowBanner] = React.useState(() => (
-    !isNative && (getAnalyticsConsent() === null || getMarketingConsent() === null)
+    !isNative && (getAnalyticsConsent() === null || getMarketingConsent() === null || getGoogleAdsMeasurementConsent() === null)
   ));
   const [analyticsAllowed, setAnalyticsAllowed] = React.useState(() => getAnalyticsConsent() === 'granted');
   const [marketingAllowed, setMarketingAllowed] = React.useState(() => getMarketingConsent() === 'granted');
+  const [googleAdsAllowed, setGoogleAdsAllowed] = React.useState(() => getGoogleAdsMeasurementConsent() === 'granted');
 
   React.useEffect(() => {
     if (isNative || getAnalyticsConsent() !== 'granted') return;
@@ -75,7 +82,33 @@ export default function AnalyticsConsent() {
     return () => window.removeEventListener(MARKETING_CONSENT_EVENT, onConsent);
   }, [isNative]);
 
+  React.useEffect(() => {
+    if (isNative) return undefined;
+    const onConsent = (event) => {
+      setGoogleAdsAllowed(event.detail === 'granted');
+      if (event.detail === 'reset') setShowBanner(true);
+    };
+    window.addEventListener(GOOGLE_ADS_CONSENT_EVENT, onConsent);
+    return () => window.removeEventListener(GOOGLE_ADS_CONSENT_EVENT, onConsent);
+  }, [isNative]);
+
+  React.useEffect(() => {
+    if (isNative) return undefined;
+    const onStorage = (event) => {
+      if (event.key !== null && ![ANALYTICS_CONSENT_STORAGE_KEY, GOOGLE_ADS_CONSENT_STORAGE_KEY].includes(event.key)) return;
+      // Cross-tab withdrawal updates the tag immediately without creating another page view.
+      syncGoogleMeasurementConsent();
+      setAnalyticsAllowed(getAnalyticsConsent() === 'granted');
+      setGoogleAdsAllowed(getGoogleAdsMeasurementConsent() === 'granted');
+      setShowBanner(getAnalyticsConsent() === null || getMarketingConsent() === null || getGoogleAdsMeasurementConsent() === null);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [isNative]);
+
   const saveChoices = () => {
+    // Capture the new explicit purpose before analytics can emit its consented page view.
+    setGoogleAdsMeasurementConsent(googleAdsAllowed ? 'granted' : 'denied');
     setAnalyticsConsent(analyticsAllowed ? 'granted' : 'denied');
     setMarketingConsent(marketingAllowed ? 'granted' : 'denied');
     setShowBanner(false);
@@ -84,6 +117,8 @@ export default function AnalyticsConsent() {
   const useNecessaryOnly = () => {
     setAnalyticsAllowed(false);
     setMarketingAllowed(false);
+    setGoogleAdsAllowed(false);
+    setGoogleAdsMeasurementConsent('denied');
     setAnalyticsConsent('denied');
     setMarketingConsent('denied');
     setShowBanner(false);
@@ -126,9 +161,21 @@ export default function AnalyticsConsent() {
                 className="relative h-11 w-11 border-0 bg-transparent shadow-none after:absolute after:left-1/2 after:top-1/2 after:h-4 after:w-4 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-sm after:border after:border-primary data-[state=checked]:bg-transparent data-[state=checked]:after:bg-primary [&>span]:relative [&>span]:z-10"
               />
               <span className="mt-2 block text-xs font-semibold leading-tight text-foreground">Ad insights</span>
-              <span className="mt-1.5 block text-[10.5px] leading-relaxed text-muted-foreground">Ad results and privacy-safe purchase matching.</span>
+              <span className="mt-1.5 block text-[10.5px] leading-relaxed text-muted-foreground">Meta and Snapchat ad results and purchase matching.</span>
             </label>
           </div>
+          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/55 p-2.5">
+            <Checkbox
+              checked={googleAdsAllowed}
+              onCheckedChange={(checked) => setGoogleAdsAllowed(checked === true)}
+              aria-label="Allow Google ad measurement"
+              className="h-5 w-5 shrink-0"
+            />
+            <span>
+              <span className="block text-xs font-semibold text-foreground">Google ad measurement</span>
+              <span className="mt-1 block text-[10.5px] leading-relaxed text-muted-foreground">Measure Google ad clicks and shopping activity using advertising cookies and identifiers. Requires Website analytics. No personalized ads.</span>
+            </span>
+          </label>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:justify-end">
             <button
               type="button"

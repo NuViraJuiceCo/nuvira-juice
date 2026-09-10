@@ -3,6 +3,9 @@ import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 export const GOOGLE_ANALYTICS_MEASUREMENT_ID = 'G-H8R82365GM';
 export const ANALYTICS_CONSENT_STORAGE_KEY = 'nuvira_analytics_consent_v1';
 export const ANALYTICS_CONSENT_EVENT = 'nuvira:analytics-consent';
+// New purpose, separate choice: existing analytics/Meta grants do not authorize Google Ads.
+export const GOOGLE_ADS_CONSENT_STORAGE_KEY = 'nuvira_google_ads_measurement_consent_v1';
+export const GOOGLE_ADS_CONSENT_EVENT = 'nuvira:google-ads-measurement-consent';
 
 const PURCHASE_STORAGE_PREFIX = 'nuvira_ga4_purchase_v1:';
 const GOOGLE_TAG_SCRIPT_ID = 'nuvira-google-analytics';
@@ -33,6 +36,7 @@ const CAMPAIGN_QUERY_KEYS = [
 let googleTagPromise = null;
 let googleTagConfigured = false;
 let volatileConsent = null;
+let volatileGoogleAdsConsent = null;
 const volatilePurchaseIds = new Set();
 
 function hasBrowserRuntime() {
@@ -69,10 +73,60 @@ function sendConsentUpdate(value) {
   prepareDataLayer();
   window.gtag('consent', 'update', {
     analytics_storage: value === 'granted' ? 'granted' : 'denied',
-    ad_storage: 'denied',
-    ad_user_data: 'denied',
+    ad_storage: value === 'granted' && getGoogleAdsMeasurementConsent() === 'granted' ? 'granted' : 'denied',
+    ad_user_data: value === 'granted' && getGoogleAdsMeasurementConsent() === 'granted' ? 'granted' : 'denied',
     ad_personalization: 'denied',
   });
+}
+
+export function getGoogleAdsMeasurementConsent() {
+  let value = volatileGoogleAdsConsent;
+  try {
+    const storage = safeStorage();
+    // A removed key is a withdrawal, not permission to reuse this tab's old grant.
+    if (storage) value = storage.getItem(GOOGLE_ADS_CONSENT_STORAGE_KEY);
+  } catch {
+    // Old preferences and unavailable storage never imply permission for a new purpose.
+  }
+  return value === 'granted' || value === 'denied' ? value : null;
+}
+
+function clearGoogleAdsCookies() {
+  if (!hasBrowserRuntime()) return;
+  const names = document.cookie.split(';').map((entry) => entry.split('=')[0]?.trim())
+    .filter((name) => name?.startsWith('_gcl_') || name?.startsWith('_gac_'));
+  for (const name of names) {
+    document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`;
+    document.cookie = `${name}=; Max-Age=0; path=/; domain=.nuvirajuice.com; SameSite=Lax`;
+  }
+}
+
+export function setGoogleAdsMeasurementConsent(value) {
+  if (!hasBrowserRuntime() || isNativeAppRuntime() || !['granted', 'denied'].includes(value)) return false;
+  volatileGoogleAdsConsent = value;
+  try {
+    safeStorage()?.setItem(GOOGLE_ADS_CONSENT_STORAGE_KEY, value);
+  } catch {
+    // Respect the explicit choice for this page session only.
+  }
+  sendConsentUpdate(getAnalyticsConsent());
+  if (value === 'denied') clearGoogleAdsCookies();
+  window.dispatchEvent(new CustomEvent(GOOGLE_ADS_CONSENT_EVENT, { detail: value }));
+  return true;
+}
+
+export function resetGoogleAdsMeasurementConsent() {
+  if (!hasBrowserRuntime() || isNativeAppRuntime()) return false;
+  volatileGoogleAdsConsent = null;
+  try {
+    safeStorage()?.removeItem(GOOGLE_ADS_CONSENT_STORAGE_KEY);
+  } catch {
+    // Reset the in-memory choice even in restricted browsing contexts.
+  }
+  sendConsentUpdate(getAnalyticsConsent());
+  clearGoogleAdsCookies();
+  window.dispatchEvent(new CustomEvent(GOOGLE_ADS_CONSENT_EVENT, { detail: 'reset' }));
+  return true;
 }
 
 function clearGoogleAnalyticsCookies() {
@@ -91,11 +145,21 @@ function clearGoogleAnalyticsCookies() {
 export function getAnalyticsConsent() {
   let value = volatileConsent;
   try {
-    value = safeStorage()?.getItem(ANALYTICS_CONSENT_STORAGE_KEY) || volatileConsent;
+    const storage = safeStorage();
+    if (storage) value = storage.getItem(ANALYTICS_CONSENT_STORAGE_KEY);
   } catch {
     // A private browsing or locked-down storage context must fail closed.
   }
   return value === 'granted' || value === 'denied' ? value : null;
+}
+
+export function syncGoogleMeasurementConsent() {
+  if (!hasBrowserRuntime() || isNativeAppRuntime()) return false;
+  const analyticsConsent = getAnalyticsConsent();
+  sendConsentUpdate(analyticsConsent);
+  if (analyticsConsent !== 'granted') clearGoogleAnalyticsCookies();
+  if (analyticsConsent !== 'granted' || getGoogleAdsMeasurementConsent() !== 'granted') clearGoogleAdsCookies();
+  return true;
 }
 
 export function setAnalyticsConsent(value) {
@@ -110,7 +174,10 @@ export function setAnalyticsConsent(value) {
     // Keep the choice for this page session without enabling tracking early.
   }
   sendConsentUpdate(value);
-  if (value === 'denied') clearGoogleAnalyticsCookies();
+  if (value === 'denied') {
+    clearGoogleAnalyticsCookies();
+    clearGoogleAdsCookies();
+  }
   window.dispatchEvent(new CustomEvent(ANALYTICS_CONSENT_EVENT, { detail: value }));
   return true;
 }
@@ -127,6 +194,7 @@ export function resetAnalyticsConsent() {
   }
   sendConsentUpdate('denied');
   clearGoogleAnalyticsCookies();
+  clearGoogleAdsCookies();
   window.dispatchEvent(new CustomEvent(ANALYTICS_CONSENT_EVENT, { detail: 'reset' }));
   return true;
 }
@@ -258,7 +326,7 @@ export async function getGoogleMeasurementContext() {
     loadGoogleAnalytics(),
     new Promise((resolve) => setTimeout(() => resolve(false), GOOGLE_MEASUREMENT_CONTEXT_TIMEOUT_MS)),
   ]);
-  if (!loaded) return null;
+  if (!loaded || getAnalyticsConsent() !== 'granted') return null;
 
   const [clientId, sessionId] = await Promise.all([
     readGoogleTagValue('client_id'),
@@ -266,7 +334,7 @@ export async function getGoogleMeasurementContext() {
   ]);
   const normalizedClientId = normalizeGoogleClientId(clientId);
   const normalizedSessionId = normalizeGoogleSessionId(sessionId);
-  if (!normalizedClientId || !normalizedSessionId) return null;
+  if (!normalizedClientId || !normalizedSessionId || getAnalyticsConsent() !== 'granted') return null;
 
   return {
     client_id: normalizedClientId,

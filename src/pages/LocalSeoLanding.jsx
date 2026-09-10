@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Calendar, CheckCircle2, GlassWater, Leaf, MapPin, Truck } from 'lucide-react';
 import SEO from '@/components/SEO';
+import LocalDeliveryShopping from '@/components/landing/LocalDeliveryShopping';
 import { absoluteUrl } from '@/lib/seo-slugs';
 import { BRAND_IMAGES, brandImageUrl } from '@/lib/brandImages';
 
@@ -53,12 +54,12 @@ export const SEO_LANDING_PAGES = {
         body: 'NuVira is built around freshness, not warehouse stock. Orders are prepared for active production windows so bottles arrive cold, clean, and ready for your routine.',
       },
       {
-        title: 'Designed for real weekly routines',
-        body: 'Order single bottles, wellness shots, bundles, or structured 2- and 3-day programs online. Delivery availability depends on your address and the current schedule shown at checkout.',
+        title: 'Choose the mix you want',
+        body: 'Explore individual flavors, try one of each with the NuVira Trio, or browse wellness shots and structured 2- and 3-day programs. Juice orders need at least 3 juices, 6 shots, or an equivalent mix.',
       },
       {
-        title: 'Helpful for busy homes and offices',
-        body: 'Customers use NuVira for weekday wellness, post-workout recovery, event prep, and convenient fridge-ready juice without an extra grocery stop.',
+        title: 'Confirm delivery before payment',
+        body: 'Checkout checks your full address, driving distance, delivery-area minimum and available window. Review the full total, including delivery and applicable tax, before paying.',
       },
     ],
     highlights: ['Cold-pressed', 'Small-batch', 'Local delivery windows', 'Online ordering'],
@@ -531,6 +532,7 @@ function buildStructuredData(page) {
 export default function LocalSeoLanding({ pageKey }) {
   const page = SEO_LANDING_PAGES[pageKey] || SEO_LANDING_PAGES['cold-pressed-juice-delivery'];
   const Icon = page.icon;
+  const isDeliveryShopping = page.path === '/cold-pressed-juice-delivery';
 
   return (
     <div className="min-h-screen bg-background pb-24 text-foreground md:pb-12">
@@ -554,7 +556,7 @@ export default function LocalSeoLanding({ pageKey }) {
           </Link>
           <div className="min-w-0 flex-1">
             <p className="truncate font-heading text-base font-semibold leading-tight">NuVira Local</p>
-            <p className="truncate text-[11px] font-semibold uppercase text-muted-foreground">Fresh juice, delivery, and events</p>
+            <p className="truncate text-[11px] font-semibold uppercase text-muted-foreground">{isDeliveryShopping ? 'Cold-pressed juice · Local delivery' : 'Fresh juice, delivery, and events'}</p>
           </div>
           <Link
             to="/shop"
@@ -565,7 +567,7 @@ export default function LocalSeoLanding({ pageKey }) {
         </div>
       </header>
 
-      <section className="relative isolate overflow-hidden border-b border-border/50">
+      {isDeliveryShopping ? <LocalDeliveryShopping page={page} /> : <section className="relative isolate overflow-hidden border-b border-border/50">
         <img src={page.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,22,15,0.92),rgba(7,22,15,0.72)_48%,rgba(7,22,15,0.38))]" />
         <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-background/90 to-transparent" />
@@ -618,7 +620,7 @@ export default function LocalSeoLanding({ pageKey }) {
             </div>
           </div>
         </div>
-      </section>
+      </section>}
 
       <section className="px-5 pb-10 pt-6 sm:px-6 sm:pt-10 md:px-8 md:py-14">
         <div className="mx-auto max-w-6xl">
@@ -641,7 +643,7 @@ export default function LocalSeoLanding({ pageKey }) {
         </div>
       </section>
 
-      <section className="px-5 pb-10 sm:px-6 md:px-8 md:pb-14">
+      {!isDeliveryShopping && <section className="px-5 pb-10 sm:px-6 md:px-8 md:pb-14">
         <div className="mx-auto grid max-w-6xl gap-3 lg:grid-cols-[1.35fr_0.65fr]">
           <figure className="group relative min-h-56 overflow-hidden rounded-[8px] border border-border/55 bg-card shadow-sm sm:min-h-72">
             <img
@@ -673,7 +675,7 @@ export default function LocalSeoLanding({ pageKey }) {
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
       <section className="border-y border-border/45 bg-card/55 px-5 py-10 sm:px-6 md:px-8 md:py-12">
         <div className="mx-auto grid max-w-6xl gap-7 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
@@ -728,7 +730,7 @@ export default function LocalSeoLanding({ pageKey }) {
           <div>
             <p className="font-heading text-2xl font-bold leading-tight">Ready for fresh NuVira juice?</p>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-primary-foreground/78">
-              Shop current products or ask about delivery, partnerships, and events.
+              {isDeliveryShopping ? 'Choose your juices and confirm the delivery options for your address before payment.' : 'Shop current products or ask about delivery, partnerships, and events.'}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row lg:shrink-0">

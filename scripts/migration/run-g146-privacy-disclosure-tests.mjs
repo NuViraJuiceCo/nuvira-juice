@@ -62,7 +62,7 @@ const checks = [
   }],
   ['deletion and consent rights avoid blanket or misleading promises', () => {
     assert.match(legal, /Request account-data deletion in Account Settings/);
-    assert.match(legal, /Review or change optional Website analytics and Ad insights choices/);
+    assert.match(legal, /Review or change optional Website analytics, Ad insights, and Google ad measurement choices/);
     assert.doesNotMatch(legal, /Request full deletion/);
     assert.doesNotMatch(legal, /Your data is retained as long as your account is active/);
   }],

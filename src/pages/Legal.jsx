@@ -4,10 +4,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ShieldCheck, FileText, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
-import { resetAnalyticsConsent } from '@/lib/googleAnalytics';
+import { resetAnalyticsConsent, resetGoogleAdsMeasurementConsent } from '@/lib/googleAnalytics';
 import { resetMarketingConsent } from '@/lib/metaPixel';
 
-const LAST_UPDATED = 'September 4, 2026';
+const LAST_UPDATED = 'September 10, 2026';
 
 const sections = [
   {
@@ -42,11 +42,12 @@ THIRD-PARTY SERVICES
 • Google Maps Platform and Google Routes — address assistance and active delivery-route calculations (policies.google.com/privacy)
 • Resend, Apple Push Notification service, and Firebase Cloud Messaging — transactional email and app notification delivery
 • Google Analytics — optional, consent-based website and purchase measurement (policies.google.com/privacy)
+• Google Ads — optional browser ad-click and shopping-activity measurement, only with the separate Google ad measurement choice and Website analytics enabled (policies.google.com/privacy)
 • Meta Pixel — optional, consent-based ad and shopping-journey measurement (facebook.com/privacy/policy)
 • Snapchat Pixel — optional, consent-based ad, catalog, and shopping-journey measurement (values.snap.com/privacy/privacy-policy)
 
 MEASUREMENT PRIVACY
-Google Analytics remains off unless you enable Website analytics. Meta and Snapchat measurement remain off unless you enable Ad insights. Browser events do not include your raw name, email, phone number, street address, or payment details. After a consented paid website purchase, our secure payment webhook may send Google Analytics a pseudonymous browser client and session identifier with the non-personal order number, total, delivery fee, coupon, and catalog item details needed to measure purchase attribution; it does not send your raw contact, address, or payment details. After a consented purchase, our secure payment webhook may send Meta one-way SHA-256 hashes of normalized matching fields such as email, phone, name, city, state, postal code, country, and an internal customer identifier, plus browser attribution and technical request context such as Meta browser IDs, IP address, user agent, source URL, order total, currency, order number, and catalog item details needed to match the purchase to an ad interaction. Meta does not receive raw name, email, phone, street address, payment details, or card details from this server event. Google advertising storage, signals, and personalization remain disabled. Meta browser measurement is limited to eligible website shopping, inquiry, and purchase actions and is not loaded on account, sign-in, checkout-confirmation, order-tracking, or admin page views. Snapchat browser measurement is limited to eligible website shopping, inquiry, registration, and paid purchase actions. A paid Snapchat Purchase event may be sent from the order-confirmation page after Ad insights consent, using non-personal order totals and catalog item identifiers without raw contact, address, or payment details. These optional web tools are not enabled inside the native iOS or Android app. You can reopen both choices from this page at any time.
+Google Analytics remains off unless you enable Website analytics. Meta and Snapchat measurement remain off unless you enable Ad insights. Browser events do not include your raw name, email, phone number, street address, or payment details. After a consented paid website purchase, our secure payment webhook may send Google Analytics a pseudonymous browser client and session identifier with the non-personal order number, total, delivery fee, coupon, and catalog item details needed to measure purchase attribution; it does not send your raw contact, address, or payment details. Google advertising cookies and browser use of pseudonymous click, browser, session, and shopping-activity identifiers remain disabled unless you separately enable Google ad measurement and Website analytics. This choice applies to browser measurement only. Server-sent Google purchase events continue to deny advertising use of their data and personalized advertising. This choice does not authorize customer-data uploads or personalized ads. Earlier Website analytics or Ad insights choices do not grant this new Google permission. Google signals and personalized advertising remain disabled even when measurement is allowed. After a consented purchase, our secure payment webhook may send Meta one-way SHA-256 hashes of normalized matching fields such as email, phone, name, city, state, postal code, country, and an internal customer identifier, plus browser attribution and technical request context such as Meta browser IDs, IP address, user agent, source URL, order total, currency, order number, and catalog item details needed to match the purchase to an ad interaction. Meta does not receive raw name, email, phone, street address, payment details, or card details from this server event. Meta browser measurement is limited to eligible website shopping, inquiry, and purchase actions and is not loaded on account, sign-in, checkout-confirmation, order-tracking, or admin page views. Snapchat browser measurement is limited to eligible website shopping, inquiry, registration, and paid purchase actions. A paid Snapchat Purchase event may be sent from the order-confirmation page after Ad insights consent, using non-personal order totals and catalog item identifiers without raw contact, address, or payment details. These optional web tools are not enabled inside the native iOS or Android app. You can reopen all measurement choices from this page at any time.
 
 DATA RETENTION
 We retain information for as long as needed for the purposes described above and to meet legal, tax, payment, fraud-prevention, fulfillment, delivery, food-safety, compliance, and audit requirements. You may request account-data deletion at any time. A completed deletion request removes NuVira app profile, notification preference, push subscription, in-app notification, and loyalty or reward records associated with the verified account. Order, payment, refund, tax, fulfillment, delivery, food-safety, compliance, sync, and audit records may be retained when required for legitimate business or legal obligations. Records held independently by service providers are also subject to their retention duties and privacy policies.
@@ -54,7 +55,7 @@ We retain information for as long as needed for the purposes described above and
 YOUR RIGHTS
 • Access or correct your personal data at any time in Account Settings
 • Request account-data deletion in Account Settings or by emailing support@nuvirajuice.com; the confirmation identifies categories that may be retained
-• Review or change optional Website analytics and Ad insights choices from this page
+• Review or change optional Website analytics, Ad insights, and Google ad measurement choices from this page
 • California residents may exercise CCPA rights by contacting us
 
 CONTACT
@@ -217,6 +218,7 @@ export default function Legal() {
             onClick={() => {
               resetAnalyticsConsent();
               resetMarketingConsent();
+              resetGoogleAdsMeasurementConsent();
             }}
             className="mb-3 inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-4 text-xs font-semibold text-foreground"
           >
