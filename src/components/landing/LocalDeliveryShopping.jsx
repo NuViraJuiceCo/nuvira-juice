@@ -6,6 +6,7 @@ import { base44 } from '@/api/base44Client';
 import DeliveryAvailabilityCard from '@/components/delivery/DeliveryAvailabilityCard';
 import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
 import { productCardImage } from '@/lib/product-card-images';
+import ProductPhoto from '@/components/shop/ProductPhoto';
 import { productPath } from '@/lib/seo-slugs';
 import { deliveryLandingPrice, deliveryLandingProducts } from '@/lib/localDeliveryShopping';
 import { DELIVERY_POLICY_CONTENT, DELIVERY_WINDOWS, DELIVERY_ZONE_SUMMARY } from '@/lib/delivery-policy';
@@ -19,7 +20,9 @@ const FLAVORS = {
 
 function CatalogPhoto({ product, priority = false, className = '' }) {
   return (
-    <img
+    <ProductPhoto
+      product={product}
+      thumbnail
       src={productCardImage(product)}
       alt={product.slug === 'the-nuvira-trio'
         ? 'The NuVira Trio: one labeled bottle each of AURA, OASIS and RE-NU'

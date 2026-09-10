@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { ShieldCheck } from 'lucide-react';
+import { ChevronDown, ShieldCheck } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import {
@@ -34,6 +34,7 @@ export default function AnalyticsConsent() {
   const [analyticsAllowed, setAnalyticsAllowed] = React.useState(() => getAnalyticsConsent() === 'granted');
   const [marketingAllowed, setMarketingAllowed] = React.useState(() => getMarketingConsent() === 'granted');
   const [googleAdsAllowed, setGoogleAdsAllowed] = React.useState(() => getGoogleAdsMeasurementConsent() === 'granted');
+  const [showPreferences, setShowPreferences] = React.useState(false);
 
   React.useEffect(() => {
     if (isNative || getAnalyticsConsent() !== 'granted') return;
@@ -51,6 +52,7 @@ export default function AnalyticsConsent() {
     const onConsent = (event) => {
       if (event.detail === 'reset') {
         setAnalyticsAllowed(false);
+        setShowPreferences(true);
         setShowBanner(true);
         return;
       }
@@ -69,6 +71,7 @@ export default function AnalyticsConsent() {
     const onConsent = (event) => {
       if (event.detail === 'reset') {
         setMarketingAllowed(false);
+        setShowPreferences(true);
         setShowBanner(true);
         return;
       }
@@ -87,7 +90,10 @@ export default function AnalyticsConsent() {
     if (isNative) return undefined;
     const onConsent = (event) => {
       setGoogleAdsAllowed(event.detail === 'granted');
-      if (event.detail === 'reset') setShowBanner(true);
+      if (event.detail === 'reset') {
+        setShowPreferences(true);
+        setShowBanner(true);
+      }
     };
     window.addEventListener(GOOGLE_ADS_CONSENT_EVENT, onConsent);
     return () => window.removeEventListener(GOOGLE_ADS_CONSENT_EVENT, onConsent);
@@ -125,6 +131,17 @@ export default function AnalyticsConsent() {
     setShowBanner(false);
   };
 
+  const acceptAll = () => {
+    setAnalyticsAllowed(true);
+    setMarketingAllowed(true);
+    setGoogleAdsAllowed(true);
+    // A deliberate all-purpose grant must precede the consented analytics page view.
+    setGoogleAdsMeasurementConsent('granted');
+    setAnalyticsConsent('granted');
+    setMarketingConsent('granted');
+    setShowBanner(false);
+  };
+
   if (isNative || !showBanner || !isTrackableAnalyticsPath(location.pathname) || location.pathname === '/checkout') return null;
 
   const banner = (
@@ -135,17 +152,29 @@ export default function AnalyticsConsent() {
       className="fixed inset-x-3 bottom-[calc(5.75rem+env(safe-area-inset-bottom))] z-[120] mx-auto flex max-h-[calc(100dvh-7rem-env(safe-area-inset-bottom))] max-w-xl flex-col overflow-hidden rounded-2xl border border-primary/20 bg-card shadow-2xl md:bottom-5 md:max-h-[calc(100dvh-2.5rem)]"
     >
       <div className="min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <ShieldCheck className="h-4 w-4" />
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            Your privacy
+          </h2>
+          <button
+            type="button"
+            aria-expanded={showPreferences}
+            aria-controls="measurement-preference-details"
+            onClick={() => setShowPreferences((shown) => !shown)}
+            className="flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-1 text-xs font-medium text-foreground underline decoration-primary/50 underline-offset-4 hover:decoration-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {showPreferences ? 'Less detail' : 'Manage preferences'}
+            <ChevronDown className={`h-4 w-4 ${showPreferences ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
         </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-foreground">Your privacy, your choice</h2>
-          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          Optional cookies measure site visits and ad results with Google, Meta and Snapchat. You can shop without them.
+        </p>
+        <div id="measurement-preference-details" hidden={!showPreferences}>
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
             Optional website measurement never includes raw name, contact, street address, or payment details.
           </p>
-        </div>
-      </div>
           <div className="mt-3 grid gap-2">
             <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/55 p-2">
               <Checkbox
@@ -171,36 +200,37 @@ export default function AnalyticsConsent() {
                 <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">Meta and Snapchat ad results and purchase matching.</span>
               </span>
             </label>
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/55 p-2">
+              <Checkbox
+                checked={googleAdsAllowed}
+                onCheckedChange={(checked) => setGoogleAdsAllowed(checked === true)}
+                aria-label="Allow Google ad measurement"
+                className="relative h-11 w-11 border-0 bg-transparent shadow-none after:absolute after:left-1/2 after:top-1/2 after:h-4 after:w-4 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-sm after:border after:border-primary data-[state=checked]:bg-transparent data-[state=checked]:after:bg-primary [&>span]:relative [&>span]:z-10"
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-semibold text-foreground">Google ad measurement</span>
+                <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">Measure Google ad clicks and shopping activity using advertising cookies and identifiers. Requires Website analytics. No personalized ads.</span>
+              </span>
+            </label>
           </div>
-          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/55 p-2">
-            <Checkbox
-              checked={googleAdsAllowed}
-              onCheckedChange={(checked) => setGoogleAdsAllowed(checked === true)}
-              aria-label="Allow Google ad measurement"
-              className="relative h-11 w-11 border-0 bg-transparent shadow-none after:absolute after:left-1/2 after:top-1/2 after:h-4 after:w-4 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-sm after:border after:border-primary data-[state=checked]:bg-transparent data-[state=checked]:after:bg-primary [&>span]:relative [&>span]:z-10"
-            />
-            <span className="min-w-0">
-              <span className="block text-xs font-semibold text-foreground">Google ad measurement</span>
-              <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">Measure Google ad clicks and shopping activity using advertising cookies and identifiers. Requires Website analytics. No personalized ads.</span>
-            </span>
-          </label>
+        </div>
       </div>
-          <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-border bg-card p-3 sm:px-4">
-            <button
-              type="button"
-              onClick={useNecessaryOnly}
-              className="h-11 whitespace-nowrap rounded-xl border border-border bg-background px-4 text-xs font-semibold text-foreground"
-            >
-              No thanks
-            </button>
-            <button
-              type="button"
-              onClick={saveChoices}
-              className="nuvira-gradient-button h-11 whitespace-nowrap rounded-xl px-4 text-xs font-semibold"
-            >
-              Save
-            </button>
-          </div>
+      <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-border bg-card p-3 sm:px-4">
+        <button
+          type="button"
+          onClick={useNecessaryOnly}
+          className="h-11 whitespace-nowrap rounded-xl border border-primary/30 bg-primary/10 px-4 text-xs font-semibold text-foreground hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          No thanks
+        </button>
+        <button
+          type="button"
+          onClick={showPreferences ? saveChoices : acceptAll}
+          className="h-11 whitespace-nowrap rounded-xl border border-primary/30 bg-primary/10 px-4 text-xs font-semibold text-foreground hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {showPreferences ? 'Save choices' : 'Accept all'}
+        </button>
+      </div>
     </aside>
   );
 

@@ -7,6 +7,7 @@ import { renderProductCanonicalRedirect, renderProductCrawlerHtml } from '../seo
 import { PUBLIC_PRODUCT_FALLBACKS } from '../../src/lib/public-product-catalog.js';
 import { productAdditionalImageUrls } from '../../src/lib/product-gallery-images.js';
 import { buildProductSeoMetadata, buildProductStructuredData } from '../../src/lib/product-seo.js';
+import { approvedProductMedia } from '../../src/lib/approved-product-media.js';
 
 const root = process.cwd();
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -82,6 +83,7 @@ test('every generated product document is unique, crawler-readable, and catalog-
     const metadata = buildProductSeoMetadata(product);
     const html = renderProductCrawlerHtml(indexHtml, product);
     const schema = productSchema(html);
+    const approvedPrimaryCount = approvedProductMedia(product) ? 1 : 0;
 
     assert.equal((html.match(/<link rel="canonical"/g) || []).length, 1, `${product.slug} must have one canonical`);
     assert.match(html, new RegExp(`<title>${escapeRegExp(metadata.fullTitle)}<\\/title>`));
@@ -104,10 +106,11 @@ test('every generated product document is unique, crawler-readable, and catalog-
     assert.equal(schema['@type'], 'Product');
     assert.equal(schema['@id'], `${metadata.canonicalUrl}#product`);
     assert.equal(schema.name, product.title);
-    assert.equal(schema.image[0], metadata.image, `${product.slug} must keep the real catalog image first`);
+    assert.equal(schema.image[0], metadata.image, `${product.slug} must keep its visible approved or catalog primary first`);
+    assert.equal(schema.image[approvedPrimaryCount], new URL(product.image_url, 'https://nuvirajuice.com').href, `${product.slug} must preserve its original catalog image`);
     assert.equal(
       schema.image.length,
-      1 + (product.secondary_images?.length || 0) + productAdditionalImageUrls(product).length,
+      approvedPrimaryCount + 1 + (product.secondary_images?.length || 0) + productAdditionalImageUrls(product).length,
       `${product.slug} should expose its complete crawler-readable image gallery`,
     );
     assert.equal(schema.sku, String(product.catalog_id));
@@ -198,7 +201,9 @@ test('live Product entity fields retain their commerce authority while static SE
 
   assert.equal(metadata.description, catalogProduct.seo_description);
   assert.equal(metadata.canonicalUrl, 'https://nuvirajuice.com/product/aura.html');
-  assert.equal(metadata.image, liveProduct.image_url);
+  assert.equal(metadata.image, `https://nuvirajuice.com${approvedProductMedia(liveProduct).primary}`);
+  assert.equal(schema.image[0], metadata.image);
+  assert.equal(schema.image[1], liveProduct.image_url, 'approved display primary must retain the current live catalog original');
   assert.equal(metadata.price, '14.00');
   assert.equal(metadata.availability, 'https://schema.org/OutOfStock');
   assert.equal(schema.sku, catalogProduct.catalog_id);

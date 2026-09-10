@@ -1,4 +1,5 @@
 import { findPublicProductFallback } from '@/lib/public-products';
+import { approvedProductMedia } from './approved-product-media.js';
 
 const PROGRAM_IMAGES = [
   {
@@ -60,6 +61,7 @@ export function resolveOrderItemImageCandidates(item = {}) {
   };
 
   const identifiers = orderItemIdentifiers(item);
+  addCandidate(approvedProductMedia(item)?.card);
   for (const identifier of identifiers) {
     const catalogProduct = findPublicProductFallback(identifier);
     addCandidate(catalogProduct?.image_url);
@@ -70,7 +72,10 @@ export function resolveOrderItemImageCandidates(item = {}) {
   addCandidate(program?.imageUrl);
 
   const alias = PRODUCT_ALIASES.find(candidate => candidate.matches.test(label));
-  if (alias) addCandidate(findPublicProductFallback(alias.title)?.image_url);
+  if (alias) {
+    const aliasProduct = findPublicProductFallback(alias.title);
+    addCandidate(aliasProduct?.image_url);
+  }
 
   // Prefer the current offering image. Historical order payloads may retain an
   // older asset URL, which remains useful only when no catalog match exists.

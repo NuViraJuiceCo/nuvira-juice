@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import ProductPhoto from '@/components/shop/ProductPhoto';
+import { productThumbnailImage } from '@/lib/approved-product-media';
 
 /**
  * Props:
@@ -96,8 +98,8 @@ export default function FreeProductPicker({ open, onClose, onSelect, title = 'Ch
                   className="w-full flex items-center gap-3 p-3 rounded-xl bg-secondary/40 hover:bg-primary/10 active:bg-primary/20 transition-colors text-left"
                 >
                   <div className="w-14 h-14 rounded-lg overflow-hidden bg-muted shrink-0">
-                    {product.image_url ? (
-                      <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" />
+                    {productThumbnailImage(product) ? (
+                      <ProductPhoto product={product} thumbnail alt={product.title} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-2xl">🍊</div>
                     )}

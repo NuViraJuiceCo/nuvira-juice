@@ -22,6 +22,7 @@ import {
   trackMetaSearch,
 } from '@/lib/metaPixel';
 import { trackSnapSearch } from '@/lib/snapPixel';
+import { productImageUrl } from '@/lib/product-seo';
 
 const ALL_CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -208,7 +209,7 @@ export default function Shop({ seoActive = true }) {
           "item": {
             "@type": "Product",
             "name": product.title,
-            "image": product.image_url,
+            "image": productImageUrl(product),
             "description": product.short_description || product.description,
             "brand": { "@type": "Brand", "name": "NuVira Juice Co." },
             "offers": {

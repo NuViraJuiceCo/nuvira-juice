@@ -221,7 +221,7 @@ await test('neither an order nor checkout context can override server advertisin
   });
   assert.equal(requests[0].consent.ad_user_data, 'DENIED');
 });
-await test('the new choice is visible, independently unchecked for old visitors, resettable, and disclosed', () => {
+await test('the detailed choice remains available, independently unchecked for old visitors, resettable, and disclosed', () => {
   assert.match(banner, /getGoogleAdsMeasurementConsent\(\) === null/);
   assert.match(banner, /useState\(\(\) => getGoogleAdsMeasurementConsent\(\) === 'granted'\)/);
   assert.match(banner, /aria-label="Allow Google ad measurement"/);
@@ -264,5 +264,146 @@ await test('consent stays above root stacking with bounded scrolling and pinned 
   assert.match(banner, /createPortal\(banner, document\.body\)/);
   assert.match(banner, /return typeof document !== 'undefined' \? createPortal\(banner, document\.body\) : banner/);
   assert.match(banner, /import \{ createPortal \} from 'react-dom'/);
+});
+
+// Exercise the component's actual handlers with stateful hooks; WebKit covers DOM/layout separately.
+function bannerRuntime({ initial = {}, native = false, pathname = '/product/re-nu.html' } = {}) {
+  const values = { analytics: null, marketing: null, google: null, ...initial };
+  const writes = [];
+  const hooks = [];
+  const listeners = new Map();
+  let cursor = 0;
+  let pending = [];
+  let tree;
+  const React = {
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) }),
+    useState: initialValue => {
+      const index = cursor++;
+      if (!(index in hooks)) hooks[index] = typeof initialValue === 'function' ? initialValue() : initialValue;
+      return [hooks[index], value => { hooks[index] = typeof value === 'function' ? value(hooks[index]) : value; }];
+    },
+    useEffect: (effect, deps) => {
+      const index = cursor++;
+      if (!hooks[index] || deps.some((value, i) => value !== hooks[index][i])) pending.push(effect);
+      hooks[index] = deps;
+    },
+  };
+  const dispatch = (name, detail) => (listeners.get(name) || []).forEach(listener => listener({ detail }));
+  const set = name => value => { writes.push([name, value]); values[name] = value; dispatch(name, value); };
+  const noop = () => false;
+  const dependencies = {
+    react: React,
+    'react-dom': { createPortal: node => node },
+    'react-router-dom': { useLocation: () => ({ pathname }) },
+    'lucide-react': { ChevronDown: 'Icon', ShieldCheck: 'Icon' },
+    '@/components/ui/checkbox': { Checkbox: 'Checkbox' },
+    '@/lib/nativeRuntime': { isNativeAppRuntime: () => native },
+    '@/lib/googleAnalytics': {
+      ANALYTICS_CONSENT_EVENT: 'analytics', ANALYTICS_CONSENT_STORAGE_KEY: 'analytics-key',
+      GOOGLE_ADS_CONSENT_EVENT: 'google', GOOGLE_ADS_CONSENT_STORAGE_KEY: 'google-key',
+      getGoogleAdsMeasurementConsent: () => values.google, setGoogleAdsMeasurementConsent: set('google'),
+      getAnalyticsConsent: () => values.analytics, setAnalyticsConsent: set('analytics'),
+      syncGoogleMeasurementConsent: noop, isTrackableAnalyticsPath: () => !pathname.startsWith('/admin'), trackGooglePageView: noop,
+    },
+    '@/lib/metaPixel': {
+      MARKETING_CONSENT_EVENT: 'marketing', getMarketingConsent: () => values.marketing,
+      setMarketingConsent: set('marketing'), trackMetaPageView: noop,
+    },
+    '@/lib/snapPixel': { trackSnapPageView: noop },
+  };
+  const module = { exports: {} };
+  vm.runInNewContext(transformSync(banner, { loader: 'jsx', format: 'cjs' }).code, {
+    module, exports: module.exports, require: key => { assert.ok(dependencies[key], key); return dependencies[key]; },
+    document: { body: {}, title: 'Consent test' },
+    window: { location: { pathname }, addEventListener: (name, listener) => listeners.set(name, [...(listeners.get(name) || []), listener]), removeEventListener() {} },
+  });
+  const render = () => {
+    cursor = 0; pending = [];
+    tree = module.exports.default();
+    pending.forEach(effect => effect());
+    return tree;
+  };
+  const visible = () => {
+    const nodes = [];
+    const walk = node => {
+      if (!node || typeof node !== 'object' || node.props.hidden) return;
+      nodes.push(node); node.children.forEach(walk);
+    };
+    walk(tree); return nodes;
+  };
+  const text = node => typeof node === 'string' ? node : node?.children?.map(text).join('') || '';
+  const button = name => visible().find(node => node.type === 'button' && text(node) === name);
+  const click = name => { const node = button(name); assert.ok(node, name); node.props.onClick(); render(); };
+  const choices = () => visible().filter(node => node.type === 'Checkbox');
+  const choose = (name, value) => { const node = choices().find(node => node.props['aria-label'] === name); assert.ok(node, name); node.props.onCheckedChange(value); render(); };
+  render();
+  return { values, writes, render, visible, button, click, choices, choose, reset: name => { values[name] = null; dispatch(name, 'reset'); render(); } };
+}
+await test('first layer is compact, purpose-specific, and has equally prominent accept/decline actions', () => {
+  const r = bannerRuntime();
+  assert.equal(r.choices().length, 0);
+  assert.equal(r.button('Manage preferences').props['aria-expanded'], false);
+  assert.equal(r.button('Manage preferences').props['aria-controls'], 'measurement-preference-details');
+  assert.equal(r.button('No thanks').props.className, r.button('Accept all').props.className);
+  assert.match(banner, /Optional cookies measure site visits and ad results with Google, Meta and Snapchat\. You can shop without them\./);
+  assert.deepEqual(r.writes, []);
+});
+await test('opening, editing, and closing details never implies consent', () => {
+  const r = bannerRuntime();
+  r.click('Manage preferences');
+  assert.equal(r.choices().length, 3);
+  assert.ok(r.choices().every(choice => choice.props.checked === false));
+  r.choose('Allow advertising measurement', true);
+  r.click('Less detail');
+  assert.equal(r.choices().length, 0);
+  assert.deepEqual(r.writes, []);
+  r.click('Manage preferences');
+  assert.equal(r.choices().find(choice => choice.props['aria-label'] === 'Allow advertising measurement').props.checked, true);
+});
+await test('Accept all is an explicit three-purpose grant with Google captured before analytics', () => {
+  const r = bannerRuntime(); r.click('Accept all');
+  assert.deepEqual(r.writes, [['google', 'granted'], ['analytics', 'granted'], ['marketing', 'granted']]);
+  assert.deepEqual(r.values, { analytics: 'granted', marketing: 'granted', google: 'granted' });
+  assert.equal(r.visible().length, 0);
+});
+await test('No thanks refuses all purposes from either layer, including unsaved selections', () => {
+  for (const detailed of [false, true]) {
+    const r = bannerRuntime();
+    if (detailed) { r.click('Manage preferences'); r.choose('Allow Google ad measurement', true); }
+    r.click('No thanks');
+    assert.deepEqual(r.values, { analytics: 'denied', marketing: 'denied', google: 'denied' });
+    assert.equal(r.visible().length, 0);
+  }
+});
+await test('Save choices preserves independent purpose selections instead of accepting all', () => {
+  for (const [label, purpose] of [['Allow Google Analytics', 'analytics'], ['Allow advertising measurement', 'marketing'], ['Allow Google ad measurement', 'google']]) {
+    const r = bannerRuntime(); r.click('Manage preferences'); r.choose(label, true); r.click('Save choices');
+    assert.deepEqual(r.values, { analytics: 'denied', marketing: 'denied', google: 'denied', [purpose]: 'granted' });
+    assert.equal(r.visible().length, 0);
+  }
+});
+await test('legacy grants never opt into Google without a new explicit choice', () => {
+  const r = bannerRuntime({ initial: { analytics: 'granted', marketing: 'granted' } });
+  assert.deepEqual(r.writes, []);
+  r.click('Manage preferences');
+  assert.equal(r.choices().find(choice => choice.props['aria-label'] === 'Allow Google ad measurement').props.checked, false);
+  r.click('Save choices');
+  assert.deepEqual(r.values, { analytics: 'granted', marketing: 'granted', google: 'denied' });
+});
+await test('privacy-page resets reopen detailed controls and allow withdrawal', () => {
+  const r = bannerRuntime({ initial: { analytics: 'granted', marketing: 'granted', google: 'granted' } });
+  assert.equal(r.visible().length, 0);
+  for (const purpose of ['analytics', 'marketing', 'google']) r.reset(purpose);
+  assert.equal(r.choices().length, 3);
+  assert.ok(r.choices().every(choice => choice.props.checked === false));
+  assert.ok(r.button('Save choices'));
+  assert.deepEqual(r.writes, []);
+  r.click('No thanks');
+  assert.deepEqual(r.values, { analytics: 'denied', marketing: 'denied', google: 'denied' });
+});
+await test('compact consent remains absent in native runtime, checkout, and admin', () => {
+  for (const options of [{ native: true }, { pathname: '/checkout' }, { pathname: '/admin' }]) {
+    const r = bannerRuntime(options); assert.equal(r.visible().length, 0); assert.deepEqual(r.writes, []);
+  }
 });
 console.log(JSON.stringify({ ok: true, suite: 'g196-google-ads-consent', cases: results.length, checks: results, live_provider_calls: 0, production_writes: false }, null, 2));
