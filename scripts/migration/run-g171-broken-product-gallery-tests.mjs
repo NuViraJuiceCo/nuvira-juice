@@ -27,8 +27,8 @@ assert.match(
 );
 assert.match(
   productDetailSource,
-  /onError=\{\(\) => handleGalleryImageError\(image\.src, index\)\}/,
-  'Each gallery thumbnail should remove its failed image URL',
+  /onError=\{\(event\) => \{[\s\S]*?if \(image\.thumbnail && event\.currentTarget\.getAttribute\('src'\) === image\.thumbnail\) \{[\s\S]*?event\.currentTarget\.src = image\.src;[\s\S]*?return;[\s\S]*?\}[\s\S]*?handleGalleryImageError\(image\.src, index\);/,
+  'Thumbnail derivative failure must retry its primary before removing the gallery image',
 );
 assert.match(
   productDetailSource,

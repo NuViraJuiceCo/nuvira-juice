@@ -83,7 +83,7 @@ test('every generated product document is unique, crawler-readable, and catalog-
     const metadata = buildProductSeoMetadata(product);
     const html = renderProductCrawlerHtml(indexHtml, product);
     const schema = productSchema(html);
-    const approvedPrimaryCount = approvedProductMedia(product) ? 1 : 0;
+    const approved = approvedProductMedia(product);
 
     assert.equal((html.match(/<link rel="canonical"/g) || []).length, 1, `${product.slug} must have one canonical`);
     assert.match(html, new RegExp(`<title>${escapeRegExp(metadata.fullTitle)}<\\/title>`));
@@ -107,10 +107,10 @@ test('every generated product document is unique, crawler-readable, and catalog-
     assert.equal(schema['@id'], `${metadata.canonicalUrl}#product`);
     assert.equal(schema.name, product.title);
     assert.equal(schema.image[0], metadata.image, `${product.slug} must keep its visible approved or catalog primary first`);
-    assert.equal(schema.image[approvedPrimaryCount], new URL(product.image_url, 'https://nuvirajuice.com').href, `${product.slug} must preserve its original catalog image`);
+    assert.equal(schema.image.includes(new URL(product.image_url, 'https://nuvirajuice.com').href), !approved, `${product.slug} must match the visible gallery retirement policy`);
     assert.equal(
       schema.image.length,
-      approvedPrimaryCount + 1 + (product.secondary_images?.length || 0) + productAdditionalImageUrls(product).length,
+      1 + (product.secondary_images?.length || 0) + productAdditionalImageUrls(product).length,
       `${product.slug} should expose its complete crawler-readable image gallery`,
     );
     assert.equal(schema.sku, String(product.catalog_id));
@@ -203,7 +203,8 @@ test('live Product entity fields retain their commerce authority while static SE
   assert.equal(metadata.canonicalUrl, 'https://nuvirajuice.com/product/aura.html');
   assert.equal(metadata.image, `https://nuvirajuice.com${approvedProductMedia(liveProduct).primary}`);
   assert.equal(schema.image[0], metadata.image);
-  assert.equal(schema.image[1], liveProduct.image_url, 'approved display primary must retain the current live catalog original');
+  assert.equal(schema.image.includes(liveProduct.image_url), false, 'retired target original must not remain in crawler-visible images');
+  assert.equal(schema.image.length, 4, 'approved hero plus three authentic images, not an old second hero');
   assert.equal(metadata.price, '14.00');
   assert.equal(metadata.availability, 'https://schema.org/OutOfStock');
   assert.equal(schema.sku, catalogProduct.catalog_id);
