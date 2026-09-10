@@ -1,5 +1,6 @@
 import { SITE_URL, slugifyProductTitle } from './seo-slugs.js';
 import { approvedProductMedia } from './approved-product-media.js';
+import { PUBLIC_PRODUCT_FALLBACKS } from './public-product-catalog.js';
 
 const TRIO_GALLERY = Object.freeze([
   {
@@ -108,15 +109,21 @@ export function buildProductGallery(product = {}, { absolute = false } = {}) {
   const key = productGalleryKey(product);
   const primary = String(product.image_url || '').trim();
   const approved = approvedProductMedia(product);
+  const retiredPrimary = approved
+    ? PUBLIC_PRODUCT_FALLBACKS.find(item => item.id === approved.id)?.image_url || ''
+    : '';
   const existingSecondaryImages = Array.isArray(product.secondary_images)
     ? product.secondary_images.map(image => String(image || '').trim()).filter(Boolean)
     : [];
-  const items = approved ? [{ src: absolute ? absoluteImageUrl(approved.primary) : approved.primary, alt: approved.alt, scene: 'approved-primary', fit: 'contain' }] : [];
-  if (primary && primary !== approved?.primary && primary !== absoluteImageUrl(approved?.primary)) {
-    items.push({ src: absolute ? absoluteImageUrl(primary) : primary, alt: title, scene: approved ? 'catalog-original' : 'primary' });
+  const items = approved ? [{ src: absolute ? absoluteImageUrl(approved.primary) : approved.primary, thumbnail: absolute ? absoluteImageUrl(approved.card) : approved.card, alt: approved.alt, scene: 'approved-primary', fit: 'contain' }] : [];
+  // The owner retired these three old hero photos from the visible gallery.
+  // Stored catalog/cart media stays unchanged and remains an error fallback.
+  if (!approved && primary) {
+    items.push({ src: absolute ? absoluteImageUrl(primary) : primary, alt: title, scene: 'primary' });
   }
 
   existingSecondaryImages.forEach((src, index) => {
+    if (approved && [primary, retiredPrimary].some(retired => retired && absoluteImageUrl(src) === absoluteImageUrl(retired))) return;
     items.push({
       src: absolute ? absoluteImageUrl(src) : src,
       alt: `${title} product photo ${index + 2}`,

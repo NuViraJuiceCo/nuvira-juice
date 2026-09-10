@@ -31,6 +31,7 @@ import {
   shouldRenderClientProductStructuredData,
 } from '@/lib/product-seo';
 import { buildProductGallery } from '@/lib/product-gallery-images';
+import { approvedProductMedia } from '@/lib/approved-product-media';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
@@ -287,6 +288,7 @@ export default function ProductDetail() {
 
   const isMerch = isMerchLikeProduct(product);
   const isMerchProduct = isMerch;
+  const hasApprovedMedia = Boolean(approvedProductMedia(product));
   const productDescriptor = getCategoryLabel(product, isMerchProduct);
   const productBadges = isMerch
     ? ['Reusable', 'Insulated', 'Large Capacity']
@@ -360,15 +362,17 @@ export default function ProductDetail() {
       <div className="xl:grid xl:grid-cols-[minmax(0,0.92fr)_minmax(340px,0.68fr)] xl:gap-6 xl:items-stretch">
         <div className="md:px-4 xl:min-h-[460px] xl:px-0">
           <div
-            className={`relative w-full overflow-hidden bg-secondary/50 shadow-[0_24px_80px_rgba(4,29,21,0.22)] md:rounded-[28px] md:border md:border-border/50 xl:h-[min(64vh,620px)] xl:min-h-[460px] ${
-              isMerchProduct
+            className={`relative w-full overflow-hidden bg-secondary/50 shadow-[0_24px_80px_rgba(4,29,21,0.22)] md:rounded-[28px] ${
+              selectedProductImage?.scene === 'approved-primary'
+                ? 'aspect-[4/5] md:ring-1 md:ring-border/50'
+                : `md:border md:border-border/50 xl:h-[min(64vh,620px)] xl:min-h-[460px] ${isMerchProduct
                 ? 'h-[44vh] min-h-[260px] max-h-[390px] sm:max-h-[430px] xl:max-h-[620px]'
-                : 'h-[52vh] min-h-[330px] max-h-[470px] sm:h-[50vh] sm:max-h-[520px]'
+                : 'h-[52vh] min-h-[330px] max-h-[470px] sm:h-[50vh] sm:max-h-[520px]'}`
             }`}
           >
             {selectedProductImage?.src ? (
               <>
-                {(isMerchProduct || selectedProductImage.fit === 'contain') && (
+                {isMerchProduct && (
                   <img
                     src={selectedProductImage.src}
                     alt=""
@@ -423,18 +427,26 @@ export default function ProductDetail() {
                   aria-label={`View image ${index + 1} of ${productGallery.length}: ${image.alt}`}
                   aria-pressed={selectedImageIndex === index}
                   onClick={() => setSelectedImageIndex(index)}
-                  className={`group relative aspect-[4/3] min-h-14 overflow-hidden rounded-xl border bg-secondary/50 shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
-                    selectedImageIndex === index
+                  className={`group relative ${hasApprovedMedia ? 'aspect-square border-0' : 'aspect-[4/3] border'} min-h-14 overflow-hidden rounded-xl bg-secondary/50 shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                    hasApprovedMedia
+                      ? selectedImageIndex === index ? 'ring-2 ring-primary/60' : 'ring-1 ring-border/60 hover:ring-primary/50'
+                      : selectedImageIndex === index
                       ? 'border-primary ring-2 ring-primary/25'
                       : 'border-border/60 hover:border-primary/50'
                   }`}
                 >
                   <img
-                    src={image.src}
+                    src={image.thumbnail || image.src}
                     alt=""
                     aria-hidden="true"
                     loading={index === 0 ? 'eager' : 'lazy'}
-                    onError={() => handleGalleryImageError(image.src, index)}
+                    onError={(event) => {
+                      if (image.thumbnail && event.currentTarget.getAttribute('src') === image.thumbnail) {
+                        event.currentTarget.src = image.src;
+                        return;
+                      }
+                      handleGalleryImageError(image.src, index);
+                    }}
                     className={`h-full w-full ${image.fit === 'contain' ? 'object-contain' : 'object-cover transition-transform duration-300 group-hover:scale-[1.03]'}`}
                   />
                   <span className="sr-only">{image.alt}</span>

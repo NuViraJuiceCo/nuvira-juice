@@ -126,10 +126,9 @@ export default function ProductCard({ product, compact = false }) {
       className="relative overflow-hidden rounded-xl border border-border/50 bg-card shadow-md"
       style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)' }}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-secondary/50">
-        {approvedMedia && <img src={cardImage} alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-xl" loading="lazy" decoding="async" onError={event => { event.currentTarget.hidden = true; }} />}
+      <div className="relative aspect-square overflow-hidden bg-secondary/50">
         {cardImage ? (
-          <ProductPhoto product={product} thumbnail src={cardImage} alt="" className="relative h-full w-full object-cover" width="400" height="300" loading="lazy" decoding="async" />
+          <ProductPhoto product={product} thumbnail src={cardImage} alt="" className="relative h-full w-full object-cover" width="400" height="400" loading="lazy" decoding="async" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-5xl" aria-hidden="true">{fallbackIcon}</div>
         )}

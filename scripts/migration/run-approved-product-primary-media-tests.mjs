@@ -132,11 +132,11 @@ check('cards, galleries, history and SEO resolve each target to the same flavor'
     assert.equal(productPrimaryImage(product), media.primary);
     assert.equal(resolveOrderItemImageCandidates(product)[0], media.card);
     const gallery = buildProductGallery(product);
-    assert.equal(gallery.length, 5);
-    assert.deepEqual(gallery[0], { src: media.primary, alt: media.alt, scene: 'approved-primary', fit: 'contain' });
-    assert.equal(gallery[1].src, product.image_url);
-    assert.equal(gallery[1].scene, 'catalog-original');
-    assert.deepEqual(gallery.slice(2).map(image => image.src), productAdditionalImageUrls(product));
+    assert.equal(gallery.length, 4);
+    assert.deepEqual(gallery[0], { src: media.primary, thumbnail: media.card, alt: media.alt, scene: 'approved-primary', fit: 'contain' });
+    assert.equal(gallery.some(image => image.src === product.image_url), false, 'retired old hero must be absent');
+    assert.deepEqual(gallery.slice(1).map(image => image.src), productAdditionalImageUrls(product));
+    assert.equal(buildProductGallery(product, { absolute: true })[0].thumbnail, `${origin}${media.card}`);
     assert.equal(buildProductSeoMetadata(product).image, `${origin}${media.primary}`);
     assert.equal(buildProductStructuredData(product).image[0], `${origin}${media.primary}`);
   }
@@ -171,17 +171,79 @@ check('birthday cart identity is resolved only for marked birthday items and ret
   assert.equal(approvedProductMedia({ id: targets[0].id, birthday_product_id: targets[1].id, isBirthdayReward: true }), null);
   assert.equal(approvedProductMedia({ id: targets[0].id, birthday_product_id: targets[1].id, isBirthdayReward: false })?.key, 'aura');
 });
-check('gallery preserves secondary order and deduplication in relative and absolute modes', () => {
+check('gallery preserves other secondaries but removes retired originals and their duplicates', () => {
   const product = PUBLIC_PRODUCT_FALLBACKS.find(item => item.slug === 'oasis');
   const input = { ...product, secondary_images: ['/old-secondary.jpg', '/old-secondary.jpg', product.image_url] };
   const before = JSON.stringify(input);
   const gallery = buildProductGallery(input);
-  assert.equal(gallery.length, 6);
-  assert.deepEqual(gallery.slice(0, 3).map(image => image.src), [`${base}/oasis-primary.webp`, product.image_url, '/old-secondary.jpg']);
-  assert.equal(buildProductGallery(input, { absolute: true })[2].src, `${origin}/old-secondary.jpg`);
+  assert.equal(gallery.length, 5);
+  assert.deepEqual(gallery.slice(0, 2).map(image => image.src), [`${base}/oasis-primary.webp`, '/old-secondary.jpg']);
+  assert.equal(gallery.some(image => image.src === product.image_url), false);
+  assert.equal(buildProductGallery(input, { absolute: true })[1].src, `${origin}/old-secondary.jpg`);
   assert.equal(buildProductGallery({ ...product, image_url: `${base}/oasis-primary.webp` }).length, 4);
   assert.equal(buildProductGallery({ ...product, image_url: `${origin}${base}/oasis-primary.webp` }, { absolute: true }).length, 4);
   assert.equal(JSON.stringify(input), before);
+  const duplicateForms = { ...product, image_url: '/retired-oasis.jpg', secondary_images: [`${origin}/retired-oasis.jpg`, '/retired-oasis.jpg', '/keep-oasis-detail.jpg'] };
+  for (const absolute of [false, true]) {
+    const variants = buildProductGallery(duplicateForms, { absolute });
+    assert.equal(variants.length, 5);
+    assert.equal(variants.some(image => image.src.includes('retired-oasis.jpg')), false);
+    assert.equal(variants[1].src, absolute ? `${origin}/keep-oasis-detail.jpg` : '/keep-oasis-detail.jpg');
+  }
+});
+check('catalog already pointing at approved primary cannot reintroduce known retired original through secondaries', () => {
+  for (const target of targets) {
+    const product = PUBLIC_PRODUCT_FALLBACKS.find(item => item.id === target.id);
+    const approved = approvedProductMedia(product);
+    for (const current of [approved.primary, `${origin}${approved.primary}`]) {
+      const input = { ...product, image_url: current, secondary_images: [product.image_url, product.image_url, current] };
+      const before = JSON.stringify(input);
+      for (const absolute of [false, true]) {
+        const gallery = buildProductGallery(input, { absolute });
+        assert.equal(gallery.length, 4, `${target.title}: old original must not add a fifth tile`);
+        assert.equal(gallery.some(image => image.src === product.image_url), false);
+        assert.equal(gallery[0].src, absolute ? `${origin}${approved.primary}` : approved.primary);
+        assert.deepEqual(gallery.slice(1).map(image => image.src), productAdditionalImageUrls(product, { absolute }));
+      }
+      const schema = buildProductStructuredData(input);
+      assert.equal(schema.image.length, 4);
+      assert.equal(schema.image.includes(product.image_url), false);
+      assert.equal(JSON.stringify(input), before);
+    }
+  }
+});
+check('approved hero and thumbnail framing use matching image ratios without side-band backdrops', () => {
+  const detail = read('src/pages/ProductDetail.jsx');
+  const cards = read('src/components/shop/ProductCard.jsx');
+  const heroGeometry = detail.match(/selectedProductImage\?\.scene === 'approved-primary'\s*\? '([^']+)'\s*:/)?.[1];
+  assert.ok(heroGeometry?.includes('aspect-[4/5]'), 'approved hero must have exact 4:5 geometry');
+  assert.doesNotMatch(heroGeometry, /(?:^|\s)(?:\w+:)?(?:h-|min-h-|max-h-|p-|border(?:-|\s|$))/, 'approved hero must have no height clamps, padding or physical borders causing bands');
+  assert.match(detail, /\{isMerchProduct && \([\s\S]*?blur-2xl/, 'decorative hero blur remains merch-only');
+  assert.doesNotMatch(detail, /isMerchProduct \|\| selectedProductImage\.fit/);
+  assert.match(detail, /src=\{image\.thumbnail \|\| image\.src\}/, 'approved gallery thumbnail must use its square derivative');
+  assert.match(detail, /const hasApprovedMedia = Boolean\(approvedProductMedia\(product\)\)/);
+  assert.match(detail, /hasApprovedMedia \? 'aspect-square border-0' : 'aspect-\[4\/3\] border'/, 'only approved products get square thumbnail frames; non-target framing is retained');
+  assert.match(cards, /relative aspect-square overflow-hidden/, 'shop frame must match square card image');
+  assert.match(cards, /aspectRatio: '1\/1'/, 'compact home frame stays square');
+  assert.doesNotMatch(cards, /blur-xl|blur-2xl|aspect-\[4\/3\]/, 'no blurred or letterboxed shop framing');
+});
+check('failed square thumbnail retries its full-size image before removing a healthy gallery item', () => {
+  const detail = read('src/pages/ProductDetail.jsx');
+  const thumbnailSource = detail.slice(detail.indexOf('src={image.thumbnail || image.src}'));
+  const handler = thumbnailSource.match(/onError=\{\(event\) => \{([\s\S]*?)\n\s*\}\}/);
+  assert.ok(handler, 'actual thumbnail onError handler must be present');
+  const onError = new Function('image', 'index', 'handleGalleryImageError', 'event', handler[1]);
+  const image = { src: `${base}/oasis-primary.webp`, thumbnail: `${base}/oasis-card.webp` };
+  const failures = [];
+  const currentTarget = { src: image.thumbnail, getAttribute(name) { assert.equal(name, 'src'); return this.src; } };
+  onError(image, 0, (...args) => failures.push(args), { currentTarget });
+  assert.equal(currentTarget.src, image.src);
+  assert.deepEqual(failures, [], 'card-only failure must not remove healthy primary');
+  onError(image, 0, (...args) => failures.push(args), { currentTarget });
+  assert.deepEqual(failures, [[image.src, 0]], 'actual primary failure retains existing gallery recovery');
+  const secondary = { src: '/images/authentic-products/oasis/oasis-event-cooler.jpg' };
+  onError(secondary, 1, (...args) => failures.push(args), { currentTarget });
+  assert.deepEqual(failures[1], [secondary.src, 1]);
 });
 check('metadata changes images only and preserves prices, offers, availability and canonical identity', () => {
   for (const product of PUBLIC_PRODUCT_FALLBACKS) {
