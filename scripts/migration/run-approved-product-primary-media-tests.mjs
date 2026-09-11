@@ -16,19 +16,28 @@ import { buildProductSeoMetadata, buildProductStructuredData } from '../../src/l
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const require = createRequire(import.meta.url);
 const origin = 'https://nuvirajuice.com';
-const base = '/images/approved-lifestyle/20260910';
+const base = '/images/approved-lifestyle/20260911-v5';
+const retiredBase = '/images/approved-lifestyle/20260910';
 const targets = [
   { key: 'aura', id: '69d490ce699b5f1ac4dde495', variant: '43220774813786', title: 'AURA' },
   { key: 'oasis', id: '69d490ce699b5f1ac4dde497', variant: '43220774944858', title: 'OASIS' },
   { key: 're-nu', id: '69d490ce699b5f1ac4dde496', variant: '43220774846554', title: 'RE-NU' },
 ];
 const expectedHashes = {
-  'aura-card.webp': '0995f7a0c30fa196b07a8179a71745fd9e7f461aca1004f91e32697880f4ca09',
-  'aura-primary.webp': '3d88d5f6d06daa9bf2cf0174b11c4c6c4415b8ddaa1eed845b1d7e598e4aacce',
-  'oasis-card.webp': '6e95ef0ed9c6bdb616af50fe1db1f62678db5f5a2153f612d976ab6aaa9242d2',
-  'oasis-primary.webp': '1449544865d52189ceb9116013852374b2b62752964473f6b9086fee3a2672fc',
-  're-nu-card.webp': 'a1d243cd22e625d6c6fee7c8bb031c4fbe5c17d74cb4bb59f7aba80ad7cd7577',
-  're-nu-primary.webp': '8d6c27b2a3e8cfff8d330d7b8281258cc155811aa1b4282f60f40218a9c8357a',
+  'aura-card.webp': '5f304d3af09997b15c8421e7e1fcdb0b41646d301ed45a3be658a0d59d21a850',
+  'aura-primary.webp': 'eb8df9b7e760da932ff5eedfd9ebbc501f23c60eed78373101b6dc55c31d8187',
+  'oasis-card.webp': 'f4369152ff6ea443e67ab7cf16b9323147471c4c4247d43963e1afd2a9e711c4',
+  'oasis-primary.webp': '52ddcd22e934e70a2f69d2166577747de87fc3d334bd0210488aab8b3c929773',
+  're-nu-card.webp': 'b8d2b737ae910e5121f715c10f977179775a41c095efc051b5ddb306330e3fd1',
+  're-nu-primary.webp': 'c0302ff553cd2485ebf30f857417e67d753d39f67a3c338ba4558e91ca2941af',
+};
+const expectedJpegHashes = {
+  'aura-merchant.jpg': 'f94b9d96726a6f17d9c5b41363f1b24a0acf309aaf7679925dfa98388593e376',
+  'aura-provider.jpg': '740f5f1266f8d00f056be277bd80101c22a4bd4ac28a54ee5fdfcb537fcf55ac',
+  'oasis-merchant.jpg': '7c698b4c329d381432f234a0a5c3b99edc7409b468cbd961e4f41001cfc549c7',
+  'oasis-provider.jpg': 'c7fc45c5415e91d86005be8388caeae002b2e1a8fe19e16ac1fc38fd1b170d33',
+  're-nu-merchant.jpg': '8dac6d4fee2a9acd519bd19e16eb03f63939e6c0120712cc3afb725bdce7f144',
+  're-nu-provider.jpg': 'c0511ef730772ef5189f8a9f1bc0eafb1732892f994424d878560d4e81c78339',
 };
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 let checks = 0;
@@ -212,6 +221,31 @@ check('catalog already pointing at approved primary cannot reintroduce known ret
     }
   }
 });
+check('V5 galleries exclude retired V4 primary/card URLs without removing authentic or unknown secondaries', () => {
+  for (const target of targets) {
+    const product = PUBLIC_PRODUCT_FALLBACKS.find(item => item.id === target.id);
+    const approved = approvedProductMedia(product);
+    const retired = [`${retiredBase}/${target.key}-primary.webp`, `${retiredBase}/${target.key}-card.webp`];
+    assert.deepEqual(approved.retiredImages, retired);
+    for (const current of [product.image_url, approved.primary, `${origin}${approved.primary}`, retired[0]]) {
+      const input = { ...product, image_url: current, secondary_images: [...retired, ...retired.map(src => `${origin}${src}`), '/keep-authentic-detail.jpg'] };
+      const before = JSON.stringify(input);
+      for (const absolute of [false, true]) {
+        const gallery = buildProductGallery(input, { absolute });
+        assert.equal(gallery.length, 5);
+        assert.equal(gallery.some(image => image.src.includes(retiredBase)), false);
+        assert.equal(gallery[1].src, absolute ? `${origin}/keep-authentic-detail.jpg` : '/keep-authentic-detail.jpg');
+        assert.deepEqual(gallery.slice(2).map(image => image.src), productAdditionalImageUrls(product, { absolute }));
+      }
+      assert.equal(buildProductStructuredData(input).image.some(src => src.includes(retiredBase)), false);
+      assert.equal(JSON.stringify(input), before);
+    }
+    // Old static files remain available for existing snapshots/error recovery.
+    retired.forEach(src => assert.ok(fs.existsSync(path.join(root, 'public', src))));
+  }
+  const unknown = { title: 'Custom product', image_url: '/custom.jpg', secondary_images: [`${retiredBase}/aura-primary.webp`] };
+  assert.equal(buildProductGallery(unknown)[1].src, unknown.secondary_images[0]);
+});
 check('approved hero and thumbnail framing use matching image ratios without side-band backdrops', () => {
   const detail = read('src/pages/ProductDetail.jsx');
   const cards = read('src/components/shop/ProductCard.jsx');
@@ -285,9 +319,64 @@ check('six approved assets match exact bytes, declared AI-composite metadata and
     const width = 1 + dimensions.readUIntLE(4, 3);
     const height = 1 + dimensions.readUIntLE(7, 3);
     const card = file.includes('-card.');
-    assert.deepEqual([width, height], card ? [640, 640] : [1600, 2000], file);
+    assert.deepEqual([width, height], card ? [640, 640] : [1080, 1350], file);
     assert.ok(bytes.length < (card ? 80_000 : 500_000), `${file} exceeds optimized media budget`);
     assert.ok(chunks.get('XMP ')?.includes(Buffer.from('http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia')), `${file} must retain correct composite disclosure`);
+  }
+});
+check('provider JPEG derivatives preserve exact approved framing, embedded disclosure and provenance', () => {
+  const provenance = JSON.parse(read('scripts/media/approved-primary-photo-provenance-20260911-v5.json'));
+  assert.equal(provenance.approval_date, '2026-09-11');
+  assert.equal(provenance.provider_upload_performed, false);
+  assert.match(provenance.preservation_boundary, /before lossy delivery encoding/);
+  const directory = path.join(root, 'public', base);
+  assert.deepEqual(fs.readdirSync(directory).filter(file => file.endsWith('.jpg')).sort(), Object.keys(expectedJpegHashes).sort());
+  for (const [file, expectedHash] of Object.entries(expectedJpegHashes)) {
+    const bytes = fs.readFileSync(path.join(directory, file));
+    assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), expectedHash);
+    assert.equal(bytes.readUInt16BE(0), 0xffd8);
+    let dimensions;
+    for (let offset = 2; offset + 8 < bytes.length;) {
+      assert.equal(bytes[offset], 0xff);
+      const marker = bytes[offset + 1];
+      const length = bytes.readUInt16BE(offset + 2);
+      if (marker === 0xc0 || marker === 0xc2) {
+        dimensions = [bytes.readUInt16BE(offset + 7), bytes.readUInt16BE(offset + 5)];
+        break;
+      }
+      assert.ok(length >= 2);
+      offset += length + 2;
+    }
+    assert.deepEqual(dimensions, file.includes('-provider.') ? [1080, 1350] : [1080, 1080]);
+    assert.ok(bytes.length < 5_000_000);
+    assert.ok(bytes.includes(Buffer.from(provenance.digital_source_type)));
+  }
+  for (const target of targets) {
+    const asset = provenance.assets[target.key];
+    assert.equal(asset.approved_source_crop_pixel_parity, 'PASS');
+    for (const [kind, output] of Object.entries(asset.outputs)) {
+      const file = `${target.key}-${kind}.${['merchant', 'provider'].includes(kind) ? 'jpg' : 'webp'}`;
+      assert.equal(output.path, `public${base}/${file}`);
+      assert.equal(output.sha256, { ...expectedHashes, ...expectedJpegHashes }[file]);
+      assert.equal(output.bytes, fs.statSync(path.join(root, output.path)).size);
+      assert.equal(output.xmp_preserved, true);
+    }
+  }
+});
+check('legacy display thumbnails use the shared resolver without changing selection or save handlers', () => {
+  const contracts = [
+    ['src/components/subscription/CompositionEditor.jsx', { handleSave: 'b3069b97ced3ef090c171da6cdf02f2f619be1c0f328feaa62b9f20bb316fb26', adjust: 'eb492b7ee76af6779fdd097217c2eb8bbb84f073d1016801e941619f8657aa02' }],
+  ];
+  for (const [file, handlers] of contracts) {
+    const source = read(file);
+    assert.match(source, /import ProductPhoto from '@\/components\/shop\/ProductPhoto'/);
+    assert.match(source, /<ProductPhoto product=\{product\} thumbnail/);
+    assert.doesNotMatch(source, /<img src=\{product\.image_url\}/);
+    for (const [name, expected] of Object.entries(handlers)) {
+      const handler = source.match(new RegExp(`const ${name} = [\\s\\S]*?\\n  \\};`));
+      assert.ok(handler);
+      assert.equal(crypto.createHash('sha256').update(handler[0]).digest('hex'), expected, `${file}: ${name} must be untouched by photo rollout`);
+    }
   }
 });
 check('new approved assets stay separate from all authentic photographic provenance', () => {
@@ -337,6 +426,7 @@ check('ProductPhoto leaves unknown images, explicit alt and caller styles intact
   assert.equal(element.props.style.objectFit, 'cover');
   assert.equal(element.props.alt, 'Specific view');
   assert.equal(element.props['data-approved-product-photo'], undefined);
+  assert.equal(ProductPhoto({ product: { title: 'Unknown product' }, thumbnail: true }), null, 'unknown products with no image retain the legacy editor no-image behavior');
 });
 
 console.log(JSON.stringify({ ok: true, suite: 'approved-product-primary-media', checks, approved_products: targets.length, preserved_catalog_products: nonTargets.length, approved_assets: Object.keys(expectedHashes).length, render_state_contracts_only: true, provider_calls_performed: false, production_writes_performed: false }, null, 2));

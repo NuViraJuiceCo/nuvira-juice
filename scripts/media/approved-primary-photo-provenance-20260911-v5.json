@@ -1,0 +1,177 @@
+{
+  "approval_date": "2026-09-11",
+  "base_commit": "1bf90985d7a3bda4106b4baadfecbcf2a189be16",
+  "scope": "Owner-approved V5 AURA, OASIS and RE-NU static photo rollout only. Render-time media mapping; no provider Product records or reel publication.",
+  "digital_source_type": "http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia",
+  "preparation": "Encode approved 1080x1350 crops directly as WebP quality 88 and provider JPEG quality 95 4:4:4 (no resize/upscale); downsize approved 1080-square crops to 640-square WebP quality 84; encode the same square crops as optional Merchant JPEG quality 95 4:4:4 without resizing. No new crop, generation, relabeling, retouch, lighting or color adjustments. Original crop XMP retained; no C2PA signature copied.",
+  "preservation_boundary": "Exact source master/crop pixels verified before lossy delivery encoding. Encoded WebP/JPEG pixels are not asserted to be bit-identical to PNG sources.",
+  "gallery_policy": "New V5 primary plus unchanged authentic photographic gallery. Retired V4 hero/card URLs are excluded from visible target-product galleries but old files and catalog/cart failure fallbacks remain available.",
+  "provider_upload_performed": false,
+  "assets": {
+    "aura": {
+      "master_source": "marketing/meta-reels-v5-review-20260911/photo-set-label-preserved/aura/aura-v5-label-preserved-9x16.png",
+      "master_sha256": "1d06ee0b2bae111ef60ea8331050e16c175068af297d8d9b55e33ec59dccbee5",
+      "primary_source": "marketing/meta-reels-v5-review-20260911/photo-set-label-preserved/aura/aura-v5-label-preserved-4x5.png",
+      "primary_source_sha256": "ab8101b6646f977bbc7532ade5b6ace6efe304a7106ebec66914289d28f49e4c",
+      "square_source": "marketing/meta-reels-v5-review-20260911/photo-set-label-preserved/aura/aura-v5-label-preserved-1x1.png",
+      "square_source_sha256": "0d584fd0470396328ba3e44eab485060a6635df912e78ceb84c633da5efeec14",
+      "approved_source_crop_pixel_parity": "PASS",
+      "outputs": {
+        "primary": {
+          "path": "public/images/approved-lifestyle/20260911-v5/aura-primary.webp",
+          "sha256": "eb8df9b7e760da932ff5eedfd9ebbc501f23c60eed78373101b6dc55c31d8187",
+          "bytes": 172842,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        },
+        "card": {
+          "path": "public/images/approved-lifestyle/20260911-v5/aura-card.webp",
+          "sha256": "5f304d3af09997b15c8421e7e1fcdb0b41646d301ed45a3be658a0d59d21a850",
+          "bytes": 51738,
+          "dimensions": [
+            640,
+            640
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        },
+        "merchant": {
+          "path": "public/images/approved-lifestyle/20260911-v5/aura-merchant.jpg",
+          "sha256": "f94b9d96726a6f17d9c5b41363f1b24a0acf309aaf7679925dfa98388593e376",
+          "bytes": 406886,
+          "dimensions": [
+            1080,
+            1080
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        },
+        "provider": {
+          "path": "public/images/approved-lifestyle/20260911-v5/aura-provider.jpg",
+          "sha256": "740f5f1266f8d00f056be277bd80101c22a4bd4ac28a54ee5fdfcb537fcf55ac",
+          "bytes": 501898,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        }
+      }
+    },
+    "oasis": {
+      "master_source": "marketing/meta-reels-v5-review-20260911/photo-set-label-preserved/oasis/oasis-v5-label-preserved-9x16.png",
+      "master_sha256": "bc748b93fd0f4148948dc5f218d5bde56a02b0aec927f3e1e8779347093f7fd2",
+      "primary_source": "marketing/meta-reels-v5-review-20260911/photo-set-label-preserved/oasis/oasis-v5-label-preserved-4x5.png",
+      "primary_source_sha256": "203bb505ff85328a45f6a41a41c3b6b4637688ad37f3c7c862999b44004d880b",
+      "square_source": "marketing/meta-reels-v5-review-20260911/photo-set-label-preserved/oasis/oasis-v5-label-preserved-1x1.png",
+      "square_source_sha256": "4e85cc97d1bd9b57f23536e539e10f22a8131f2a6f1d382c5e075168876d7917",
+      "approved_source_crop_pixel_parity": "PASS",
+      "outputs": {
+        "primary": {
+          "path": "public/images/approved-lifestyle/20260911-v5/oasis-primary.webp",
+          "sha256": "52ddcd22e934e70a2f69d2166577747de87fc3d334bd0210488aab8b3c929773",
+          "bytes": 203710,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        },
+        "card": {
+          "path": "public/images/approved-lifestyle/20260911-v5/oasis-card.webp",
+          "sha256": "f4369152ff6ea443e67ab7cf16b9323147471c4c4247d43963e1afd2a9e711c4",
+          "bytes": 65280,
+          "dimensions": [
+            640,
+            640
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        },
+        "merchant": {
+          "path": "public/images/approved-lifestyle/20260911-v5/oasis-merchant.jpg",
+          "sha256": "7c698b4c329d381432f234a0a5c3b99edc7409b468cbd961e4f41001cfc549c7",
+          "bytes": 459074,
+          "dimensions": [
+            1080,
+            1080
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        },
+        "provider": {
+          "path": "public/images/approved-lifestyle/20260911-v5/oasis-provider.jpg",
+          "sha256": "c7fc45c5415e91d86005be8388caeae002b2e1a8fe19e16ac1fc38fd1b170d33",
+          "bytes": 565204,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        }
+      }
+    },
+    "re-nu": {
+      "master_source": "marketing/meta-reels-v5-review-20260911/photo-set-label-preserved/re-nu/re-nu-v5-label-preserved-9x16.png",
+      "master_sha256": "9270442b7851b487d15e728c4c4d64a766caada8dd7298f4d6af18ddaf023b2f",
+      "primary_source": "marketing/meta-reels-v5-review-20260911/photo-set-label-preserved/re-nu/re-nu-v5-label-preserved-4x5.png",
+      "primary_source_sha256": "994cd9468c8344a665b2b5af8a7a33ddf65b0daa9b8d8ce31874a791c7422889",
+      "square_source": "marketing/meta-reels-v5-review-20260911/photo-set-label-preserved/re-nu/re-nu-v5-label-preserved-1x1.png",
+      "square_source_sha256": "6fb0ecd43d5214fe91ac2321eb1b78d4eb5311de966372238338503342cbfdbb",
+      "approved_source_crop_pixel_parity": "PASS",
+      "outputs": {
+        "primary": {
+          "path": "public/images/approved-lifestyle/20260911-v5/re-nu-primary.webp",
+          "sha256": "c0302ff553cd2485ebf30f857417e67d753d39f67a3c338ba4558e91ca2941af",
+          "bytes": 152542,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        },
+        "card": {
+          "path": "public/images/approved-lifestyle/20260911-v5/re-nu-card.webp",
+          "sha256": "b8d2b737ae910e5121f715c10f977179775a41c095efc051b5ddb306330e3fd1",
+          "bytes": 51354,
+          "dimensions": [
+            640,
+            640
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        },
+        "merchant": {
+          "path": "public/images/approved-lifestyle/20260911-v5/re-nu-merchant.jpg",
+          "sha256": "8dac6d4fee2a9acd519bd19e16eb03f63939e6c0120712cc3afb725bdce7f144",
+          "bytes": 384109,
+          "dimensions": [
+            1080,
+            1080
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        },
+        "provider": {
+          "path": "public/images/approved-lifestyle/20260911-v5/re-nu-provider.jpg",
+          "sha256": "c0511ef730772ef5189f8a9f1bc0eafb1732892f994424d878560d4e81c78339",
+          "bytes": 462222,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "b2d7277ab7dd9205e907a8d558f8213e2bbc24520555b4fe6e30ca7072b159ef",
+          "xmp_preserved": true
+        }
+      }
+    }
+  }
+}

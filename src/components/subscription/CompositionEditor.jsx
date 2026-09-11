@@ -4,6 +4,7 @@ import { Minus, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
+import ProductPhoto from '@/components/shop/ProductPhoto';
 
 export default function CompositionEditor({ subscription, plan, products, onClose, onSaved }) {
   // Build initial quantities from existing custom_composition
@@ -103,9 +104,7 @@ export default function CompositionEditor({ subscription, plan, products, onClos
                   qty > 0 ? 'border-primary/50 bg-primary/5' : 'border-border/40 bg-background'
                 }`}
               >
-                {product.image_url && (
-                  <img src={product.image_url} alt={product.title} className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                )}
+                <ProductPhoto product={product} thumbnail className="w-12 h-12 rounded-lg object-cover shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm truncate">{product.title}</p>
                   {product.short_description && (
