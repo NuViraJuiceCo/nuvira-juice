@@ -123,7 +123,7 @@ export function buildProductGallery(product = {}, { absolute = false } = {}) {
   }
 
   existingSecondaryImages.forEach((src, index) => {
-    if (approved && [primary, retiredPrimary].some(retired => retired && absoluteImageUrl(src) === absoluteImageUrl(retired))) return;
+    if (approved && [primary, retiredPrimary, ...approved.retiredImages].some(retired => retired && absoluteImageUrl(src) === absoluteImageUrl(retired))) return;
     items.push({
       src: absolute ? absoluteImageUrl(src) : src,
       alt: `${title} product photo ${index + 2}`,

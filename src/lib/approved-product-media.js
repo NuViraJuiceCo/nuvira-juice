@@ -1,13 +1,16 @@
 import { normalizeProductIdentifier, slugifyProductTitle } from './seo-slugs.js';
 
-// Owner-approved September 10 composites. These are deliberately separate from
+// Owner-approved September 11 V5 composites. These are deliberately separate from
 // the unaltered authentic-product gallery and do not rewrite provider records.
-const BASE = '/images/approved-lifestyle/20260910';
+const BASE = '/images/approved-lifestyle/20260911-v5';
+const RETIRED_BASE = '/images/approved-lifestyle/20260910';
 const MEDIA = Object.freeze([
-  { key: 'aura', id: '69d490ce699b5f1ac4dde495', variant: '43220774813786', title: 'AURA', alt: 'AURA cold-pressed juice bottle with orange slices in warm garden light' },
-  { key: 'oasis', id: '69d490ce699b5f1ac4dde497', variant: '43220774944858', title: 'OASIS', alt: 'OASIS cold-pressed juice bottle beside watermelon on a sunlit patio table' },
-  { key: 're-nu', id: '69d490ce699b5f1ac4dde496', variant: '43220774846554', title: 'RE-NU', alt: 'RE-NU cold-pressed juice bottle with apple and cucumber by a sunlit window' },
-].map(record => Object.freeze({ ...record, primary: `${BASE}/${record.key}-primary.webp`, card: `${BASE}/${record.key}-card.webp` })));
+  { key: 'aura', id: '69d490ce699b5f1ac4dde495', variant: '43220774813786', title: 'AURA', alt: 'AURA cold-pressed juice bottle beside orange slices in soft natural daylight' },
+  { key: 'oasis', id: '69d490ce699b5f1ac4dde497', variant: '43220774944858', title: 'OASIS', alt: 'OASIS cold-pressed juice bottle beside watermelon in soft natural daylight' },
+  { key: 're-nu', id: '69d490ce699b5f1ac4dde496', variant: '43220774846554', title: 'RE-NU', alt: 'RE-NU cold-pressed juice bottle beside apple and cucumber in soft natural daylight' },
+].map(record => Object.freeze({ ...record, primary: `${BASE}/${record.key}-primary.webp`, card: `${BASE}/${record.key}-card.webp`,
+  retiredImages: Object.freeze([`${RETIRED_BASE}/${record.key}-primary.webp`, `${RETIRED_BASE}/${record.key}-card.webp`]),
+})));
 
 export function approvedProductMedia(product = {}) {
   if (!product || typeof product !== 'object') return null;
