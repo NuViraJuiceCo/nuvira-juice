@@ -16,28 +16,28 @@ import { buildProductSeoMetadata, buildProductStructuredData } from '../../src/l
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const require = createRequire(import.meta.url);
 const origin = 'https://nuvirajuice.com';
-const base = '/images/approved-lifestyle/20260911-v5';
-const retiredBase = '/images/approved-lifestyle/20260910';
+const base = '/images/approved-lifestyle/20260911-contact-v3';
+const retiredBases = ['/images/approved-lifestyle/20260910', '/images/approved-lifestyle/20260911-v5'];
 const targets = [
   { key: 'aura', id: '69d490ce699b5f1ac4dde495', variant: '43220774813786', title: 'AURA' },
   { key: 'oasis', id: '69d490ce699b5f1ac4dde497', variant: '43220774944858', title: 'OASIS' },
   { key: 're-nu', id: '69d490ce699b5f1ac4dde496', variant: '43220774846554', title: 'RE-NU' },
 ];
 const expectedHashes = {
-  'aura-card.webp': '5f304d3af09997b15c8421e7e1fcdb0b41646d301ed45a3be658a0d59d21a850',
-  'aura-primary.webp': 'eb8df9b7e760da932ff5eedfd9ebbc501f23c60eed78373101b6dc55c31d8187',
-  'oasis-card.webp': 'f4369152ff6ea443e67ab7cf16b9323147471c4c4247d43963e1afd2a9e711c4',
-  'oasis-primary.webp': '52ddcd22e934e70a2f69d2166577747de87fc3d334bd0210488aab8b3c929773',
-  're-nu-card.webp': 'b8d2b737ae910e5121f715c10f977179775a41c095efc051b5ddb306330e3fd1',
-  're-nu-primary.webp': 'c0302ff553cd2485ebf30f857417e67d753d39f67a3c338ba4558e91ca2941af',
+  'aura-card.webp': '9b39db7ffefc93c615b3f841c2ef881db172a948b929813cfa4d36fd11a1cf14',
+  'aura-primary.webp': 'dd2a7cae213b66fc664b59a7babc387c1e2768b4bdb0eacf0bf9cad4bf380637',
+  'oasis-card.webp': '8ed1c818ab75f011a6946b5ee0351be171ad712173c95621ef5d4481f900afbc',
+  'oasis-primary.webp': 'e30787556fab142a4602e86d011c5cd2853e35f2075a8098a31f13df5fc30d76',
+  're-nu-card.webp': '9f6af6d160f8218d576beb2bc522bc85e4e0b5c956bd9fceed25819c17cd30a8',
+  're-nu-primary.webp': '69404b4db552b523928cbbdaefa3797d40179b990b24d05258bbeebf8251affb',
 };
 const expectedJpegHashes = {
-  'aura-merchant.jpg': 'f94b9d96726a6f17d9c5b41363f1b24a0acf309aaf7679925dfa98388593e376',
-  'aura-provider.jpg': '740f5f1266f8d00f056be277bd80101c22a4bd4ac28a54ee5fdfcb537fcf55ac',
-  'oasis-merchant.jpg': '7c698b4c329d381432f234a0a5c3b99edc7409b468cbd961e4f41001cfc549c7',
-  'oasis-provider.jpg': 'c7fc45c5415e91d86005be8388caeae002b2e1a8fe19e16ac1fc38fd1b170d33',
-  're-nu-merchant.jpg': '8dac6d4fee2a9acd519bd19e16eb03f63939e6c0120712cc3afb725bdce7f144',
-  're-nu-provider.jpg': 'c0511ef730772ef5189f8a9f1bc0eafb1732892f994424d878560d4e81c78339',
+  'aura-merchant.jpg': 'e131d69faddfeb565ccba6c8e7b8157f93af328652cad4e9fc2fa6a2d1b95964',
+  'aura-provider.jpg': '3bbfd11bb35a36200dc5b36c7541b9cdf3fd6c6ff1feac98e35879b078b05345',
+  'oasis-merchant.jpg': 'a42bbdb5b4c1a1622b08bbc2b6aa1ab9b0105ef2165934b2d8939da26e51219a',
+  'oasis-provider.jpg': 'f9bc6556629d836d3a3944509deecc81cacbc069d4a6fca419a9969bde4be6ac',
+  're-nu-merchant.jpg': 'a8cb4e55d14d81a44f37fe8613b09ace4d4b7f3442d5588e02e243a1fa2cb642',
+  're-nu-provider.jpg': '499792b64dac57997fe0f1dbb9740529b4d95e55530e62527a1a96ee7411be89',
 };
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 let checks = 0;
@@ -221,30 +221,31 @@ check('catalog already pointing at approved primary cannot reintroduce known ret
     }
   }
 });
-check('V5 galleries exclude retired V4 primary/card URLs without removing authentic or unknown secondaries', () => {
+check('contact galleries exclude both retired V4 and V5 primary/card URLs without removing authentic or unknown secondaries', () => {
   for (const target of targets) {
     const product = PUBLIC_PRODUCT_FALLBACKS.find(item => item.id === target.id);
     const approved = approvedProductMedia(product);
-    const retired = [`${retiredBase}/${target.key}-primary.webp`, `${retiredBase}/${target.key}-card.webp`];
+    const retired = retiredBases.flatMap(retiredBase => [`${retiredBase}/${target.key}-primary.webp`, `${retiredBase}/${target.key}-card.webp`]);
     assert.deepEqual(approved.retiredImages, retired);
-    for (const current of [product.image_url, approved.primary, `${origin}${approved.primary}`, retired[0]]) {
+    for (const current of [product.image_url, approved.primary, `${origin}${approved.primary}`, ...retired]) {
       const input = { ...product, image_url: current, secondary_images: [...retired, ...retired.map(src => `${origin}${src}`), '/keep-authentic-detail.jpg'] };
       const before = JSON.stringify(input);
       for (const absolute of [false, true]) {
         const gallery = buildProductGallery(input, { absolute });
         assert.equal(gallery.length, 5);
-        assert.equal(gallery.some(image => image.src.includes(retiredBase)), false);
+        assert.equal(gallery.some(image => retiredBases.some(retiredBase => image.src.includes(retiredBase))), false);
         assert.equal(gallery[1].src, absolute ? `${origin}/keep-authentic-detail.jpg` : '/keep-authentic-detail.jpg');
         assert.deepEqual(gallery.slice(2).map(image => image.src), productAdditionalImageUrls(product, { absolute }));
       }
-      assert.equal(buildProductStructuredData(input).image.some(src => src.includes(retiredBase)), false);
+      assert.equal(buildProductStructuredData(input).image.some(src => retiredBases.some(retiredBase => src.includes(retiredBase))), false);
       assert.equal(JSON.stringify(input), before);
     }
     // Old static files remain available for existing snapshots/error recovery.
     retired.forEach(src => assert.ok(fs.existsSync(path.join(root, 'public', src))));
   }
-  const unknown = { title: 'Custom product', image_url: '/custom.jpg', secondary_images: [`${retiredBase}/aura-primary.webp`] };
+  const unknown = { title: 'Custom product', image_url: '/custom.jpg', secondary_images: retiredBases.map(retiredBase => `${retiredBase}/aura-primary.webp`) };
   assert.equal(buildProductGallery(unknown)[1].src, unknown.secondary_images[0]);
+  assert.equal(buildProductGallery(unknown)[2].src, unknown.secondary_images[1]);
 });
 check('approved hero and thumbnail framing use matching image ratios without side-band backdrops', () => {
   const detail = read('src/pages/ProductDetail.jsx');
@@ -325,8 +326,10 @@ check('six approved assets match exact bytes, declared AI-composite metadata and
   }
 });
 check('provider JPEG derivatives preserve exact approved framing, embedded disclosure and provenance', () => {
-  const provenance = JSON.parse(read('scripts/media/approved-primary-photo-provenance-20260911-v5.json'));
+  const provenance = JSON.parse(read('scripts/media/approved-primary-photo-provenance-20260911-contact-v3.json'));
   assert.equal(provenance.approval_date, '2026-09-11');
+  assert.equal(provenance.base_commit, '5b757f261896b2c909761cec16f2909912cc0c9b');
+  assert.equal(provenance.approval_status, 'OWNER APPROVED FOR PHOTO ROLLOUT; REEL WORK STOPPED');
   assert.equal(provenance.provider_upload_performed, false);
   assert.match(provenance.preservation_boundary, /before lossy delivery encoding/);
   const directory = path.join(root, 'public', base);
