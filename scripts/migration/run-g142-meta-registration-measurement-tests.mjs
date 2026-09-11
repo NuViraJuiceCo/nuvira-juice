@@ -68,9 +68,10 @@ const windowMock = {
     setItem: (key, value) => sessionStored.set(key, String(value)),
     removeItem: (key) => sessionStored.delete(key),
   },
-  location: { search: '' },
+  location: { search: '', pathname: '/shop', origin: 'https://nuvirajuice.com' },
   dispatchEvent: () => true,
 };
+windowMock.top = windowMock;
 const documentMock = {
   cookie: '',
   head: {
