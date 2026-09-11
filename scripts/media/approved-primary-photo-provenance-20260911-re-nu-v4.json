@@ -1,0 +1,81 @@
+{
+  "approval_date": "2026-09-11",
+  "approval_status": "OWNER APPROVED RE-NU V4 HERO REPLACEMENT; REEL WORK STOPPED",
+  "approval_scope": "Latest explicit owner approval supersedes the historical review-pending status in the source verification receipt. RE-NU only; OASIS and AURA remain unchanged.",
+  "historical_verification": "marketing/product-contact-review-20260911/re-nu-edge-cleanup-v4/verification.json",
+  "base_commit": "1866463859d9578dea65eb00cbb91885718b51ed",
+  "scope": "RE-NU render-time primary/card replacement only; no catalog/provider writes or identity resolver expansion.",
+  "digital_source_type": "http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia",
+  "preparation": "Same approved pipeline: 1080x1350 WebP quality 88; 640-square WebP quality 84; 1080x1350 provider JPEG and 1080-square Merchant JPEG quality 95, 4:4:4. No new crop, retouch, lighting, generation or color changes. Source XMP retained; no C2PA signature copied.",
+  "preservation_boundary": "Exact source master/crop pixels verified before lossy delivery encoding. Only the approved unprinted bottle-base/contact region differs from v3. Label, cap, headspace and all source pixels outside the edit bounds are unchanged; encoded pixels are not asserted bit-identical to PNG sources.",
+  "gallery_policy": "RE-NU v3 primary/card join its retired hero list; authentic secondaries and old files remain available. OASIS and AURA mapping/assets are unchanged.",
+  "provider_upload_performed": false,
+  "assets": {
+    "re-nu": {
+      "master_source": "marketing/product-contact-review-20260911/re-nu-edge-cleanup-v4/re-nu-edge-cleanup-v4-9x16.png",
+      "master_sha256": "3543b29c3b935ca06e9280636b0fd2519efa153c00738146e210bf1188b0ddd0",
+      "primary_source": "marketing/product-contact-review-20260911/re-nu-edge-cleanup-v4/re-nu-edge-cleanup-v4-4x5.png",
+      "primary_source_sha256": "1cdc1499ecdfc376b98d2116f5495a2239612d0102fa54fd1300be25be6fc505",
+      "square_source": "marketing/product-contact-review-20260911/re-nu-edge-cleanup-v4/re-nu-edge-cleanup-v4-1x1.png",
+      "square_source_sha256": "9952494b092bba9cb747af92b1ebcfc43303a33c607e1307347a90b7fd3feedf",
+      "approved_source_crop_pixel_parity": "PASS",
+      "previous_master_source": "marketing/product-contact-review-20260911/re-nu-contact-relight-v3/re-nu-contact-relight-v3-9x16.png",
+      "previous_master_sha256": "74ca8c776d38ef02fa6b371074859d8fb0db2f058a37b016e1faa9cbfd822794",
+      "edited_bounds": {
+        "left": 682,
+        "top": 1338,
+        "right": 1000,
+        "bottom": 1440
+      },
+      "changed_pixels": 28795,
+      "outside_edit_region_changed_pixels": 0,
+      "protected_above_y1338_changed_pixels": 0,
+      "outputs": {
+        "primary": {
+          "path": "public/images/approved-lifestyle/20260911-re-nu-v4/re-nu-primary.webp",
+          "sha256": "01385ffb7bff83bb9237f8473e07985af98da61046d84d1257d72261ec5a3a03",
+          "bytes": 151684,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "card": {
+          "path": "public/images/approved-lifestyle/20260911-re-nu-v4/re-nu-card.webp",
+          "sha256": "4412275fe8eba32d4b27e62cdcab77ad1cc2f3f3d06da2f5ec07be2c15cfb0c1",
+          "bytes": 50708,
+          "dimensions": [
+            640,
+            640
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "merchant": {
+          "path": "public/images/approved-lifestyle/20260911-re-nu-v4/re-nu-merchant.jpg",
+          "sha256": "09064715720a502284ec44fe26053a18e65d2b40973f1bed93a7c0400a840ff9",
+          "bytes": 383035,
+          "dimensions": [
+            1080,
+            1080
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "provider": {
+          "path": "public/images/approved-lifestyle/20260911-re-nu-v4/re-nu-provider.jpg",
+          "sha256": "977792d58e06d30034dcae62f5df6b463c4498f9e1853eb70c70456dca9d30e7",
+          "bytes": 460977,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        }
+      }
+    }
+  }
+}

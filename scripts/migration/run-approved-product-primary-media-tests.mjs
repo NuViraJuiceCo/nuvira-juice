@@ -17,7 +17,10 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const require = createRequire(import.meta.url);
 const origin = 'https://nuvirajuice.com';
 const base = '/images/approved-lifestyle/20260911-contact-v3';
+const renuBase = '/images/approved-lifestyle/20260911-re-nu-v4';
+const baseFor = target => target.key === 're-nu' ? renuBase : base;
 const retiredBases = ['/images/approved-lifestyle/20260910', '/images/approved-lifestyle/20260911-v5'];
+const retiredBasesFor = target => target.key === 're-nu' ? [...retiredBases, base] : retiredBases;
 const targets = [
   { key: 'aura', id: '69d490ce699b5f1ac4dde495', variant: '43220774813786', title: 'AURA' },
   { key: 'oasis', id: '69d490ce699b5f1ac4dde497', variant: '43220774944858', title: 'OASIS' },
@@ -38,6 +41,12 @@ const expectedJpegHashes = {
   'oasis-provider.jpg': 'f9bc6556629d836d3a3944509deecc81cacbc069d4a6fca419a9969bde4be6ac',
   're-nu-merchant.jpg': 'a8cb4e55d14d81a44f37fe8613b09ace4d4b7f3442d5588e02e243a1fa2cb642',
   're-nu-provider.jpg': '499792b64dac57997fe0f1dbb9740529b4d95e55530e62527a1a96ee7411be89',
+};
+const expectedRenuV4Hashes = {
+  're-nu-card.webp': '4412275fe8eba32d4b27e62cdcab77ad1cc2f3f3d06da2f5ec07be2c15cfb0c1',
+  're-nu-primary.webp': '01385ffb7bff83bb9237f8473e07985af98da61046d84d1257d72261ec5a3a03',
+  're-nu-merchant.jpg': '09064715720a502284ec44fe26053a18e65d2b40973f1bed93a7c0400a840ff9',
+  're-nu-provider.jpg': '977792d58e06d30034dcae62f5df6b463c4498f9e1853eb70c70456dca9d30e7',
 };
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 let checks = 0;
@@ -73,8 +82,8 @@ check('all three exact identities map to their own distinct approved media', () 
       assert.equal(result?.key, target.key);
       assert.equal(result?.id, target.id);
       assert.equal(result?.variant, target.variant);
-      assert.equal(result?.primary, `${base}/${target.key}-primary.webp`);
-      assert.equal(result?.card, `${base}/${target.key}-card.webp`);
+      assert.equal(result?.primary, `${baseFor(target)}/${target.key}-primary.webp`);
+      assert.equal(result?.card, `${baseFor(target)}/${target.key}-card.webp`);
       assert.ok(result?.alt.startsWith(target.title));
     }
   }
@@ -108,7 +117,7 @@ check('name-only non-juice categories and unknown products are excluded', () => 
 });
 check('approved-image recognition is an exact local or canonical-host allowlist', () => {
   for (const target of targets) for (const kind of ['primary', 'card']) {
-    const src = `${base}/${target.key}-${kind}.webp`;
+    const src = `${baseFor(target)}/${target.key}-${kind}.webp`;
     assert.equal(isApprovedProductImage(src), true);
     assert.equal(isApprovedProductImage(`${origin}${src}`), true);
     assert.equal(isApprovedProductImage(`https://other.invalid${src}`), false);
@@ -155,7 +164,7 @@ check('historical cart/order snapshots get an approved thumbnail without mutatio
     const item = Object.freeze({ product_id: target.id, title: target.title, image_url: '/stored-old.jpg', price: 13, quantity: 2 });
     const before = JSON.stringify(item);
     const images = resolveOrderItemImageCandidates(item);
-    assert.equal(images[0], `${base}/${target.key}-card.webp`);
+    assert.equal(images[0], `${baseFor(target)}/${target.key}-card.webp`);
     assert.equal(images.at(-1), '/stored-old.jpg');
     assert.equal(new Set(images).size, images.length);
     assert.equal(JSON.stringify(item), before);
@@ -171,8 +180,8 @@ check('birthday cart identity is resolved only for marked birthday items and ret
     const item = Object.freeze({ product_id: '__birthday_reward__', birthday_product_id: target.id, isBirthdayReward: true, title: `🎂 ${target.title} (Free)`, category: 'juice', image_url: '/birthday-old.jpg', price: 0, quantity: 1 });
     const before = JSON.stringify(item);
     assert.equal(approvedProductMedia(item)?.key, target.key);
-    assert.equal(productThumbnailImage(item), `${base}/${target.key}-card.webp`);
-    assert.equal(resolveOrderItemImageCandidates(item)[0], `${base}/${target.key}-card.webp`);
+    assert.equal(productThumbnailImage(item), `${baseFor(target)}/${target.key}-card.webp`);
+    assert.equal(resolveOrderItemImageCandidates(item)[0], `${baseFor(target)}/${target.key}-card.webp`);
     assert.equal(approvedProductMedia({ ...item, isBirthdayReward: false }), null);
     assert.equal(approvedProductMedia({ ...item, isBirthdayReward: undefined }), null);
     assert.equal(JSON.stringify(item), before);
@@ -221,11 +230,12 @@ check('catalog already pointing at approved primary cannot reintroduce known ret
     }
   }
 });
-check('contact galleries exclude both retired V4 and V5 primary/card URLs without removing authentic or unknown secondaries', () => {
+check('contact galleries exclude each product retired primary/card URLs without removing authentic or unknown secondaries', () => {
   for (const target of targets) {
     const product = PUBLIC_PRODUCT_FALLBACKS.find(item => item.id === target.id);
     const approved = approvedProductMedia(product);
-    const retired = retiredBases.flatMap(retiredBase => [`${retiredBase}/${target.key}-primary.webp`, `${retiredBase}/${target.key}-card.webp`]);
+    const targetRetiredBases = retiredBasesFor(target);
+    const retired = targetRetiredBases.flatMap(retiredBase => [`${retiredBase}/${target.key}-primary.webp`, `${retiredBase}/${target.key}-card.webp`]);
     assert.deepEqual(approved.retiredImages, retired);
     for (const current of [product.image_url, approved.primary, `${origin}${approved.primary}`, ...retired]) {
       const input = { ...product, image_url: current, secondary_images: [...retired, ...retired.map(src => `${origin}${src}`), '/keep-authentic-detail.jpg'] };
@@ -233,11 +243,11 @@ check('contact galleries exclude both retired V4 and V5 primary/card URLs withou
       for (const absolute of [false, true]) {
         const gallery = buildProductGallery(input, { absolute });
         assert.equal(gallery.length, 5);
-        assert.equal(gallery.some(image => retiredBases.some(retiredBase => image.src.includes(retiredBase))), false);
+        assert.equal(gallery.some(image => targetRetiredBases.some(retiredBase => image.src.includes(retiredBase))), false);
         assert.equal(gallery[1].src, absolute ? `${origin}/keep-authentic-detail.jpg` : '/keep-authentic-detail.jpg');
         assert.deepEqual(gallery.slice(2).map(image => image.src), productAdditionalImageUrls(product, { absolute }));
       }
-      assert.equal(buildProductStructuredData(input).image.some(src => retiredBases.some(retiredBase => src.includes(retiredBase))), false);
+      assert.equal(buildProductStructuredData(input).image.some(src => targetRetiredBases.some(retiredBase => src.includes(retiredBase))), false);
       assert.equal(JSON.stringify(input), before);
     }
     // Old static files remain available for existing snapshots/error recovery.
@@ -300,11 +310,15 @@ check('metadata changes images only and preserves prices, offers, availability a
   assert.equal(JSON.stringify(PUBLIC_PRODUCT_FALLBACKS), catalogSnapshot, 'no catalog or price mutation');
 });
 
-check('six approved assets match exact bytes, declared AI-composite metadata and size/dimension budgets', () => {
+check('six preserved v3 assets and two current RE-NU v4 WebPs match exact bytes, disclosure and size/dimension budgets', () => {
   const directory = path.join(root, 'public', base);
   assert.deepEqual(fs.readdirSync(directory).filter(file => file.endsWith('.webp')).sort(), Object.keys(expectedHashes).sort());
-  for (const [file, expectedHash] of Object.entries(expectedHashes)) {
-    const bytes = fs.readFileSync(path.join(directory, file));
+  const assets = [
+    ...Object.entries(expectedHashes).map(([file, hash]) => ({ file, hash, directory })),
+    ...Object.entries(expectedRenuV4Hashes).filter(([file]) => file.endsWith('.webp')).map(([file, hash]) => ({ file, hash, directory: path.join(root, 'public', renuBase) })),
+  ];
+  for (const { file, hash: expectedHash, directory: assetDirectory } of assets) {
+    const bytes = fs.readFileSync(path.join(assetDirectory, file));
     assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), expectedHash, `${file} needs renewed approval after byte changes`);
     assert.equal(bytes.subarray(0, 4).toString(), 'RIFF');
     assert.equal(bytes.subarray(8, 12).toString(), 'WEBP');
@@ -334,8 +348,12 @@ check('provider JPEG derivatives preserve exact approved framing, embedded discl
   assert.match(provenance.preservation_boundary, /before lossy delivery encoding/);
   const directory = path.join(root, 'public', base);
   assert.deepEqual(fs.readdirSync(directory).filter(file => file.endsWith('.jpg')).sort(), Object.keys(expectedJpegHashes).sort());
-  for (const [file, expectedHash] of Object.entries(expectedJpegHashes)) {
-    const bytes = fs.readFileSync(path.join(directory, file));
+  const assets = [
+    ...Object.entries(expectedJpegHashes).map(([file, hash]) => ({ file, hash, directory })),
+    ...Object.entries(expectedRenuV4Hashes).filter(([file]) => file.endsWith('.jpg')).map(([file, hash]) => ({ file, hash, directory: path.join(root, 'public', renuBase) })),
+  ];
+  for (const { file, hash: expectedHash, directory: assetDirectory } of assets) {
+    const bytes = fs.readFileSync(path.join(assetDirectory, file));
     assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), expectedHash);
     assert.equal(bytes.readUInt16BE(0), 0xffd8);
     let dimensions;
@@ -365,6 +383,49 @@ check('provider JPEG derivatives preserve exact approved framing, embedded discl
       assert.equal(output.xmp_preserved, true);
     }
   }
+});
+check('RE-NU v4 provenance locks all approved PNG sizes and the local-only base correction', () => {
+  const provenance = JSON.parse(read('scripts/media/approved-primary-photo-provenance-20260911-re-nu-v4.json'));
+  assert.equal(provenance.base_commit, '1866463859d9578dea65eb00cbb91885718b51ed');
+  assert.equal(provenance.approval_date, '2026-09-11');
+  assert.equal(provenance.approval_status, 'OWNER APPROVED RE-NU V4 HERO REPLACEMENT; REEL WORK STOPPED');
+  assert.equal(provenance.provider_upload_performed, false);
+  assert.deepEqual(Object.keys(provenance.assets), ['re-nu']);
+  const asset = provenance.assets['re-nu'];
+  assert.equal(asset.master_sha256, '3543b29c3b935ca06e9280636b0fd2519efa153c00738146e210bf1188b0ddd0');
+  assert.equal(asset.primary_source_sha256, '1cdc1499ecdfc376b98d2116f5495a2239612d0102fa54fd1300be25be6fc505');
+  assert.equal(asset.square_source_sha256, '9952494b092bba9cb747af92b1ebcfc43303a33c607e1307347a90b7fd3feedf');
+  assert.equal(asset.previous_master_sha256, '74ca8c776d38ef02fa6b371074859d8fb0db2f058a37b016e1faa9cbfd822794');
+  assert.equal(asset.approved_source_crop_pixel_parity, 'PASS');
+  assert.deepEqual(asset.edited_bounds, { left: 682, top: 1338, right: 1000, bottom: 1440 });
+  assert.equal(asset.changed_pixels, 28795);
+  assert.equal(asset.outside_edit_region_changed_pixels, 0);
+  assert.equal(asset.protected_above_y1338_changed_pixels, 0);
+  assert.deepEqual(fs.readdirSync(path.join(root, 'public', renuBase)).sort(), Object.keys(expectedRenuV4Hashes).sort());
+  for (const [kind, output] of Object.entries(asset.outputs)) {
+    const file = `re-nu-${kind}.${['merchant', 'provider'].includes(kind) ? 'jpg' : 'webp'}`;
+    assert.equal(output.path, `public${renuBase}/${file}`);
+    assert.equal(output.sha256, expectedRenuV4Hashes[file]);
+    assert.equal(output.bytes, fs.statSync(path.join(root, output.path)).size);
+    assert.equal(output.xmp_preserved, true);
+    assert.deepEqual(output.dimensions, ['primary', 'provider'].includes(kind) ? [1080, 1350] : kind === 'card' ? [640, 640] : [1080, 1080]);
+  }
+});
+check('RE-NU v4 does not replace OASIS/AURA or turn retired v3 RE-NU images into active approved images', () => {
+  for (const target of targets) {
+    const media = approvedProductMedia({ id: target.id });
+    assert.equal(media.primary, `${baseFor(target)}/${target.key}-primary.webp`);
+    assert.equal(media.card, `${baseFor(target)}/${target.key}-card.webp`);
+    const isRenu = target.key === 're-nu';
+    for (const kind of ['primary', 'card']) {
+      const previous = `${base}/${target.key}-${kind}.webp`;
+      assert.equal(media.retiredImages.includes(previous), isRenu);
+      assert.equal(isApprovedProductImage(previous), !isRenu);
+      assert.equal(isApprovedProductImage(`${origin}${previous}`), !isRenu);
+    }
+  }
+  assert.equal(isApprovedProductImage(`${renuBase}/aura-primary.webp`), false);
+  assert.equal(isApprovedProductImage(`${renuBase}/oasis-card.webp`), false);
 });
 check('legacy display thumbnails use the shared resolver without changing selection or save handlers', () => {
   const contracts = [
@@ -420,7 +481,7 @@ check('ProductPhoto retries the old source once then uses neutral fallback witho
   assert.equal(ProductPhoto(props), props.fallback);
   assert.equal(JSON.stringify(product), before);
   const different = ProductPhoto({ product: { id: targets[2].id, title: 'RE-NU' } });
-  assert.equal(different.props.src, `${base}/re-nu-primary.webp`, 'prior failures cannot hide another flavor');
+  assert.equal(different.props.src, `${renuBase}/re-nu-primary.webp`, 'prior failures cannot hide another flavor');
 });
 check('ProductPhoto leaves unknown images, explicit alt and caller styles intact', () => {
   failedImageState = [];
