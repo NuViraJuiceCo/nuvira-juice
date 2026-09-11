@@ -1,0 +1,180 @@
+{
+  "approval_date": "2026-09-11",
+  "approval_status": "OWNER APPROVED FOR PHOTO ROLLOUT; REEL WORK STOPPED",
+  "approval_scope": "Latest explicit owner approval covers contact-relight-v3 photos across all channel sizes. Historical review-manifest approval-pending text is retained as history, not the current approval state.",
+  "historical_review_manifest": "marketing/product-contact-review-20260911/review-manifest.json",
+  "base_commit": "5b757f261896b2c909761cec16f2909912cc0c9b",
+  "scope": "Owner-approved contact-relight-v3 AURA, OASIS and RE-NU static photo rollout across all channel sizes. Render-time media mapping; no provider Product records or reel publication.",
+  "digital_source_type": "http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia",
+  "preparation": "Encode approved 1080x1350 crops directly as WebP quality 88 and provider JPEG quality 95 4:4:4 (no resize/upscale); downsize approved 1080-square crops to 640-square WebP quality 84; encode the same square crops as optional Merchant JPEG quality 95 4:4:4 without resizing. No new crop, generation, relabeling, retouch, lighting or color adjustments. Original crop XMP retained; no C2PA signature copied.",
+  "preservation_boundary": "Exact source master/crop pixels verified before lossy delivery encoding. Encoded WebP/JPEG pixels are not asserted to be bit-identical to PNG sources.",
+  "gallery_policy": "New contact-relight-v3 primary plus unchanged authentic photographic gallery. Retired V4 and V5 hero/card URLs are excluded from visible target-product galleries but old files and catalog/cart failure fallbacks remain available.",
+  "provider_upload_performed": false,
+  "assets": {
+    "aura": {
+      "master_source": "marketing/product-contact-review-20260911/aura-contact-relight-v3/aura-contact-relight-v3-9x16.png",
+      "master_sha256": "db0245ac372cbba90d4d6122c64198b155d51dc6e5d4498e48cd1441b4e9c839",
+      "primary_source": "marketing/product-contact-review-20260911/aura-contact-relight-v3/aura-contact-relight-v3-4x5.png",
+      "primary_source_sha256": "0cc7ea1a3c1698f50fef5002603443b6f953a7eb476b147d0e774fc7225d6bd2",
+      "square_source": "marketing/product-contact-review-20260911/aura-contact-relight-v3/aura-contact-relight-v3-1x1.png",
+      "square_source_sha256": "25c35a0a7404f6e22b90a7fa939058e2aa17ef7b19ee1e922b2bd4247a9d94b7",
+      "approved_source_crop_pixel_parity": "PASS",
+      "outputs": {
+        "primary": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/aura-primary.webp",
+          "sha256": "dd2a7cae213b66fc664b59a7babc387c1e2768b4bdb0eacf0bf9cad4bf380637",
+          "bytes": 172346,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "card": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/aura-card.webp",
+          "sha256": "9b39db7ffefc93c615b3f841c2ef881db172a948b929813cfa4d36fd11a1cf14",
+          "bytes": 51254,
+          "dimensions": [
+            640,
+            640
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "merchant": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/aura-merchant.jpg",
+          "sha256": "e131d69faddfeb565ccba6c8e7b8157f93af328652cad4e9fc2fa6a2d1b95964",
+          "bytes": 406326,
+          "dimensions": [
+            1080,
+            1080
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "provider": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/aura-provider.jpg",
+          "sha256": "3bbfd11bb35a36200dc5b36c7541b9cdf3fd6c6ff1feac98e35879b078b05345",
+          "bytes": 501320,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        }
+      }
+    },
+    "oasis": {
+      "master_source": "marketing/product-contact-review-20260911/oasis-contact-relight-v3/oasis-contact-relight-v3-9x16.png",
+      "master_sha256": "a258d1ad90ae9bd4588bf97dbc38ab90b098d3c82b9dfc5b4014b2117beaeae3",
+      "primary_source": "marketing/product-contact-review-20260911/oasis-contact-relight-v3/oasis-contact-relight-v3-4x5.png",
+      "primary_source_sha256": "dcdba59f641377f385d2b88920c99140c835a375e95014209c341b0f63e04987",
+      "square_source": "marketing/product-contact-review-20260911/oasis-contact-relight-v3/oasis-contact-relight-v3-1x1.png",
+      "square_source_sha256": "a00ca513736c7f10063b33083eefb4f118ec7e1da04ec0b2b470b1a2d9257e08",
+      "approved_source_crop_pixel_parity": "PASS",
+      "outputs": {
+        "primary": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/oasis-primary.webp",
+          "sha256": "e30787556fab142a4602e86d011c5cd2853e35f2075a8098a31f13df5fc30d76",
+          "bytes": 202842,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "card": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/oasis-card.webp",
+          "sha256": "8ed1c818ab75f011a6946b5ee0351be171ad712173c95621ef5d4481f900afbc",
+          "bytes": 64676,
+          "dimensions": [
+            640,
+            640
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "merchant": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/oasis-merchant.jpg",
+          "sha256": "a42bbdb5b4c1a1622b08bbc2b6aa1ab9b0105ef2165934b2d8939da26e51219a",
+          "bytes": 457630,
+          "dimensions": [
+            1080,
+            1080
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "provider": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/oasis-provider.jpg",
+          "sha256": "f9bc6556629d836d3a3944509deecc81cacbc069d4a6fca419a9969bde4be6ac",
+          "bytes": 563580,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        }
+      }
+    },
+    "re-nu": {
+      "master_source": "marketing/product-contact-review-20260911/re-nu-contact-relight-v3/re-nu-contact-relight-v3-9x16.png",
+      "master_sha256": "74ca8c776d38ef02fa6b371074859d8fb0db2f058a37b016e1faa9cbfd822794",
+      "primary_source": "marketing/product-contact-review-20260911/re-nu-contact-relight-v3/re-nu-contact-relight-v3-4x5.png",
+      "primary_source_sha256": "d526764dca1e289142a69f42720d0d115f06c11c15bb3a4e569e4c17fcfe98f9",
+      "square_source": "marketing/product-contact-review-20260911/re-nu-contact-relight-v3/re-nu-contact-relight-v3-1x1.png",
+      "square_source_sha256": "3cd24c7b2a49523b0d4f68badad60cfd7334d4aac2b27edc80bfef2f4ba37b9e",
+      "approved_source_crop_pixel_parity": "PASS",
+      "outputs": {
+        "primary": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/re-nu-primary.webp",
+          "sha256": "69404b4db552b523928cbbdaefa3797d40179b990b24d05258bbeebf8251affb",
+          "bytes": 152002,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "card": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/re-nu-card.webp",
+          "sha256": "9f6af6d160f8218d576beb2bc522bc85e4e0b5c956bd9fceed25819c17cd30a8",
+          "bytes": 50912,
+          "dimensions": [
+            640,
+            640
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "merchant": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/re-nu-merchant.jpg",
+          "sha256": "a8cb4e55d14d81a44f37fe8613b09ace4d4b7f3442d5588e02e243a1fa2cb642",
+          "bytes": 383356,
+          "dimensions": [
+            1080,
+            1080
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        },
+        "provider": {
+          "path": "public/images/approved-lifestyle/20260911-contact-v3/re-nu-provider.jpg",
+          "sha256": "499792b64dac57997fe0f1dbb9740529b4d95e55530e62527a1a96ee7411be89",
+          "bytes": 461445,
+          "dimensions": [
+            1080,
+            1350
+          ],
+          "xmp_sha256": "d8a1192530ced458849feac70c9b52b2c58b533b21e322b63bcbf4173dadab68",
+          "xmp_preserved": true
+        }
+      }
+    }
+  }
+}
