@@ -190,6 +190,7 @@ function browser({ native = false, pixel = 'loaded', origin = 'https://nuvirajui
     removeEventListener: (name) => listeners.delete(name),
     dispatchEvent: (event) => listeners.get(event.type)?.(event),
   };
+  window.top = window;
   const context = vm.createContext({
     window, document, URL, URLSearchParams, Uint32Array, crypto: webcrypto, Date, Math, console, queueMicrotask, setTimeout, clearTimeout,
     CustomEvent: class { constructor(type, data) { this.type = type; this.detail = data?.detail; } },
@@ -253,7 +254,10 @@ assert.equal(await native.api.trackMetaAddToCart(oasis), false);
 assert.equal(native.server.length, 0);
 const preview = browser({ origin: 'http://localhost:5173' });
 preview.api.setMarketingConsent('granted');
-await preview.api.trackMetaAddToCart(oasis);
+assert.equal(await preview.api.trackMetaAddToCart(oasis), false);
+assert.equal(preview.scripts.size, 0, 'local previews must not load the live browser pixel');
+assert.equal(preview.cookies.size, 0, 'local previews must not create attribution cookies');
+assert.equal(preview.api.getMetaCapiAttributionContext(), null);
 assert.equal(preview.server.length, 0, 'local previews must not call the live CAPI relay');
 const sensitive = browser();
 sensitive.api.setMarketingConsent('granted');

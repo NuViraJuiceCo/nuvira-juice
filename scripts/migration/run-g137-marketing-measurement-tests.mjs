@@ -114,6 +114,7 @@ const windowMock = {
   location: { pathname: '/shop', search: '', origin: 'https://nuvirajuice.com' },
   dispatchEvent: (event) => dispatched.push(event),
 };
+windowMock.top = windowMock;
 const documentMock = {
   cookie: '',
   head: {

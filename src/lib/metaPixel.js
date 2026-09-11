@@ -9,6 +9,12 @@ const META_REGISTRATION_STORAGE_KEY = 'nuvira_meta_registration_event_v1';
 const META_REGISTRATION_TTL_MS = 10 * 60 * 1000;
 const META_FUNNEL_EVENTS = new Set(['ViewContent', 'AddToCart', 'InitiateCheckout', 'AddPaymentInfo']);
 const META_LIVE_ORIGINS = new Set(['https://nuvirajuice.com', 'https://www.nuvirajuice.com']);
+// The published fallback site may use the browser pixel, but it must not expand
+// the existing CAPI relay or NuVira-domain attribution-cookie allowlist.
+const META_BROWSER_ORIGINS = new Set([
+  ...META_LIVE_ORIGINS,
+  'https://nuvira-fresh-flow.base44.app',
+]);
 const META_STANDARD_EVENTS = new Set([
   'PageView',
   'ViewContent',
@@ -67,6 +73,16 @@ let consentRevision = 0;
 
 function hasBrowserRuntime() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
+}
+
+function isApprovedMetaBrowserRuntime() {
+  if (!hasBrowserRuntime() || isNativeAppRuntime()) return false;
+  try {
+    // An approved site embedded in an editor/preview is not a customer visit.
+    return META_BROWSER_ORIGINS.has(window.location.origin) && window.top === window;
+  } catch {
+    return false;
+  }
 }
 
 function safeStorage() {
@@ -238,7 +254,7 @@ function deriveFbcFromCurrentUrl() {
 }
 
 function persistMetaAttribution() {
-  if (!META_LIVE_ORIGINS.has(window.location.origin)) return;
+  if (!isApprovedMetaBrowserRuntime() || !META_LIVE_ORIGINS.has(window.location.origin)) return;
   const setCookie = (name, value) => {
     document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=7776000; path=/; domain=.nuvirajuice.com; SameSite=Lax; Secure`;
   };
@@ -293,7 +309,9 @@ export function setMarketingConsent(value) {
   } catch {
     // Preserve the choice for this page session without enabling early.
   }
-  if (window.fbq) window.fbq('consent', value === 'granted' ? 'grant' : 'revoke');
+  if (window.fbq && (value === 'denied' || isApprovedMetaBrowserRuntime())) {
+    window.fbq('consent', value === 'granted' ? 'grant' : 'revoke');
+  }
   if (value === 'denied') clearMetaCookies();
   window.dispatchEvent(new CustomEvent(MARKETING_CONSENT_EVENT, { detail: value }));
   return true;
@@ -315,7 +333,7 @@ export function resetMarketingConsent() {
 }
 
 export function getMetaCapiAttributionContext() {
-  if (!hasBrowserRuntime() || isNativeAppRuntime() || getMarketingConsent() !== 'granted') return null;
+  if (!isApprovedMetaBrowserRuntime() || getMarketingConsent() !== 'granted') return null;
 
   persistMetaAttribution();
 
@@ -346,8 +364,7 @@ export function isTrackableMarketingPageView(pathname = '/') {
 }
 
 export async function loadMetaPixel() {
-  if (!hasBrowserRuntime()
-    || isNativeAppRuntime()
+  if (!isApprovedMetaBrowserRuntime()
     || getMarketingConsent() !== 'granted'
     || !isSafeMarketingEventContext()) {
     return false;
@@ -394,8 +411,7 @@ export async function loadMetaPixel() {
 export async function trackMetaStandardEvent(eventName, params = {}) {
   if (!META_STANDARD_EVENTS.has(eventName)
     || getMarketingConsent() !== 'granted'
-    || !hasBrowserRuntime()
-    || isNativeAppRuntime()
+    || !isApprovedMetaBrowserRuntime()
     || !isSafeMarketingEventContext()) {
     return false;
   }
@@ -415,13 +431,15 @@ export async function trackMetaStandardEvent(eventName, params = {}) {
       custom_data: params,
     };
     serverDelivery = import('./metaFunnelTransport.js').then(({ sendMetaFunnelEvent }) => {
-      if (revision !== consentRevision || getMarketingConsent() !== 'granted' || !isSafeMarketingEventContext() || isNativeAppRuntime()) return false;
+      if (revision !== consentRevision || getMarketingConsent() !== 'granted' || !isSafeMarketingEventContext()
+        || !isApprovedMetaBrowserRuntime() || !META_LIVE_ORIGINS.has(window.location.origin)) return false;
       return sendMetaFunnelEvent(payload);
     }).catch(() => false);
   }
 
   const pixelLoaded = await loadMetaPixel();
-  if (revision !== consentRevision || getMarketingConsent() !== 'granted' || !isSafeMarketingEventContext()) return false;
+  if (revision !== consentRevision || getMarketingConsent() !== 'granted' || !isSafeMarketingEventContext()
+    || !isApprovedMetaBrowserRuntime()) return false;
   if (!pixelLoaded) return serverDelivery;
   window.fbq('track', eventName, params, { eventID: sharedEventId });
   return true;
