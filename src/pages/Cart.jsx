@@ -22,6 +22,7 @@ import { ANALYTICS_CONSENT_EVENT, trackGoogleViewCart } from '@/lib/googleAnalyt
 import { orderMinimumStatus } from '@/lib/orderMinimums';
 import { isEarnedRewardItem } from '@/lib/rewardSelection';
 import ProductPhoto from '@/components/shop/ProductPhoto';
+import FirstOrderOffer from '@/components/shop/FirstOrderOffer';
 import { productThumbnailImage } from '@/lib/approved-product-media';
 
 export default function Cart() {
@@ -239,6 +240,8 @@ export default function Cart() {
             </div>
           </motion.div>
         )}
+
+        <FirstOrderOffer />
 
         {/* Delivery area check prompt — only shown if ZIP not yet checked */}
         <CartDeliveryCheckPrompt />
