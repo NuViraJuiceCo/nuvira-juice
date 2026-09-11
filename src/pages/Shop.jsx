@@ -255,7 +255,7 @@ export default function Shop({ seoActive = true }) {
             placeholder="Search juices, bundles, merch..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-11 rounded-xl bg-secondary/50 border-0 text-sm"
+            className="pl-9 h-11 rounded-xl bg-secondary/50 border-0 text-base md:text-base"
           />
         </div>
       </div>
