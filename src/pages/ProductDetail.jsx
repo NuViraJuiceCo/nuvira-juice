@@ -35,6 +35,8 @@ import { approvedProductMedia } from '@/lib/approved-product-media';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
+import FirstOrderOffer from '@/components/shop/FirstOrderOffer';
+import ProductOrderDetails from '@/components/shop/ProductOrderDetails';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
 import { MARKETING_CONSENT_EVENT, trackMetaViewContent } from '@/lib/metaPixel';
 import { trackSnapViewContent } from '@/lib/snapPixel';
@@ -484,6 +486,13 @@ export default function ProductDetail() {
                 <span className="ml-auto rounded-full border border-border/60 px-3 py-1 text-xs font-semibold text-muted-foreground md:hidden">{product.size}</span>
               )}
             </div>
+
+            {['juice', 'shot', 'bundle'].includes(normalizeCategory(product.category)) && (
+              <>
+                <FirstOrderOffer className="mt-4" />
+                <ProductOrderDetails product={product} />
+              </>
+            )}
 
             <div className="mt-4 flex flex-wrap gap-2">
               {productBadges.map(cert => (

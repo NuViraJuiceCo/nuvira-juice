@@ -3,6 +3,7 @@ import { availableCreditBalance } from '@/lib/creditBalance';
 import SEO from '@/components/SEO';
 import CheckoutExperience, { CheckoutAction, CheckoutAddress } from '@/components/checkout/CheckoutExperience';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
+import FirstOrderOffer from '@/components/shop/FirstOrderOffer';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
 import RewardEmbeddedCheckout from '@/components/checkout/RewardEmbeddedCheckout';
 import PaidCheckoutRecovery from '@/components/checkout/PaidCheckoutRecovery';
@@ -1249,6 +1250,7 @@ function CheckoutFlow() {
 
       {/* Discount Code */}
       <div className="mx-4 mb-5">
+        <FirstOrderOffer className="mb-3" />
         <Label htmlFor="discount-code" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 block">
           Discount Code
         </Label>
