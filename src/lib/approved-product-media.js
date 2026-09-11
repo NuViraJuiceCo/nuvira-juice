@@ -1,16 +1,22 @@
 import { normalizeProductIdentifier, slugifyProductTitle } from './seo-slugs.js';
 
-// Owner-approved September 11 contact-relight-v3 photos. Deliberately separate from
+// Owner-approved September 11 contact-relight-v3 photos, with RE-NU's approved
+// edge-cleanup-v4 correction. Deliberately separate from
 // the unaltered authentic-product gallery and do not rewrite provider records.
 const BASE = '/images/approved-lifestyle/20260911-contact-v3';
+const RENU_BASE = '/images/approved-lifestyle/20260911-re-nu-v4';
 const RETIRED_BASES = Object.freeze(['/images/approved-lifestyle/20260910', '/images/approved-lifestyle/20260911-v5']);
 const MEDIA = Object.freeze([
   { key: 'aura', id: '69d490ce699b5f1ac4dde495', variant: '43220774813786', title: 'AURA', alt: 'AURA cold-pressed juice bottle beside orange slices in soft natural daylight' },
   { key: 'oasis', id: '69d490ce699b5f1ac4dde497', variant: '43220774944858', title: 'OASIS', alt: 'OASIS cold-pressed juice bottle beside watermelon in soft natural daylight' },
   { key: 're-nu', id: '69d490ce699b5f1ac4dde496', variant: '43220774846554', title: 'RE-NU', alt: 'RE-NU cold-pressed juice bottle beside apple and cucumber in soft natural daylight' },
-].map(record => Object.freeze({ ...record, primary: `${BASE}/${record.key}-primary.webp`, card: `${BASE}/${record.key}-card.webp`,
-  retiredImages: Object.freeze(RETIRED_BASES.flatMap(base => [`${base}/${record.key}-primary.webp`, `${base}/${record.key}-card.webp`])),
-})));
+].map(record => {
+  const base = record.key === 're-nu' ? RENU_BASE : BASE;
+  const retiredBases = record.key === 're-nu' ? [...RETIRED_BASES, BASE] : RETIRED_BASES;
+  return Object.freeze({ ...record, primary: `${base}/${record.key}-primary.webp`, card: `${base}/${record.key}-card.webp`,
+    retiredImages: Object.freeze(retiredBases.flatMap(retired => [`${retired}/${record.key}-primary.webp`, `${retired}/${record.key}-card.webp`])),
+  });
+}));
 
 export function approvedProductMedia(product = {}) {
   if (!product || typeof product !== 'object') return null;

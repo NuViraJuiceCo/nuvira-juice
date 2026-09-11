@@ -272,10 +272,10 @@ try {
     for (const product of coreProducts) {
       const gallery = buildProductGallery({ ...product, secondary_images: [product.image_url] });
       assert.deepEqual(gallery.map(item => item.src), [
-        `/images/approved-lifestyle/20260911-contact-v3/${product.slug}-primary.webp`,
+        `/images/approved-lifestyle/${product.slug === 're-nu' ? '20260911-re-nu-v4' : '20260911-contact-v3'}/${product.slug}-primary.webp`,
         ...scenes[product.slug].map(name => `/images/authentic-products/${product.slug}/${name}.jpg`),
       ]);
-      assert.equal(gallery[0].thumbnail, `/images/approved-lifestyle/20260911-contact-v3/${product.slug}-card.webp`);
+      assert.equal(gallery[0].thumbnail, `/images/approved-lifestyle/${product.slug === 're-nu' ? '20260911-re-nu-v4' : '20260911-contact-v3'}/${product.slug}-card.webp`);
       assert.equal(gallery[0].fit, 'contain'); assert.equal(gallery.length, 4);
     }
     assert.match(detail, /aspect-\[4\/5\]/); assert.match(detail, /buildProductGallery\(product/);
