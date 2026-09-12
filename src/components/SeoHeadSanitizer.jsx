@@ -98,6 +98,7 @@ function dedupeRouteHeadTags() {
     'meta[name="twitter:description"]',
     'meta[name="twitter:image"]',
     'meta[name="twitter:image:alt"]',
+    'meta[name="twitter:url"]',
   ].forEach(keepLastHeadTag);
 }
 

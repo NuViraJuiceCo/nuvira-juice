@@ -12,6 +12,7 @@ import {
   MERCHANT_RETURN_POLICY_URL,
 } from '../../src/lib/merchant-policy.js';
 import { buildProductSeoMetadata, buildProductStructuredData } from '../../src/lib/product-seo.js';
+import { socialShareImageForUrl } from '../../src/lib/social-share-images.js';
 
 function escapeHtml(value) {
   return String(value)
@@ -31,6 +32,59 @@ function replaceRequired(source, pattern, replacement, label) {
 
 function safeJsonLd(value) {
   return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
+// Only route metadata belongs to Helmet. Product JSON-LD and unrelated provider
+// verification tags are intentionally left untouched.
+export function ownRouteMetadata(source) {
+  return String(source).replace(/<head\b[^>]*>[\s\S]*?<\/head>/i, head => {
+    const seen = new Set();
+    return head.replace(/<(?:meta|link)\b[^>]*>/gi, tag => {
+      const attr = name => tag.match(new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, 'i'))?.[2];
+      const property = attr('property');
+      const name = attr('name');
+      const key = attr('rel') === 'canonical' ? 'canonical'
+        : property?.startsWith('og:') ? `property:${property}`
+          : name && (/^twitter:/.test(name) || ['description', 'keywords', 'robots'].includes(name)) ? `name:${name}` : null;
+      if (!key) return tag;
+      if (seen.has(key)) return '';
+      seen.add(key);
+      return tag.replace(/\sdata-rh\s*=\s*(["']).*?\1/gi, '').replace(/\s*\/?\s*>$/, ' data-rh="true" />');
+    });
+  });
+}
+
+export function renderPublicShareHtml(indexHtml, route) {
+  const page = route === '/' ? {
+    title: 'Cold-Pressed Juice Delivery in Wentzville & St. Louis, MO | NuVira Juice Co.',
+    description: "NuVira Juice Co. delivers fresh cold-pressed juices in Wentzville, O'Fallon, St. Charles, and the greater St. Louis area. Order online today — Real. Living. Nutrition.",
+  } : route === '/shop' ? {
+    title: 'Shop Cold-Pressed Juices | NuVira Juice Co.',
+    description: "Browse NuVira's lineup of fresh cold-pressed juices, bundles, and wellness packs. Order online for delivery in the St. Louis, MO area.",
+  } : null;
+  if (!page) throw new Error('Only homepage and shop share documents are supported');
+  const canonical = `https://nuvirajuice.com${route}`;
+  const card = socialShareImageForUrl(canonical);
+  let html = String(indexHtml);
+  html = replaceRequired(html, /<title>[\s\S]*?<\/title>/i, `<title>${escapeHtml(page.title)}</title>`, 'title');
+  html = replaceRequired(html, /<link\s+rel="canonical"[^>]*>/i, `<link rel="canonical" href="${canonical}" />`, 'canonical URL');
+  const replacements = {
+    'name:description': page.description, 'property:og:type': 'website',
+    'property:og:url': canonical, 'property:og:title': page.title, 'property:og:description': page.description,
+    'property:og:image': card.url, 'property:og:image:alt': card.alt,
+    'property:og:image:width': String(card.width), 'property:og:image:height': String(card.height),
+    'name:twitter:title': page.title, 'name:twitter:description': page.description,
+    'name:twitter:image': card.url, 'name:twitter:image:alt': card.alt,
+  };
+  for (const [key, content] of Object.entries(replacements)) {
+    const colon = key.indexOf(':');
+    const attribute = key.slice(0, colon);
+    const value = key.slice(colon + 1);
+    html = replaceRequired(html, new RegExp(`<meta\\s+${attribute}="${value}"[^>]*>`, 'i'), `<meta ${attribute}="${value}" content="${escapeHtml(content)}" />`, key);
+  }
+  html = html.replace(/\s*<meta\s+name="twitter:url"[^>]*>/gi, '');
+  html = replaceRequired(html, /\s*<\/head>/i, `\n    <meta name="twitter:url" content="${canonical}" />\n  </head>`, 'closing head');
+  return ownRouteMetadata(html);
 }
 
 export function renderProductCanonicalRedirect(indexHtml) {
@@ -64,6 +118,9 @@ export function renderProductCanonicalRedirect(indexHtml) {
 
 export function renderProductCrawlerHtml(indexHtml, product) {
   const metadata = buildProductSeoMetadata(product);
+  const shareCard = socialShareImageForUrl(metadata.canonicalUrl);
+  const socialImage = shareCard?.url || metadata.image;
+  const socialAlt = shareCard?.alt || `${product.title} from NuVira Juice Co.`;
   const structuredData = buildProductStructuredData(product);
   const productMeta = [
     `    <meta property="product:price:amount" content="${escapeHtml(metadata.price)}" />`,
@@ -93,16 +150,18 @@ export function renderProductCrawlerHtml(indexHtml, product) {
   html = replaceRequired(html, /<meta\s+property="og:url"[^>]*>/i, `<meta property="og:url" content="${escapeHtml(metadata.canonicalUrl)}" />`, 'Open Graph URL');
   html = replaceRequired(html, /<meta\s+property="og:title"[^>]*>/i, `<meta property="og:title" content="${escapeHtml(metadata.fullTitle)}" />`, 'Open Graph title');
   html = replaceRequired(html, /<meta\s+property="og:description"[^>]*>/i, `<meta property="og:description" content="${escapeHtml(metadata.description)}" />`, 'Open Graph description');
-  html = replaceRequired(html, /<meta\s+property="og:image"[^>]*>/i, `<meta property="og:image" content="${escapeHtml(metadata.image)}" />`, 'Open Graph image');
-  html = replaceRequired(html, /<meta\s+property="og:image:alt"[^>]*>/i, `<meta property="og:image:alt" content="${escapeHtml(`${product.title} from NuVira Juice Co.`)}" />`, 'Open Graph image alt');
+  html = replaceRequired(html, /<meta\s+property="og:image"[^>]*>/i, `<meta property="og:image" content="${escapeHtml(socialImage)}" />`, 'Open Graph image');
+  html = replaceRequired(html, /<meta\s+property="og:image:alt"[^>]*>/i, `<meta property="og:image:alt" content="${escapeHtml(socialAlt)}" />`, 'Open Graph image alt');
   html = html.replace(/\s*<meta\s+property="og:image:(?:width|height)"[^>]*>/gi, '');
   html = replaceRequired(html, /<meta\s+name="twitter:title"[^>]*>/i, `<meta name="twitter:title" content="${escapeHtml(metadata.fullTitle)}" />`, 'Twitter title');
   html = replaceRequired(html, /<meta\s+name="twitter:description"[^>]*>/i, `<meta name="twitter:description" content="${escapeHtml(metadata.description)}" />`, 'Twitter description');
-  html = replaceRequired(html, /<meta\s+name="twitter:image"[^>]*>/i, `<meta name="twitter:image" content="${escapeHtml(metadata.image)}" />`, 'Twitter image');
-  html = replaceRequired(html, /<meta\s+name="twitter:image:alt"[^>]*>/i, `<meta name="twitter:image:alt" content="${escapeHtml(`${product.title} from NuVira Juice Co.`)}" />`, 'Twitter image alt');
+  html = replaceRequired(html, /<meta\s+name="twitter:image"[^>]*>/i, `<meta name="twitter:image" content="${escapeHtml(socialImage)}" />`, 'Twitter image');
+  html = replaceRequired(html, /<meta\s+name="twitter:image:alt"[^>]*>/i, `<meta name="twitter:image:alt" content="${escapeHtml(socialAlt)}" />`, 'Twitter image alt');
+  html = html.replace(/\s*<meta\s+name="twitter:url"[^>]*>/gi, '');
+  if (shareCard) html = replaceRequired(html, /\s*<\/head>/i, `\n    <meta property="og:image:width" content="${shareCard.width}" />\n    <meta property="og:image:height" content="${shareCard.height}" />\n  </head>`, 'closing head');
   html = replaceRequired(html, /\s*<\/head>/i, `\n${productMeta}\n  </head>`, 'closing head');
   html = replaceRequired(html, /\s*<div\s+id="root"><\/div>/i, `\n${noScriptSnapshot}\n    <div id="root"></div>`, 'application root');
-  return html;
+  return ownRouteMetadata(html);
 }
 
 export function renderReturnPolicyCrawlerHtml(indexHtml) {
@@ -195,8 +254,14 @@ export function productCrawlerSeoPages() {
       if (!indexAsset || indexAsset.type !== 'asset') {
         throw new Error('Product SEO build requires the generated index.html asset');
       }
+      // Keep the untouched template for other document families so homepage
+      // social metadata cannot leak into product or policy pages.
       const canonicalIndexHtml = renderProductCanonicalRedirect(String(indexAsset.source));
-      indexAsset.source = canonicalIndexHtml;
+      indexAsset.source = renderPublicShareHtml(canonicalIndexHtml, '/');
+
+      // Supplemental directory snapshot; /shop remains the canonical SPA route.
+      // Base44 may still apply hosting-layer metadata to extensionless requests.
+      this.emitFile({ type: 'asset', fileName: 'shop/index.html', source: renderPublicShareHtml(canonicalIndexHtml, '/shop') });
 
       for (const product of PUBLIC_PRODUCT_FALLBACKS) {
         const metadata = buildProductSeoMetadata(product);
