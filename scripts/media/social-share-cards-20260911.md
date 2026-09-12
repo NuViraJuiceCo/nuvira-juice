@@ -1,10 +1,24 @@
 # Approved social preview cards
 
-Six immutable 1200 × 630 PNGs are copies of the owner's approved September 11
-review-v1 cards. The import receipt pins all hashes and source-photo versions:
-OASIS/AURA contact-relight-v3 and RE-NU edge-cleanup-v4. PNG metadata retains the
+Six immutable 1200 × 630 JPEGs are exact copies of the existing JPEG exports of
+the owner's approved September 11 review-v1 cards. The JPEG import receipt pins
+all hashes and source-photo versions:
+OASIS/AURA contact-relight-v3 and RE-NU edge-cleanup-v4. JPEG metadata retains the
 `compositeWithTrainedAlgorithmicMedia` designation. No image was retouched or
 re-encoded during import.
+
+The initial PR #801 PNG package at merge
+`6798d21d32397b5df7d950c8f23c94f5f0b2169c` was rejected by Base44's 50 MB extracted
+site limit (53,383,538 bytes). That attempt did not change the live site. This
+follow-up uses already-approved JPEGs totaling 1,660,898 bytes, replacing only
+the six never-deployed PNG copies totaling 7,776,852 bytes. The old copies remain
+recoverable from Git and the untouched review directory; their historical
+provenance receipt is retained. No newly generated or re-encoded image is used.
+
+The immutable source path is now
+`/images/social-share/20260911-approved-jpeg-v1/*.jpg`. The mandatory build size
+guard counts the complete extracted `dist` directory and fails above
+49,000,000 bytes, leaving explicit headroom below the server limit.
 
 ## Deliberately separate from commerce images
 

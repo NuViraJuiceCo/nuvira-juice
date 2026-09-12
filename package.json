@@ -6,7 +6,7 @@
   "scripts": {
     "postinstall": "patch-package",
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/release/verify-site-size.mjs",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",

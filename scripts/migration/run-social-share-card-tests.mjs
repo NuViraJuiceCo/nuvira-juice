@@ -5,7 +5,6 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { inflateSync } from 'node:zlib';
 import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import helmetPackage from 'react-helmet-async';
@@ -13,6 +12,7 @@ import { PUBLIC_PRODUCT_FALLBACKS } from '../../src/lib/public-product-catalog.j
 import { buildProductSeoMetadata, buildProductStructuredData } from '../../src/lib/product-seo.js';
 import { socialShareImageForUrl } from '../../src/lib/social-share-images.js';
 import { ownRouteMetadata, renderPublicShareHtml, renderProductCrawlerHtml, productCrawlerSeoPages, renderProductCanonicalRedirect, renderReturnPolicyCrawlerHtml, renderDeliveryPolicyCrawlerHtml } from '../seo/product-crawler-pages.mjs';
+import { SITE_SIZE_LIMIT_BYTES, assertSiteSize, measureSiteSize } from '../release/verify-site-size.mjs';
 
 const root = process.cwd();
 const { Helmet, HelmetData, HelmetProvider } = helmetPackage;
@@ -21,12 +21,12 @@ const hash = data => crypto.createHash('sha256').update(data).digest('hex');
 const index = read('index.html');
 const routes = ['/', '/shop', '/product/oasis.html', '/product/aura.html', '/product/re-nu.html', '/product/the-nuvira-trio.html'];
 const expectedHashes = {
-  oasis: 'fcaaf562bc9fa013779a1591da6335292969d2e168cdee6f5379c14e030caf12',
-  aura: '0cf8af24c3cbf75aaf2a141e95705cfe89bd9d76af4af2d92d71a8c9147cd323',
-  're-nu': '8733a01ef83627fa326f0fb060f1d6fdfd90377dbe93e66e742d7d5eeec2272a',
-  trio: 'd22b04cbb5af4d6648744ab6fafd65b074c1877253be4343694ef9c51e66ef26',
-  homepage: '9539688df045b5cb8d2d2af54c3127d31790867ea82b8feaece266e95925d1bb',
-  shop: 'b78a55aa9865ab19cdacacdcef9adb5e92dab1fcdcda16e4cf9ce77ba5dfcddf',
+  oasis: '2e95bd053c9caf337e011b4de0378887863688edba8d77a6a1bb4ec33724f5fb',
+  aura: 'ef5a3fb787307a6ceaa5eb57c2c9b035a570d687b54efdac385466f043c502d1',
+  're-nu': '7f39bac751addadf516b26d82e02569aaba0abdd3c030902e8a098c2cd45834e',
+  trio: 'b1269619db5b873d98698ab4b55d58087b355a1106ca94c41d605602f46f0e84',
+  homepage: 'c07e989f6217ebbe75a232ca2947723e3a2c5f050f714c0c93437c1a06501e2b',
+  shop: '18bd9edaffab1a04ff416be88edc43cb27bfd6cb9568c7042c358c1231845fe4',
 };
 let count = 0;
 const test = (name, fn) => { fn(); count++; console.log(`PASS ${name}`); };
@@ -37,39 +37,49 @@ const one = (html, attribute, value) => {
   assert.equal(matches.length, 1, `${attribute}=${value} must be unique`);
   return matches[0];
 };
-function pngXmp(bytes) {
-  for (let offset = 8; offset < bytes.length;) {
-    const length = bytes.readUInt32BE(offset);
-    const kind = bytes.toString('ascii', offset + 4, offset + 8);
-    const data = bytes.subarray(offset + 8, offset + 8 + length);
-    if (kind === 'zTXt' && data.toString('utf8', 0, data.indexOf(0)) === 'XML:com.adobe.xmp') {
-      return inflateSync(data.subarray(data.indexOf(0) + 2)).toString('utf8');
+function jpegMetadata(bytes) {
+  assert.equal(bytes.readUInt16BE(0), 0xffd8, 'Expected real JPEG');
+  const result = { width: 0, height: 0, xmp: '' };
+  for (let offset = 2; offset < bytes.length;) {
+    assert.equal(bytes[offset], 0xff);
+    const marker = bytes[offset + 1];
+    if (marker === 0xda || marker === 0xd9) break;
+    const length = bytes.readUInt16BE(offset + 2);
+    const data = bytes.subarray(offset + 4, offset + 2 + length);
+    if ([0xc0, 0xc1, 0xc2].includes(marker)) {
+      result.height = data.readUInt16BE(1);
+      result.width = data.readUInt16BE(3);
     }
-    if (kind === 'iTXt' && data.toString('utf8', 0, data.indexOf(0)) === 'XML:com.adobe.xmp') {
-      const keyEnd = data.indexOf(0);
-      const compressed = data[keyEnd + 1];
-      let cursor = data.indexOf(0, keyEnd + 3) + 1;
-      cursor = data.indexOf(0, cursor) + 1;
-      return (compressed ? inflateSync(data.subarray(cursor)) : data.subarray(cursor)).toString('utf8');
-    }
-    offset += length + 12;
+    if (marker === 0xe1 && data.toString('utf8', 0, data.indexOf(0)) === 'http://ns.adobe.com/xap/1.0/') result.xmp = data.subarray(data.indexOf(0) + 1).toString('utf8');
+    offset += length + 2;
   }
-  return '';
+  return result;
 }
 
-test('six exact approved PNG cards retain dimensions and AI-composite provenance', () => {
-  const receipt = JSON.parse(read('scripts/media/approved-social-share-provenance-20260911.json'));
+test('six exact existing approved JPEG cards retain dimensions and AI-composite provenance', () => {
+  const receipt = JSON.parse(read('scripts/media/approved-social-share-jpeg-provenance-20260911.json'));
   assert.equal(receipt.assets.length, 6);
   assert.equal(receipt.publication_performed, false);
   for (const route of routes) {
     const card = socialShareImageForUrl(route);
     const bytes = fs.readFileSync(path.join(root, 'public', new URL(card.url).pathname));
+    const metadata = jpegMetadata(bytes);
     assert.equal(hash(bytes), expectedHashes[card.key]);
-    assert.equal(bytes.readUInt32BE(16), card.width);
-    assert.equal(bytes.readUInt32BE(20), card.height);
-    assert.match(pngXmp(bytes), /compositeWithTrainedAlgorithmicMedia/);
+    assert.equal(metadata.width, card.width);
+    assert.equal(metadata.height, card.height);
+    assert.match(metadata.xmp, /compositeWithTrainedAlgorithmicMedia/);
+    assert.equal(hash(metadata.xmp), receipt.assets.find(asset => asset.key === card.key).xmp_sha256);
     assert.ok(card.alt.length > 20 && card.alt.length < 150);
   }
+  assert.equal(fs.existsSync(path.join(root, 'public/images/social-share/20260911-approved-v1')), false, 'Never-deployed PNG copies must not remain in site payload');
+  assert.equal(receipt.assets.reduce((sum, asset) => sum + asset.bytes, 0), 1_660_898);
+  assert.equal(receipt.retired_pngs.length, 6);
+});
+test('site-size guard fails before publishing oversized packages and is mandatory in the build command', () => {
+  assert.equal(SITE_SIZE_LIMIT_BYTES, 49_000_000);
+  for (const bytes of [0, 47_267_584, 49_000_000]) assert.equal(assertSiteSize(bytes), bytes);
+  for (const bytes of [-1, NaN, 49_000_001, 50_000_000, 53_383_538]) assert.throws(() => assertSiteSize(bytes), /maximum permitted/);
+  assert.equal(JSON.parse(read('package.json')).scripts.build, 'vite build && node scripts/release/verify-site-size.mjs');
 });
 test('route selection is exact, same-origin and tracking-query independent', () => {
   for (const route of routes) {
@@ -211,6 +221,10 @@ test('actual Helmet replaces initial metadata on product-to-product-to-shop-to-a
   }
 });
 if (process.argv.includes('--built')) test('actual Vite output contains approved byte-identical cards and one correct social set per route', () => {
+  const measured = measureSiteSize(path.join(root, 'dist'));
+  assertSiteSize(measured.bytes);
+  assert.ok(measured.files > 0);
+  assert.equal(fs.existsSync(path.join(root, 'dist/images/social-share/20260911-approved-v1')), false);
   for (const route of routes) {
     const file = route === '/' ? 'index.html' : route === '/shop' ? 'shop/index.html' : route.slice(1);
     const html = read(`dist/${file}`);
@@ -222,6 +236,7 @@ if (process.argv.includes('--built')) test('actual Vite output contains approved
     assert.equal(one(html, 'name', 'twitter:url').content, `https://nuvirajuice.com${route}`);
     const asset = fs.readFileSync(path.join(root, 'dist', new URL(card.url).pathname));
     assert.equal(hash(asset), expectedHashes[card.key]);
+    assert.match(jpegMetadata(asset).xmp, /compositeWithTrainedAlgorithmicMedia/);
   }
   for (const product of PUBLIC_PRODUCT_FALLBACKS) {
     const html = read(`dist/product/${product.slug}.html`);

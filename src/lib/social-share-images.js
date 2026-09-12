@@ -2,7 +2,7 @@ import { SITE_URL } from './seo-slugs.js';
 
 // Social previews only. Never use these graphic cards for product photos,
 // galleries, Product JSON-LD, Merchant feeds, checkout or native hero images.
-const BASE = `${SITE_URL}/images/social-share/20260911-approved-v1`;
+const BASE = `${SITE_URL}/images/social-share/20260911-approved-jpeg-v1`;
 const CARDS = Object.freeze({
   '/': ['homepage', 'NuVira cold-pressed juices: OASIS, AURA and RE-NU'],
   '/shop': ['shop', 'Find your favorite NuVira blend: OASIS, AURA and RE-NU'],
@@ -12,7 +12,7 @@ const CARDS = Object.freeze({
   '/product/the-nuvira-trio.html': ['trio', 'The NuVira Trio: one OASIS, one AURA and one RE-NU'],
 });
 const RECORDS = Object.freeze(Object.fromEntries(Object.entries(CARDS).map(([route, [key, alt]]) => [route, Object.freeze({
-  key, url: `${BASE}/${key}-share-1200x630.png`, width: 1200, height: 630, alt,
+  key, url: `${BASE}/${key}-share-1200x630.jpg`, width: 1200, height: 630, alt,
 })])));
 
 export function socialShareImageForUrl(value) {
