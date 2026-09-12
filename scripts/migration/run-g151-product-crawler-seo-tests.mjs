@@ -8,6 +8,7 @@ import { PUBLIC_PRODUCT_FALLBACKS } from '../../src/lib/public-product-catalog.j
 import { productAdditionalImageUrls } from '../../src/lib/product-gallery-images.js';
 import { buildProductSeoMetadata, buildProductStructuredData } from '../../src/lib/product-seo.js';
 import { approvedProductMedia } from '../../src/lib/approved-product-media.js';
+import { socialShareImageForUrl } from '../../src/lib/social-share-images.js';
 
 const root = process.cwd();
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -84,6 +85,7 @@ test('every generated product document is unique, crawler-readable, and catalog-
     const html = renderProductCrawlerHtml(indexHtml, product);
     const schema = productSchema(html);
     const approved = approvedProductMedia(product);
+    const socialImage = socialShareImageForUrl(metadata.canonicalUrl)?.url || metadata.image;
 
     assert.equal((html.match(/<link rel="canonical"/g) || []).length, 1, `${product.slug} must have one canonical`);
     assert.match(html, new RegExp(`<title>${escapeRegExp(metadata.fullTitle)}<\\/title>`));
@@ -93,10 +95,10 @@ test('every generated product document is unique, crawler-readable, and catalog-
     assert.equal(attributeContent(html, 'meta property="og:url"'), metadata.canonicalUrl);
     assert.equal(attributeContent(html, 'meta property="og:title"'), metadata.fullTitle);
     assert.equal(attributeContent(html, 'meta property="og:description"'), metadata.description);
-    assert.equal(attributeContent(html, 'meta property="og:image"'), metadata.image);
+    assert.equal(attributeContent(html, 'meta property="og:image"'), socialImage);
     assert.equal(attributeContent(html, 'meta name="twitter:title"'), metadata.fullTitle);
     assert.equal(attributeContent(html, 'meta name="twitter:description"'), metadata.description);
-    assert.equal(attributeContent(html, 'meta name="twitter:image"'), metadata.image);
+    assert.equal(attributeContent(html, 'meta name="twitter:image"'), socialImage);
     assert.equal(attributeContent(html, 'meta name="twitter:url"'), metadata.canonicalUrl);
     assert.equal(attributeContent(html, 'meta property="product:price:amount"'), metadata.price);
     assert.equal(attributeContent(html, 'meta property="product:price:currency"'), 'USD');

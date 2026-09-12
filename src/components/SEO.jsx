@@ -3,6 +3,7 @@ import { Helmet } from 'react-helmet-async';
 import { SITE_URL } from '@/lib/seo-slugs';
 import { BRAND_OG_IMAGE } from '@/lib/brandImages';
 import { MERCHANT_RETURN_POLICY } from '@/lib/merchant-policy';
+import { socialShareImageForUrl } from '@/lib/social-share-images';
 
 const SITE_NAME = 'NuVira Juice Co.';
 const BRAND_ICON = `${SITE_URL}/icons/icon-512.png`;
@@ -91,13 +92,15 @@ export default function SEO({ title, description, image, type = 'website', keywo
     ? `${title} | ${SITE_NAME}`
     : `${SITE_NAME} | Cold-Pressed Juice Delivery — Wentzville & St. Louis, MO`;
   const metaDesc = description || DEFAULT_DESCRIPTION;
-  const metaImage = image || DEFAULT_IMAGE;
   const metaKeywords = keywords || DEFAULT_KEYWORDS;
   const canonicalUrl = canonicalUrlOverride
     || (canonicalPath ? `${SITE_URL}${canonicalPath.startsWith('/') ? canonicalPath : `/${canonicalPath}`}` : null)
     || (typeof window !== 'undefined'
       ? `${SITE_URL}${window.location.pathname.toLowerCase()}`
       : SITE_URL);
+  const shareCard = socialShareImageForUrl(canonicalUrl);
+  const metaImage = shareCard?.url || image || DEFAULT_IMAGE;
+  const metaImageAlt = shareCard?.alt || `${SITE_NAME} — ${title || 'Cold-Pressed Juice Delivery'}`;
 
   return (
     <Helmet>
@@ -113,9 +116,9 @@ export default function SEO({ title, description, image, type = 'website', keywo
       <meta property="og:title" content={fullTitle} />
       <meta property="og:description" content={metaDesc} />
       <meta property="og:image" content={metaImage} />
-      <meta property="og:image:width" content="1200" />
-      <meta property="og:image:height" content="630" />
-      <meta property="og:image:alt" content={`${SITE_NAME} — ${title || 'Cold-Pressed Juice Delivery'}`} />
+      {shareCard && <meta property="og:image:width" content={String(shareCard.width)} />}
+      {shareCard && <meta property="og:image:height" content={String(shareCard.height)} />}
+      <meta property="og:image:alt" content={metaImageAlt} />
       <meta property="og:url" content={canonicalUrl} />
       <meta property="og:locale" content="en_US" />
 
@@ -124,7 +127,8 @@ export default function SEO({ title, description, image, type = 'website', keywo
       <meta name="twitter:title" content={fullTitle} />
       <meta name="twitter:description" content={metaDesc} />
       <meta name="twitter:image" content={metaImage} />
-      <meta name="twitter:image:alt" content={`${SITE_NAME} — ${title || 'Cold-Pressed Juice Delivery'}`} />
+      <meta name="twitter:image:alt" content={metaImageAlt} />
+      <meta name="twitter:url" content={canonicalUrl} />
 
       {/* Structured Data */}
       {structuredData && (
