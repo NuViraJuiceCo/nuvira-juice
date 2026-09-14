@@ -6,7 +6,7 @@ import { DELIVERY_POLICY_PATH, DELIVERY_WINDOWS } from '@/lib/delivery-policy';
 import { orderMinimumStatus } from '@/lib/orderMinimums';
 import { productPath } from '@/lib/seo-slugs';
 
-export default function ProductOrderDetails({ product, onChooseQuantity, quantity }) {
+export default function ProductOrderDetails({ product, onChooseQuantity, quantity, children }) {
   const category = String(product?.category || '').trim().toLowerCase();
   if (!['juice', 'shot', 'bundle'].includes(category)) return null;
 
@@ -43,6 +43,7 @@ export default function ProductOrderDetails({ product, onChooseQuantity, quantit
           <span className="text-xs leading-5 text-muted-foreground">Or mix flavors in your cart.</span>
         </div>
       )}
+      {children}
       <div className="mt-2 flex items-start gap-2 text-xs leading-5 text-muted-foreground">
         <Truck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
         <div className="min-w-0">

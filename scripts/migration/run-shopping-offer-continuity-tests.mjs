@@ -54,7 +54,7 @@ const compiled = await build({
     export { FirstOrderOffer, ProductOrderDetails };
     ${emailHelpers}
     ${normalizedCategory}
-    export function productOfferSlot(product) { const quantity = 1; const setQuantity = () => {}; return (<>${offerSlot}</>); }
+    export function productOfferSlot(product) { const quantity = 1; const setQuantity = () => {}; const desktopPurchaseControls = null; return (<>${offerSlot}</>); }
     export function couponInput(env) { const { ${vars.join(', ')} } = env; return (${couponInput}); }
     export function couponButton(env) { const { ${vars.join(', ')} } = env; return (${couponButton}); }
     export { isValidCheckoutEmail, normalizeCheckoutEmail };

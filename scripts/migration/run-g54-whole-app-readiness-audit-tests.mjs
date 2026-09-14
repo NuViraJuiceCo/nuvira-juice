@@ -127,9 +127,13 @@ test('NuVira 404 screen avoids Base44/AI implementation copy and hard reload nav
   assertMatch('src/lib/PageNotFound.jsx', /This page is not available/, '404 screen should explain the missing page');
 });
 
-test('Product and program sticky purchase trays are offset for the desktop sidebar.', () => {
-  assertMatch('src/pages/ProductDetail.jsx', /md:left-60/, 'Product detail sticky tray should not cover the desktop sidebar');
-  assertMatch('src/pages/ProgramDetail.jsx', /md:left-60/, 'Program detail sticky tray should not cover the desktop sidebar');
+test('Product and program purchase trays are portrait-phone-only with in-flow larger-screen controls.', () => {
+  for (const file of ['src/pages/ProductDetail.jsx', 'src/pages/ProgramDetail.jsx']) {
+    assertMatch(file, /data-purchase-placement="mobile-dock"\s+className="[^"]*fixed[^"]*md:hidden"/, 'Floating purchase controls must be hidden on tablets and desktops');
+    assertMatch(file, /data-purchase-placement="inline"/, 'Larger screens must retain in-page purchase controls');
+    assertMatch(file, /landscape:hidden md:hidden/, 'Short phone landscape must not be covered by a purchase tray');
+    assertNoMatch(file, /md:left-60|md:bottom-4/, 'Purchase trays must not float over the desktop page');
+  }
 });
 
 test('Merch product details do not show the juice health advisory.', () => {

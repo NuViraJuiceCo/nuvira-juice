@@ -6,7 +6,8 @@ import { PUBLIC_PRODUCT_FALLBACKS as catalog } from '../../src/lib/public-produc
 
 const root = process.cwd();
 const dist = path.join(root, 'dist');
-const evidence = path.join(root, 'release-evidence/minimum-order-shopping');
+const engine = process.env.PLAYWRIGHT_BROWSER === 'webkit' ? 'webkit' : 'chromium';
+const evidence = path.join(root, 'release-evidence/minimum-order-shopping', engine === 'webkit' ? 'webkit' : '');
 await fs.mkdir(evidence, { recursive: true });
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const server = http.createServer(async (req, res) => {
@@ -15,7 +16,13 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   if (url.pathname.startsWith('/api/')) {
     res.setHeader('Content-Type', 'application/json');
-    if (url.pathname.includes('/entities/Product')) return res.end(JSON.stringify(catalog));
+    if (url.pathname.includes('/entities/Product')) {
+      const query = JSON.parse(url.searchParams.get('q') || '{}');
+      const products = catalog.filter(product => Object.entries(query).every(([key, value]) => product[key] === value));
+      const skip = Number(url.searchParams.get('skip') || 0);
+      const limit = Number(url.searchParams.get('limit') || products.length);
+      return res.end(JSON.stringify(products.slice(skip, skip + limit)));
+    }
     if (/\/auth\/me|\/entities\/User\/me/.test(url.pathname)) { res.statusCode = 401; return res.end('{"error":"Anonymous preview"}'); }
     if (url.pathname.includes('/entities/')) return res.end('[]');
     // Preview traffic never proxies to production, including cart telemetry.
@@ -37,8 +44,10 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 if (process.argv.includes('--serve')) {
   console.log(`Local fixture preview (no live checkout or provider writes): ${origin}/product/oasis.html`);
 } else {
-  const { chromium } = await import(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
-  const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome' });
+  const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
+  const browser = engine === 'webkit'
+    ? await webkit.launch({ headless: true })
+    : await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome' });
   const errors = [];
   const blocked = new Set();
   const checks = [];
@@ -69,7 +78,7 @@ if (process.argv.includes('--serve')) {
     await page.waitForTimeout(400);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${label}: no horizontal overflow`);
     const bar = page.getByLabel('Purchase minimum', { exact: true });
-    if (await bar.count()) {
+    if (await bar.isVisible()) {
       const box = await bar.boundingBox();
       assert.ok(box.y >= 0 && box.y + box.height <= page.viewportSize().height, `${label}: minimum visible`);
     }
@@ -87,7 +96,8 @@ if (process.argv.includes('--serve')) {
   try {
     for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 1440, height: 1000 }]) {
       const { page, context } = await open(viewport);
-      await page.getByLabel('Purchase minimum', { exact: true }).waitFor();
+      await page.getByRole('button', { name: /Add 1 OASIS to cart/ }).waitFor();
+      if (viewport.width >= 768) await page.getByRole('button', { name: /Add 1 OASIS to cart/ }).scrollIntoViewIfNeeded();
       await page.locator('img[data-approved-product-photo]').first().evaluate(img => img.decode());
       await fit(page, `product-${viewport.width}`);
       await page.screenshot({ path: path.join(evidence, `product-${viewport.width}.png`) });
@@ -112,6 +122,71 @@ if (process.argv.includes('--serve')) {
       await page.getByRole('button', { name: 'Decrease AURA quantity' }).click();
       await page.getByRole('heading', { name: 'Choose 1 more juice', exact: true }).waitFor();
       assert.equal(await page.getByRole('button', { name: 'Complete your mix above' }).isDisabled(), true);
+      await context.close();
+    }
+    for (const viewport of [
+      { width: 320, height: 568 }, { width: 390, height: 844 },
+      { width: 667, height: 375 }, { width: 844, height: 390 }, { width: 767, height: 1024 }, { width: 768, height: 1024 },
+      { width: 820, height: 1180 }, { width: 1024, height: 768 },
+      { width: 1280, height: 800 }, { width: 1440, height: 1000 }, { width: 1920, height: 1080 },
+    ]) {
+      for (const theme of ['light', 'dark']) {
+        for (const route of ['/product/oasis.html', '/program/radiance']) {
+          const { page, context } = await open(viewport, [], route, theme);
+          const isProgram = route.includes('/program/');
+          const action = page.getByRole('button', { name: isProgram ? /^Start My \d-Day Program$/ : /Add 1 OASIS to cart/ });
+          await action.waitFor();
+          const dock = page.locator('[data-purchase-placement="mobile-dock"]');
+          const inline = page.locator('[data-purchase-placement="inline"]');
+          const useDock = viewport.width < 768 && viewport.height >= viewport.width;
+          assert.equal(await dock.isVisible(), useDock, 'Dock is limited to portrait phones');
+          assert.equal(await inline.isVisible(), !useDock, 'Larger screens and landscape use in-flow purchase controls');
+          assert.equal(await action.count(), 1, 'Exactly one accessible purchase action');
+          if (!useDock) {
+            assert.equal(await inline.evaluate(element => getComputedStyle(element).position), 'static');
+            await action.scrollIntoViewIfNeeded();
+          }
+          await page.waitForTimeout(400);
+          const box = await action.boundingBox();
+          assert.ok(box.y >= 0 && box.y + box.height <= viewport.height, 'Purchase action can be fully reached');
+          assert.equal(await action.evaluate(element => {
+            const rect = element.getBoundingClientRect();
+            return element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+          }), true, 'Purchase action is not covered');
+          assert.equal(await action.evaluate(element => element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight), true, 'Purchase label fits its button');
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'No horizontal page overflow');
+          const label = `responsive-${isProgram ? 'program' : 'product'}-${viewport.width}-${theme}`;
+          await page.screenshot({ path: path.join(evidence, `${label}.png`) });
+          checks.push(label);
+          await context.close();
+        }
+      }
+    }
+    {
+      const { page, context } = await open({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'Choose 3 bottles' }).click();
+      await page.setViewportSize({ width: 667, height: 375 });
+      await page.getByRole('button', { name: /Add 3 OASIS to cart for \$39.00/ }).click();
+      assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('nuvira_cart'))[0].quantity), 3);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole('button', { name: 'Increase quantity' }).click();
+      await page.getByRole('button', { name: /Add 4 OASIS to cart for \$52.00/ }).waitFor();
+      checks.push('rotation preserves quantity; in-flow purchase adds exactly once; phone stepper remains functional');
+      await context.close();
+    }
+    for (const viewport of [{ width: 320, height: 568 }, { width: 820, height: 1180 }, { width: 1440, height: 1000 }]) {
+      const { page, context } = await open(viewport, [], '/program/radiance');
+      await page.getByRole('button', { name: /2 Days.*\$104.*8 bottles/ }).click();
+      await page.getByRole('button', { name: 'Add one Radiance Shot', exact: true }).click();
+      await page.getByRole('button', { name: 'Start My 2-Day Program', exact: true }).click();
+      await page.getByRole('heading', { name: 'Order count minimum met' }).waitFor();
+      const items = await page.evaluate(() => JSON.parse(localStorage.getItem('nuvira_cart')));
+      const program = items.find(item => item.is_program);
+      assert.equal(program.program_days, 2);
+      assert.equal(program.price, 104);
+      assert.equal(program.bottles_per_unit, 8);
+      assert.equal(items.filter(item => item.category === 'shot').reduce((sum, item) => sum + item.quantity, 0), 1);
+      checks.push(`program-${viewport.width}: selected duration and shot are preserved in cart`);
       await context.close();
     }
     {
@@ -156,7 +231,7 @@ if (process.argv.includes('--serve')) {
       await context.close();
     }
     assert.deepEqual(errors, []);
-    const result = { ok: true, checks, page_errors: errors, blocked_external_hosts: [...blocked],
+    const result = { ok: true, engine, checks, page_errors: errors, blocked_external_hosts: [...blocked],
       fixture_catalog: true, real_production_calls: 0, real_orders: 0, live_payments: 0,
       limitation: 'Built web app with local API fixtures. Not a live provider, native-device, or revenue validation.' };
     await fs.writeFile(path.join(evidence, 'browser-results.json'), JSON.stringify(result, null, 2));
