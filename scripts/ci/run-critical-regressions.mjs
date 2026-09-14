@@ -19,6 +19,7 @@ function writeEvidence(result) {
 const harnesses = [
   'scripts/migration/run-social-share-card-tests.mjs',
   'scripts/migration/run-shopping-offer-continuity-tests.mjs',
+  'scripts/migration/run-minimum-order-shopping-tests.mjs',
   'scripts/migration/run-mobile-shop-search-framing-tests.mjs',
   'scripts/migration/run-g189-local-delivery-shopping-tests.mjs',
   'scripts/migration/run-g196-google-ads-consent-tests.mjs',
