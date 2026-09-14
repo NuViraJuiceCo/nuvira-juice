@@ -39,7 +39,7 @@ const buttonStart = checkout.indexOf('<Button', couponMarker);
 const couponButton = checkout.slice(buttonStart, checkout.indexOf('</Button>', buttonStart) + '</Button>'.length);
 assert.match(couponInput, /id="discount-code"/);
 assert.match(couponButton, /validate_discount_code/);
-const offerSlot = detail.match(/\{\['juice', 'shot', 'bundle'\]\.includes\(normalizeCategory\(product\.category\)\) && \([\s\S]*?<FirstOrderOffer[\s\S]*?<ProductOrderDetails[\s\S]*?\n\s*\)\}/)?.[0];
+const offerSlot = detail.match(/\{\['juice', 'shot', 'bundle'\]\.includes\(normalizeCategory\(product\.category\)\) && \([\s\S]*?<ProductOrderDetails[\s\S]*?<FirstOrderOffer[\s\S]*?\n\s*\)\}/)?.[0];
 assert.ok(offerSlot, 'Exercise the actual category-scoped product offer slot');
 const normalizedCategory = detail.match(/function normalizeCategory\(value\) \{[\s\S]*?\n\}/)?.[0];
 assert.ok(normalizedCategory);
@@ -54,7 +54,7 @@ const compiled = await build({
     export { FirstOrderOffer, ProductOrderDetails };
     ${emailHelpers}
     ${normalizedCategory}
-    export function productOfferSlot(product) { return (<>${offerSlot}</>); }
+    export function productOfferSlot(product) { const quantity = 1; const setQuantity = () => {}; const desktopPurchaseControls = null; return (<>${offerSlot}</>); }
     export function couponInput(env) { const { ${vars.join(', ')} } = env; return (${couponInput}); }
     export function couponButton(env) { const { ${vars.join(', ')} } = env; return (${couponButton}); }
     export { isValidCheckoutEmail, normalizeCheckoutEmail };
@@ -90,8 +90,11 @@ try {
 
   await check('offer and ordering components cannot set codes, change carts, or call providers', () => {
     for (const source of [offerSource, detailsSource]) {
-      assert.doesNotMatch(source, /use(?:State|Effect|LayoutEffect)\s*\(|onClick=|onSubmit=|fetch\s*\(|functions\.invoke|localStorage|sessionStorage|setDiscountCode|setAppliedDiscount|addToCart|updateQuantity/);
+      assert.doesNotMatch(source, /use(?:State|Effect|LayoutEffect)\s*\(|onSubmit=|fetch\s*\(|functions\.invoke|localStorage|sessionStorage|setDiscountCode|setAppliedDiscount|addToCart|updateQuantity/);
     }
+    assert.doesNotMatch(offerSource, /onClick=/);
+    assert.equal((detailsSource.match(/onClick=/g) || []).length, 1);
+    assert.match(detailsSource, /onClick=\{\(\) => onChooseQuantity\(category === 'shot' \? 6 : 3\)\}/);
     assert.match(offerSource, /className = ''/);
     assert.match(render(React.createElement(components.FirstOrderOffer, { className: 'test-spacing' })), /test-spacing/);
   });
@@ -175,7 +178,8 @@ try {
   await check('Cart and Checkout reuse one informational component without changing purchase/footer controls', () => {
     for (const source of [detail, cart, checkout]) assert.equal((source.match(/<FirstOrderOffer\b/g) || []).length, 1);
     assert.ok(cart.indexOf('<FirstOrderOffer') < cart.indexOf('<CartDeliveryCheckPrompt'));
-    assert.ok(cart.indexOf('<FirstOrderOffer') < cart.indexOf('{!meetsMinimum &&'));
+    assert.ok(cart.indexOf('<OrderMinimumBuilder') < cart.indexOf('<FirstOrderOffer'));
+    assert.match(cart, /disabled=\{!meetsMinimum\}/);
     assert.ok(checkout.indexOf('<FirstOrderOffer') > checkout.indexOf('benefits={<>'));
     assert.ok(checkout.indexOf('<FirstOrderOffer') < checkout.indexOf('id="discount-code"'));
     assert.match(checkout, /const \[discountCodeInput, setDiscountCodeInput\] = useState\(''\)/);

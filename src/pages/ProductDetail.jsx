@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   Clock,
   Droplets,
@@ -37,6 +38,7 @@ import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
 import FirstOrderOffer from '@/components/shop/FirstOrderOffer';
 import ProductOrderDetails from '@/components/shop/ProductOrderDetails';
+import { orderMinimumStatus } from '@/lib/orderMinimums';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
 import { MARKETING_CONSENT_EVENT, trackMetaViewContent } from '@/lib/metaPixel';
 import { trackSnapViewContent } from '@/lib/snapPixel';
@@ -151,7 +153,7 @@ export default function ProductDetail() {
   const { id, slug, handle } = useParams();
   const identifier = normalizeProductIdentifier(slug || handle || id || '');
   const navigate = useNavigate();
-  const { addItem } = useCart();
+  const { addItem, items } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [failedGalleryImages, setFailedGalleryImages] = useState(() => new Set());
@@ -235,6 +237,7 @@ export default function ProductDetail() {
   }, [handle, id, product, navigate]);
 
   useEffect(() => {
+    setQuantity(1);
     setSelectedImageIndex(0);
     setFailedGalleryImages(new Set());
   }, [product?.id]);
@@ -268,7 +271,9 @@ export default function ProductDetail() {
       }
     }
     addItem(product, quantity, extra);
-    toast.success(`${product.title} added to cart`);
+    toast.success(`${product.title} added to cart`, {
+      action: { label: 'View cart', onClick: () => navigate('/cart') },
+    });
   };
 
   if (isLoading) {
@@ -304,16 +309,21 @@ export default function ProductDetail() {
     image => !failedGalleryImages.has(image.src),
   );
   const selectedProductImage = productGallery[selectedImageIndex] || productGallery[0] || null;
+  const showMinimum = ['juice', 'shot', 'bundle'].includes(normalizeCategory(product.category));
+  const cartCountMet = orderMinimumStatus(items).meetsMinimum;
 
-  const purchaseBar = (
-    <div
-      className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 px-4 md:left-60 md:bottom-4 md:px-6"
-    >
-      <div className="pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 rounded-2xl border border-border/60 bg-card/95 p-2.5 shadow-[0_18px_44px_rgba(4,29,21,0.24)] backdrop-blur-xl">
+  const cartLink = items.length > 0 && (
+    <Link to="/cart" className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-primary">
+      {cartCountMet ? 'View cart' : 'Finish your mix'} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+    </Link>
+  );
+  const purchaseControls = (
+    <div className="flex items-center gap-2 md:gap-3" role="group" aria-label={`${product.title} quantity and add to cart`}>
         <div className="flex shrink-0 items-center gap-1 rounded-xl bg-secondary p-1">
           <button
             type="button"
             onClick={() => setQuantity(Math.max(1, quantity - 1))}
+            disabled={quantity <= 1}
             className="flex h-11 w-11 items-center justify-center rounded-lg transition-transform hover:bg-background/40 hover:opacity-80 active:scale-95"
             aria-label="Decrease quantity"
           >
@@ -322,7 +332,8 @@ export default function ProductDetail() {
           <span className="text-xs font-semibold w-6 text-center">{quantity}</span>
           <button
             type="button"
-            onClick={() => setQuantity(quantity + 1)}
+            onClick={() => setQuantity(Math.min(100, quantity + 1))}
+            disabled={quantity >= 100}
             className="flex h-11 w-11 items-center justify-center rounded-lg transition-transform hover:bg-background/40 hover:opacity-80 active:scale-95"
             aria-label="Increase quantity"
           >
@@ -333,17 +344,40 @@ export default function ProductDetail() {
           type="button"
           onClick={handleAddToCart}
           aria-label={`Add ${quantity} ${product.title} to cart for $${((product.price || 0) * quantity).toFixed(2)}`}
-          className="nuvira-gradient-button h-11 min-h-11 flex-1 rounded-xl text-sm font-semibold inline-flex items-center justify-center"
+          className="nuvira-gradient-button h-11 min-h-11 flex-1 min-w-0 whitespace-normal rounded-xl px-2 text-xs sm:text-sm leading-4 font-semibold inline-flex items-center justify-center"
         >
-          <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
+          <ShoppingBag className="hidden sm:block w-3.5 h-3.5 mr-1.5 shrink-0" />
           {`Add to cart · $${((product.price || 0) * quantity).toFixed(2)}`}
         </Button>
+    </div>
+  );
+  const desktopPurchaseControls = (
+    <div className="hidden landscape:block md:block" data-purchase-placement="inline">
+      <p className="mb-2 text-xs font-semibold text-muted-foreground">Quantity</p>
+      {purchaseControls}
+      {cartLink && <div className="mt-1">{cartLink}</div>}
+    </div>
+  );
+  const purchaseBar = (
+    <div
+      data-purchase-placement="mobile-dock"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 px-4 landscape:hidden md:hidden"
+    >
+      <div className="pointer-events-auto mx-auto max-w-3xl rounded-2xl border border-border/60 bg-card/95 p-2.5 shadow-[0_18px_44px_rgba(4,29,21,0.24)] backdrop-blur-xl">
+        {showMinimum && (
+          <div className="mb-2 flex min-h-9 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-1" aria-label="Purchase minimum">
+            <p className="text-[11px] font-semibold leading-4">Minimum: 3 juices / 6 shots<br /><span className="font-normal text-muted-foreground">or an equivalent mix</span></p>
+            {cartLink}
+          </div>
+        )}
+        {purchaseControls}
+        {!showMinimum && cartLink && <div className="mt-1">{cartLink}</div>}
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+11rem)] md:pb-32">
+    <div className="min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+15rem)] landscape:pb-12 md:pb-12">
       <SEO
         title={productSeo.title}
         description={productSeo.description}
@@ -360,8 +394,11 @@ export default function ProductDetail() {
         </button>
       </div>
 
-      <main className="mx-auto w-full max-w-[1360px] md:px-6 md:pb-28">
-      <div className="xl:grid xl:grid-cols-[minmax(0,0.92fr)_minmax(340px,0.68fr)] xl:gap-6 xl:items-stretch">
+      <main className="mx-auto w-full max-w-[1360px] md:px-6">
+      <div className="px-4 py-3 md:hidden" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
+        <h1 className="break-words font-heading text-2xl font-bold leading-tight">{product.title}</h1>
+      </div>
+      <div className="lg:grid lg:grid-cols-[minmax(0,0.92fr)_minmax(320px,0.68fr)] lg:gap-6 lg:items-start">
         <div className="md:px-4 xl:min-h-[460px] xl:px-0">
           <div
             className={`relative w-full overflow-hidden bg-secondary/50 shadow-[0_24px_80px_rgba(4,29,21,0.22)] md:rounded-[28px] ${
@@ -462,7 +499,7 @@ export default function ProductDetail() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="px-4 pt-5 md:px-8 xl:h-full xl:px-0 xl:pt-2 xl:flex xl:flex-col xl:justify-center"
+            className="px-4 pt-5 md:px-8 lg:px-0 lg:pt-2"
           >
             {product.is_seasonal && (
               <span className="inline-block bg-accent/20 text-accent text-[10px] font-semibold px-2.5 py-1 rounded-full mb-3">
@@ -472,7 +509,7 @@ export default function ProductDetail() {
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-primary">
               {productDescriptor}
             </p>
-            <h1 className="font-heading text-4xl font-bold leading-[0.95] sm:text-5xl xl:text-6xl">{product.title}</h1>
+            <h1 className="hidden md:block font-heading text-4xl font-bold leading-[0.95] sm:text-5xl xl:text-6xl">{product.title}</h1>
             {product.short_description && (
               <p className="mt-3 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg">{product.short_description}</p>
             )}
@@ -489,10 +526,13 @@ export default function ProductDetail() {
 
             {['juice', 'shot', 'bundle'].includes(normalizeCategory(product.category)) && (
               <>
+                <ProductOrderDetails product={product} onChooseQuantity={setQuantity} quantity={quantity}>
+                  <div className="hidden py-4 landscape:block md:block">{desktopPurchaseControls}</div>
+                </ProductOrderDetails>
                 <FirstOrderOffer className="mt-4" />
-                <ProductOrderDetails product={product} />
               </>
             )}
+            {!showMinimum && <div className="mt-5 hidden border-y border-border/60 py-4 landscape:block md:block">{desktopPurchaseControls}</div>}
 
             <div className="mt-4 flex flex-wrap gap-2">
               {productBadges.map(cert => (

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { PROGRAMS } from '@/components/home/ProgramCards';
 
-import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, AlertCircle, Zap, Gift } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Truck, Zap, Gift } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
 import { useQuery } from '@tanstack/react-query';
@@ -12,6 +13,7 @@ import CartDeliveryCheckPrompt from '@/components/delivery/CartDeliveryCheckProm
 import { getProductionInfo, getEligibleDeliveryOptions } from '@/lib/deliveryUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import BundleComposer from '@/components/cart/BundleComposer';
+import OrderMinimumBuilder from '@/components/cart/OrderMinimumBuilder';
 import { useAuth } from '@/lib/AuthContext';
 import { useBirthdayReward } from '@/lib/birthdayReward';
 import { useBirthdayCheckoutEligibility } from '@/lib/useBirthdayCheckoutEligibility';
@@ -20,6 +22,7 @@ import FreeProductPicker from '@/components/FreeProductPicker';
 import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewCart } from '@/lib/googleAnalytics';
 import { orderMinimumStatus } from '@/lib/orderMinimums';
+import { orderMinimumGuidance } from '@/lib/orderMinimumGuidance';
 import { isEarnedRewardItem } from '@/lib/rewardSelection';
 import ProductPhoto from '@/components/shop/ProductPhoto';
 import FirstOrderOffer from '@/components/shop/FirstOrderOffer';
@@ -160,6 +163,7 @@ export default function Cart() {
     : 'Next available batch';
   const minimumStatus = orderMinimumStatus(items);
   const meetsMinimum = minimumStatus.meetsMinimum;
+  const minimumGuidance = orderMinimumGuidance(items);
 
   if (items.length === 0) {
     return (
@@ -178,7 +182,7 @@ export default function Cart() {
 
   return (
     <div
-      className="pb-[calc(22rem+env(safe-area-inset-bottom))] md:pb-[calc(14rem+env(safe-area-inset-bottom))]"
+      className="mx-auto w-full max-w-3xl pb-[calc(22rem+env(safe-area-inset-bottom))] md:pb-[calc(14rem+env(safe-area-inset-bottom))]"
       style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}
     >
       {/* Header */}
@@ -241,18 +245,12 @@ export default function Cart() {
           </motion.div>
         )}
 
+        <OrderMinimumBuilder />
+
         <FirstOrderOffer />
 
         {/* Delivery area check prompt — only shown if ZIP not yet checked */}
         <CartDeliveryCheckPrompt />
-
-        {/* Minimum Order Notice */}
-        {!meetsMinimum && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-3.5 flex items-center gap-3">
-            <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-            <p className="text-xs font-semibold text-foreground">{minimumStatus.error}</p>
-          </motion.div>
-        )}
 
         {/* Production Alert */}
         {productionInfo && (
@@ -440,7 +438,8 @@ export default function Cart() {
       </div>
 
       {/* Fixed Checkout Footer */}
-      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-gradient-to-t from-background via-background to-background/80 border-t border-border/30 pt-3" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
+      {typeof document !== 'undefined' && createPortal(
+      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-background border-t border-border/30 pt-3" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
         <div className="max-w-lg mx-auto px-5 space-y-3">
           <div className="space-y-2">
             <div className="flex justify-between text-xs text-foreground/60">
@@ -451,15 +450,15 @@ export default function Cart() {
               <span>Delivery</span>
               <span>{effectiveDeliveryFee === 0 ? <span className="text-primary font-semibold">Free</span> : <span>from $3.99</span>}</span>
             </div>
-            <div className="flex justify-between text-sm font-bold text-foreground pt-1 border-t border-border/30">
+            {meetsMinimum && <div className="flex justify-between text-sm font-bold text-foreground pt-1 border-t border-border/30">
               <span>Total</span>
               <span>${subtotal.toFixed(2)}+</span>
-            </div>
+            </div>}
           </div>
           {/* Health Advisory Note */}
-          <div className="text-[10px] text-foreground/60 leading-relaxed py-2 border-t border-border/20 pt-2">
+          {meetsMinimum && <div className="text-[10px] text-foreground/60 leading-relaxed py-2 border-t border-border/20 pt-2">
             If pregnant, nursing, immunocompromised, elderly, purchasing for a child, or managing a medical condition, consult your healthcare provider.
-          </div>
+          </div>}
           <Button
             onClick={() => {
               if (!meetsMinimum) return;
@@ -468,7 +467,7 @@ export default function Cart() {
             disabled={!meetsMinimum}
             className="w-full h-11 rounded-xl font-semibold text-sm nuvira-gradient-button disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {meetsMinimum ? 'Checkout' : 'Add more bottles'}
+            {meetsMinimum ? 'Checkout' : minimumGuidance.canBuild ? 'Complete your mix above' : 'Review cart items'}
             {meetsMinimum && <ArrowRight className="w-4 h-4 ml-2" />}
           </Button>
           {!user && meetsMinimum && (
@@ -485,6 +484,7 @@ export default function Cart() {
           )}
         </div>
       </div>
+      , document.body)}
 
       <FreeProductPicker
         open={showBirthdayPicker}

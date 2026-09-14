@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CalendarDays, Check, Minus, Package, Plus, Sparkles, Truck, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarDays, Check, Minus, Package, Plus, Sparkles, Truck, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { useCart } from '@/lib/cartContext';
@@ -275,12 +275,12 @@ export default function ProgramDetail() {
   const theme = getProgramTheme(program);
 
   const purchaseTray = (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 px-4 md:left-60 md:bottom-4 md:px-6">
+    <div data-purchase-placement="mobile-dock" className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 px-4 landscape:hidden md:hidden">
       <div className="pointer-events-auto mx-auto max-w-3xl rounded-2xl border border-border/60 bg-card/95 p-2.5 shadow-[0_18px_44px_rgba(4,29,21,0.24)] backdrop-blur-xl">
         <div className="flex items-center gap-2">
           <div className="min-w-0 shrink-0 basis-[116px] sm:basis-auto sm:min-w-[170px]">
-            <p className="truncate text-[10px] font-black uppercase tracking-[0.13em] text-muted-foreground sm:text-xs sm:tracking-[0.16em]">
-              {program.name} Program
+            <p className="text-[11px] font-bold text-muted-foreground sm:text-xs">
+              {program.name}
             </p>
             <p className="truncate text-sm font-semibold text-foreground">
               ${total.toFixed(2)}
@@ -294,7 +294,7 @@ export default function ProgramDetail() {
           <Button
             type="button"
             onClick={handleStartProgram}
-            className="nuvira-gradient-button h-11 min-w-0 flex-1 rounded-xl px-3 text-sm font-bold sm:min-w-[260px] sm:px-5"
+            className="nuvira-gradient-button min-h-11 h-auto min-w-0 flex-1 whitespace-normal rounded-xl px-3 py-2 text-sm leading-5 font-bold sm:px-5"
           >
             Start My {selectedOption.days}-Day Program
           </Button>
@@ -304,7 +304,7 @@ export default function ProgramDetail() {
   );
 
   return (
-    <div className="min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+12rem)] md:pb-32">
+    <div className="min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+12rem)] landscape:pb-12 md:pb-12">
       <SEO
         title={`${programTitle} | Cold-Pressed Juice Program`}
         description={programDescription}
@@ -575,6 +575,22 @@ export default function ProgramDetail() {
                   ✓ {selectedShotTotal} of {selectedOption.days} daily shot{selectedOption.days > 1 ? 's' : ''} planned (+${shotsTotal.toFixed(2)})
                 </p>
               )}
+            </div>
+            <div data-purchase-placement="inline" className="mt-5 hidden border-y border-border/60 py-5 landscape:block md:block">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-heading text-xl font-bold">Your {program.name} program</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {selectedOption.days} days · {selectedOption.bottles} bottles
+                    {selectedShotTotal > 0 && ` + ${selectedShotTotal} shot${selectedShotTotal > 1 ? 's' : ''}`}
+                  </p>
+                </div>
+                <p className="shrink-0 text-xl font-bold" aria-label="Program total">${total.toFixed(2)}</p>
+              </div>
+              <Button type="button" onClick={handleStartProgram}
+                className="nuvira-gradient-button min-h-12 h-auto w-full gap-2 whitespace-normal rounded-lg px-4 py-3 text-sm font-bold">
+                Start My {selectedOption.days}-Day Program <ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </Button>
             </div>
           </motion.div>
         </div>
