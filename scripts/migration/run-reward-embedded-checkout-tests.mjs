@@ -96,10 +96,11 @@ await test('actual Checkout reward-completion callback only clears cart and open
   const attribute = node.attributes.properties.find(p => p.name?.getText(tree) === 'onComplete');
   const calls = [];
   const callback = vm.runInNewContext(`(${attribute.initializer.expression.getText(tree)})`, {
-    clearCart: () => calls.push('clear'), localStorage: { removeItem: key => calls.push(`remove:${key}`) },
-    navigate: url => calls.push(url), pendingOrderNumber: 'NV-SYNTHETIC', encodeURIComponent, routeCheckout: null,
+    localStorage: { removeItem: key => calls.push(`remove:${key}`) },
+    handoffToReceipt: (url, options) => { assert.equal(options.clearPurchasedCart, true); calls.push('clear', url); },
+    pendingOrderNumber: 'NV-SYNTHETIC', encodeURIComponent, routeCheckout: null,
   });
-  callback(); assert.deepEqual(calls, ['clear', 'remove:nuvira_pending_checkout_session', '/order-confirmation?order_number=NV-SYNTHETIC']);
+  callback(); assert.deepEqual(calls, ['remove:nuvira_pending_checkout_session', 'clear', '/order-confirmation?order_number=NV-SYNTHETIC']);
 });
 function cancelFixture(result, throwing = false) {
   const node = find(n => ts.isJsxElement(n) && n.openingElement.tagName.getText(tree) === 'button'

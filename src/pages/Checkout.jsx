@@ -12,6 +12,7 @@ import { readRewardCheckoutRecovery, cancelRewardCheckoutRecovery } from '@/lib/
 import { readRewardCheckoutAttempt, saveRewardCheckoutAttempt, clearRewardCheckoutAttempt } from '@/lib/rewardCheckoutAttempt';
 import { rewardDeliveryMinimumSubtotal } from '@/lib/rewardDeliveryMinimum';
 import { verifyCheckoutCatalog } from '@/lib/checkoutCatalogPreflight';
+import { useCheckoutReceiptHandoff } from '@/lib/useCheckoutReceiptHandoff';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ChevronDown, Truck, Gift, LockKeyhole } from 'lucide-react';
 import BagReturnSelector from '@/components/checkout/BagReturnSelector';
@@ -110,6 +111,8 @@ export default function Checkout() {
 
 function CheckoutFlow() {
   const navigate = useNavigate();
+  const { items, subtotal, clearCart, trackCheckoutStarted } = useCart();
+  const { receiptHandoff, handoffToReceipt } = useCheckoutReceiptHandoff({ clearCart, navigate });
 
   // Safety net 1: if Stripe redirected back to /checkout with session_id in URL
   React.useEffect(() => {
@@ -118,7 +121,7 @@ function CheckoutFlow() {
     const orderNumber = params.get('order_number');
     if (sessionId) {
       const dest = `/order-confirmation?session_id=${sessionId}${orderNumber ? `&order_number=${orderNumber}` : ''}`;
-      navigate(dest, { replace: true });
+      handoffToReceipt(dest, { replace: true });
       return;
     }
     // Safety net 2: detect pending session stored before Stripe redirect (PWA resume case)
@@ -130,7 +133,7 @@ function CheckoutFlow() {
         if (sid && Date.now() - timestamp < 30 * 60 * 1000) {
           localStorage.removeItem('nuvira_pending_checkout_session');
           const dest = `/order-confirmation?session_id=${sid}${onum ? `&order_number=${onum}` : ''}`;
-          navigate(dest, { replace: true });
+          handoffToReceipt(dest, { replace: true });
         } else {
           localStorage.removeItem('nuvira_pending_checkout_session');
         }
@@ -140,7 +143,6 @@ function CheckoutFlow() {
     }
   }, []);
 
-  const { items, subtotal, clearCart, trackCheckoutStarted } = useCart();
   const { user, isLoadingAuth } = useAuth();
   const journeyCheckoutTrackedRef = useRef(false);
   const fulfillmentType = 'delivery';
@@ -939,12 +941,11 @@ function CheckoutFlow() {
         checkoutAttemptInFlightRef.current = false;
         // A provider replay is not proof of local settlement. The confirmation
         // page polls the owned order and requires the verified reward receipt.
-        clearCart();
         try { forgetRewardAttempt(); forgetPaidAttempt(); } catch { /* The owned order remains the recovery destination. */ }
         localStorage.removeItem('nuvira_pending_checkout_session');
-        if (res.data.routeReview) navigate('/zone3-review-submitted', { state: {
+        if (res.data.routeReview) handoffToReceipt('/zone3-review-submitted', { clearPurchasedCart: true, state: {
           requestNumber: res.data.requestNumber, darId: res.data.darId, total: 0 } });
-        else navigate(`/order-confirmation?order_number=${encodeURIComponent(res.data.orderNumber)}`);
+        else handoffToReceipt(`/order-confirmation?order_number=${encodeURIComponent(res.data.orderNumber)}`, { clearPurchasedCart: true });
         return;
       }
 
@@ -1051,6 +1052,12 @@ function CheckoutFlow() {
     }
   };
 
+  if (receiptHandoff) {
+    return <div className="min-h-[50vh] flex items-center justify-center px-6 text-center" role="status" aria-live="polite">
+      Opening your order…
+    </div>;
+  }
+
   if (isLoadingAuth || rewardRecoveryCheckedOwner !== (user?.id || '')) {
     return <div className="min-h-[50vh] flex items-center justify-center px-6 text-center" role="status">
       Checking your secure checkout…
@@ -1075,7 +1082,7 @@ function CheckoutFlow() {
       // Processing is not final. Retain its recovery marker until success is
       // provider-confirmed; never discard another cart assembled after reload.
       if (proof.state === 'succeeded') forgetPaidAttempt();
-      navigate(`/order-confirmation?order_number=${encodeURIComponent(attempt.order_number)}${attempt.owner === 'guest' ? '&guest_checkout=1' : ''}`);
+      handoffToReceipt(`/order-confirmation?order_number=${encodeURIComponent(attempt.order_number)}${attempt.owner === 'guest' ? '&guest_checkout=1' : ''}`);
     }} />;
 
   if (items.length === 0 && !checkoutStartLocked) {
@@ -1549,11 +1556,10 @@ function CheckoutFlow() {
           {rewardCheckoutSessionId ? <RewardEmbeddedCheckout
             clientSecret={clientSecret} publishableKey={publishableKey} checkoutSessionId={rewardCheckoutSessionId}
             onComplete={() => {
-              clearCart();
               try { forgetRewardAttempt(); } catch { /* Continue to the receipt-verified owned order. */ }
               localStorage.removeItem('nuvira_pending_checkout_session');
-              if (routeCheckout) navigate('/zone3-review-submitted', { state: { ...routeCheckout, total: 0 } });
-              else navigate(`/order-confirmation?order_number=${encodeURIComponent(pendingOrderNumber)}`);
+              if (routeCheckout) handoffToReceipt('/zone3-review-submitted', { clearPurchasedCart: true, state: { ...routeCheckout, total: 0 } });
+              else handoffToReceipt(`/order-confirmation?order_number=${encodeURIComponent(pendingOrderNumber)}`, { clearPurchasedCart: true });
             }}
           /> : <EmbeddedPayment
             recoverOnReturn
@@ -1577,7 +1583,6 @@ function CheckoutFlow() {
               if (checkoutCustomerIdentityRef.current !== `${user?.id || ''}:${user?.email || ''}`) return;
               // Keep the opaque marker until a fresh recovery/receipt read.
               // Stripe can return requires_capture here; that is not final.
-              clearCart();
               localStorage.removeItem('nuvira_pending_checkout_session');
               if (isGuestCheckout) {
                 sessionStorage.setItem('nuvira_guest_order_confirmation', JSON.stringify({
@@ -1594,8 +1599,8 @@ function CheckoutFlow() {
                   guest_order_token: guestOrderToken.current,
                 });
               }
-              if (routeCheckout) navigate('/zone3-review-submitted', { state: { ...routeCheckout, total: paymentTotal } });
-              else navigate(`/order-confirmation?order_number=${pendingOrderNumber}&pi=${paymentIntentId}${isGuestCheckout ? '&guest_checkout=1' : ''}`);
+              if (routeCheckout) handoffToReceipt('/zone3-review-submitted', { clearPurchasedCart: true, state: { ...routeCheckout, total: paymentTotal } });
+              else handoffToReceipt(`/order-confirmation?order_number=${pendingOrderNumber}&pi=${paymentIntentId}${isGuestCheckout ? '&guest_checkout=1' : ''}`, { clearPurchasedCart: true });
             }}
             onError={(msg) => {
               toast.error(msg || 'Payment failed. Please try again.');
@@ -1685,9 +1690,8 @@ function CheckoutFlow() {
                     onClick={() => navigate(`/zone3-review-submitted?request=${encodeURIComponent(routeCheckout.requestNumber)}`)}>View delivery request</button>}
                   {rewardRecoveryState === 'complete' && !routeCheckout ? <button type="button" className="text-left font-semibold underline"
                     onClick={() => {
-                      clearCart();
                       try { forgetRewardAttempt(); } catch { /* Keep the owned order as the recovery destination. */ }
-                      navigate(`/order-confirmation?order_number=${encodeURIComponent(rewardCheckoutRecovery.order_number)}`);
+                      handoffToReceipt(`/order-confirmation?order_number=${encodeURIComponent(rewardCheckoutRecovery.order_number)}`, { clearPurchasedCart: true });
                     }}>
                     View this reward order
                   </button> : (!routeCheckout || ['pending_authorization', 'pending_review'].includes(routeCheckout.status)) && <button type="button" className="text-left font-semibold underline" disabled={isSubmitting}

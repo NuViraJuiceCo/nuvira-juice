@@ -13,9 +13,10 @@ import { recoverOrderRefund } from './refundRecovery.js';
 import { stripeObjectId } from './refundProof.js';
 import { settleCheckoutCredit } from '../../shared/checkoutCredit.js';
 import { settleVerifiedBirthdayCheckout } from '../createPaymentIntent/birthdayCheckout.js';
+import { finalizeCanceledCheckout } from '../../shared/canceledCheckout.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
-const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260909-credit-settlement-v8';
+const STRIPE_WEBHOOK_RUNTIME_BUILD_ID = 'stripe-webhook-runtime-20260929-cancellation-recovery-v9';
 const CHECKOUT_PROVIDER_SANDBOX_DIAGNOSTIC_CONFIRMATION = 'RUN_GUEST_CHECKOUT_PROVIDER_SANDBOX';
 const CHECKOUT_PROVIDER_SANDBOX_RECIPIENT = 'delivered+g136-guest-checkout@resend.dev';
 const LOCKED_FINAL_SCHEDULE_SOURCES = new Set([
@@ -1714,6 +1715,20 @@ Deno.serve(async (req) => {
       const paymentIntentId = paymentIntent.id;
 
       console.log(`payment_intent.canceled received for PaymentIntent: ${paymentIntentId}`);
+
+      if (paymentIntent.metadata?.checkout_version === '3.0_embedded') {
+        const fresh = await stripe.paymentIntents.retrieve(paymentIntentId);
+        if (fresh?.id !== paymentIntentId) throw new Error('paid_checkout_recovery_unconfirmed');
+        const { order, updated } = await finalizeCanceledCheckout({ entities: base44.asServiceRole.entities, payment: fresh });
+        // Only the CAS winner emits an alert; replays and the customer-request
+        // winner do not duplicate an operational notification.
+        if (updated) await base44.asServiceRole.entities.OperationalAlert.create({
+          alert_type: 'cancellation', title: `Pre-Order Cancelled: #${order.order_number}`,
+          message: `Payment cancelled before capture for order ${order.order_number}. Do not fulfill this order.`,
+          shopify_order_id: order.shopify_order_id || null, order_number: order.order_number, severity: 'warning',
+        });
+        return Response.json({ received: true, action: updated ? 'checkout_cancelled' : 'checkout_already_cancelled' });
+      }
 
       // Find the pre-order order linked to this payment intent
       const orders = await base44.asServiceRole.entities.Order.filter({ stripe_payment_intent_id: paymentIntentId });

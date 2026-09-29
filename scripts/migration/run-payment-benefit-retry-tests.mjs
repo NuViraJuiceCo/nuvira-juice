@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
 import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
+import * as canceledCheckout from '../../base44/shared/canceledCheckout.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { transformSync } from 'esbuild';
@@ -15,23 +16,28 @@ import * as pointsLedger from '../../base44/functions/enrollNewCustomerInLoyalty
 // Execute the actual webhook with simulated signed events and in-memory stores.
 // The test Stripe class cannot send requests; no provider credentials are used.
 const email = 'payment-retry@example.test';
+const orderNumber = `NV-${'B'.repeat(24)}`;
 const payment = { id: 'pi_synthetic_retry', status: 'succeeded', currency: 'usd', amount_received: 4299,
-  metadata: { customer_email: email, order_number: 'SYNTHETIC-RETRY', checkout_version: '3.0_embedded' } };
+  metadata: { customer_email: email, order_number: orderNumber, checkout_version: '3.0_embedded',
+    checkout_mode: 'account', checkout_context_hash: 'a'.repeat(64) } };
 function match(row, query) {
   return Object.entries(query).every(([key, value]) => key === '$or' ? value.some(q => match(row, q))
     : value && typeof value === 'object' && '$exists' in value ? (row[key] !== undefined) === value.$exists : row[key] === value);
 }
 function fixture({ paid = false, reward = false, credit = 0, terminal = '', balance = 2000, directPoints = 0 } = {}) {
-  const order = { id: 'order_synthetic', order_number: 'SYNTHETIC-RETRY', customer_email: email,
+  const order = { id: 'order_synthetic', order_number: orderNumber, customer_email: email,
     stripe_payment_intent_id: payment.id, status: terminal || (paid ? 'scheduled_for_juicing' : 'pending_payment'),
-    payment_status: paid ? 'paid' : 'pending', payment_captured: paid, total: 42.99,
+    payment_status: paid ? 'paid' : 'pending', financial_status: paid ? 'paid' : 'pending', payment_captured: paid, total: 42.99,
     items: [{ product_id: 'oasis_synthetic', quantity: 3, price: 13 }], status_history: [] };
-  const checkout = { customer_email: email, customer_name: 'Synthetic Buyer', points_used: 0, credits_discount: credit,
+  const checkout = { customer_email: email, customer_name: 'Synthetic Buyer', order_number: orderNumber,
+    total: 42.99, guest_checkout: false, checkout_context_hash: payment.metadata.checkout_context_hash,
+    points_used: 0, credits_discount: credit,
     active_reward: reward ? { id: 'reward_synthetic', points_required: 1000, title: 'Free bottle' } : null,
     assigned_production_day: '2026-09-11', assigned_delivery_date: '2026-09-12',
     assigned_delivery_window_start: '12:00', assigned_delivery_window_end: '15:00',
     delivery_window_label: 'Saturday 12 PM - 3 PM', final_schedule_source: 'backend_cadence', items: order.items };
-  const rows = { Order: [order], CheckoutSession: [{ id: 'checkout_synthetic', stripe_session_id: payment.id, checkout_data: checkout }],
+  const rows = { Order: [order], CheckoutSession: [{ id: 'checkout_synthetic', stripe_session_id: payment.id,
+    customer_email: email, order_number: orderNumber, checkout_data: checkout }],
     UserPoints: [{ id: 'points_synthetic', customer_email: email, total_points: balance, lifetime_points: balance, redeemed_points: 0, points_history: [] }],
     LoyaltyMember: [{ id: 'member_synthetic', email, total_points: balance }],
     NuViraCredit: [{ id: 'credit_synthetic', customer_email: email, balance: 10, lifetime_used: 0, lifetime_issued: 10, history: [] }],
@@ -105,7 +111,8 @@ function fixture({ paid = false, reward = false, credit = 0, terminal = '', bala
       },
     });
   }
-  return { rows, order, checkout, entities, db, calls, faults, postLoyalty, provider };
+  return { rows, order, checkout, entities, db, calls, faults, postLoyalty, provider,
+    providerRead: id => { assert.equal(id, provider.id); calls.push('provider.read'); return structuredClone(provider); } };
 }
 const source = fs.readFileSync('base44/functions/stripeWebhook/entry.ts', 'utf8');
 const compiled = transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
@@ -119,6 +126,7 @@ function serve(f) {
       if (name.includes('paymentBenefits')) return benefits;
       if (name.includes('checkoutCredit')) return creditReservation;
       if (name.includes('birthdayCheckout')) return birthdayCheckout;
+      if (name.includes('canceledCheckout')) return canceledCheckout;
       if (name.includes('rewardWebhook')) return rewardWebhook;
       if (name.includes('routeReviewDecision')) return routeReviewDecision;
       if (name.includes('routeReviewNotifications')) return routeReviewNotifications;
@@ -184,11 +192,15 @@ test('Terminal refunded order cannot be reactivated or awarded on old success re
 });
 test('Duplicate cancellation does not repeat alerts and cannot cancel a captured order', async () => {
   const f = fixture(); const invoke = serve(f);
+  f.provider.status = 'canceled'; f.provider.amount_received = 0;
   assert.equal((await invoke('payment_intent.canceled', { status: 'canceled', amount_received: 0 })).status, 200);
-  assert.equal((await invoke('payment_intent.canceled', { status: 'canceled', amount_received: 0 })).body.action, 'skipped_terminal_state');
+  assert.equal((await invoke('payment_intent.canceled', { status: 'canceled', amount_received: 0 })).body.action, 'checkout_already_cancelled');
   assert.equal(f.rows.OperationalAlert.length, 1);
+  assert.equal(f.order.payment_status, 'cancelled'); assert.equal(f.order.financial_status, 'cancelled');
+  assert.equal(f.order.do_not_recover, true); assert.equal(f.order.abandoned_checkout, true);
   const paid = fixture({ paid: true }); const before = structuredClone(paid.rows);
-  await serve(paid)('payment_intent.canceled', { status: 'canceled', amount_received: 0 }); assert.deepEqual(paid.rows, before);
+  assert.equal((await serve(paid)('payment_intent.canceled', { status: 'canceled', amount_received: 0 })).status, 500);
+  assert.deepEqual(paid.rows, before);
 });
 test('Credit redemption is atomic and repeat-safe for simultaneous webhook retries', async () => {
   const f = fixture(); const args = { email, orderId: f.order.id, orderNumber: f.order.order_number, paymentId: payment.id, amount: 2 };
@@ -287,7 +299,7 @@ test('Actual cancellation webhook rereads provider and releases credit before ca
   const invoke = serve(f); assert.equal((await invoke('payment_intent.canceled', changes)).status, 200);
   assert.equal(f.rows.NuViraCredit[0].reserved_balance, 0); assert.equal(f.rows.NuViraCredit[0].balance, 10);
   assert.equal(f.rows.NuViraCredit[0].history.length, 0);
-  assert.ok(f.calls.indexOf('NuViraCredit.CAS') < f.calls.indexOf('Order.update'));
+  assert.ok(f.calls.indexOf('NuViraCredit.CAS') < f.calls.indexOf('Order.CAS'));
   assert.equal((await invoke('payment_intent.canceled', changes)).status, 200);
   assert.equal(f.rows.NuViraCredit[0].checkout_reservations.length, 1);
 });
@@ -319,7 +331,7 @@ test('Connected direct-point cancellation releases without earning or customer n
   assert.equal(result.status, 200, JSON.stringify(result.body)); assert.equal(f.order.status, 'cancelled');
   assert.equal(f.rows.UserPoints[0].total_points, 2000); assert.equal(f.rows.UserPoints[0].reserved_points, 0);
   assert.equal(f.rows.LoyaltyMember[0].reserved_points, 0); assert.equal(f.rows.LoyaltyTransaction.length, 0);
-  assert.ok(f.calls.indexOf('loyalty.settle_reservation') < f.calls.indexOf('Order.update'));
+  assert.ok(f.calls.indexOf('loyalty.settle_reservation') < f.calls.indexOf('Order.CAS'));
   assert.equal(f.calls.includes('sendOrderReceivedNotification'), false);
 });
 test('Connected webhook rejects stale success when provider still processing and keeps points held', async () => {

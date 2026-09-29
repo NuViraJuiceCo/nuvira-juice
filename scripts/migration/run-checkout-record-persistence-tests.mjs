@@ -161,7 +161,7 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
             }
             originalParameters ||= parameters;
             storedIntent ||= { id: 'pi_test_synthetic', client_secret: recoveryKey ? 'pi_test_synthetic_secret_SYNTHETICONLY' : 'unit-test',
-              livemode: true, status: 'requires_payment_method', ...structuredClone(data) }; return structuredClone(storedIntent);
+              livemode: true, status: 'requires_payment_method', amount_received: 0, ...structuredClone(data) }; return structuredClone(storedIntent);
           },
           retrieve: async id => { effects.push('PI.retrieve'); assert.equal(id, storedIntent.id); return structuredClone(storedIntent); },
           cancel: async id => { effects.push('PI.cancel'); assert.equal(id, 'pi_test_synthetic'); if (failCancel) throw new Error('Synthetic cancellation unavailable');
@@ -1062,6 +1062,24 @@ await test('actual webhook rejects forged or stale cancellation before releasing
   assert.equal((await ctx.runWebhook(event)).status, 500); // Fresh provider still says retryable, not canceled.
   assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'held');
   assert.equal(ctx.rows.Order[0].status, 'pending_payment'); assert.equal(ctx.rows.OperationalAlert.length, 0);
+});
+for (const benefit of ['birthday', 'direct_points_and_credits', 'reward']) await test(`webhook-first ${benefit} release remains provable for explicit customer cancellation`, async () => {
+  const ctx = fixture({ birthdayUser: benefit === 'birthday', realLedger: true, recoveryKey: true,
+    seed: benefit === 'direct_points_and_credits' ? creditSeed : {} });
+  const patch = benefit === 'birthday' ? { items: birthdayCart() }
+    : benefit === 'direct_points_and_credits' ? { points_used: 1000, points_discount: 10, credits_discount: 6 }
+      : { active_reward: selected };
+  const prepared = await ctx.handle(patch); assert.equal(prepared.status, 200, JSON.stringify(await prepared.json()));
+  ctx.intent().status = 'canceled';
+  const event = { type: 'payment_intent.canceled', id: 'evt_BENEFIT_CANCEL_SYNTHETIC', livemode: true,
+    created: 1788894000, data: { object: structuredClone(ctx.intent()) } };
+  const hooked = await ctx.runWebhook(event); assert.equal(hooked.status, 200, JSON.stringify(hooked));
+  assert.equal(ctx.rows.Order[0].payment_status, 'cancelled');
+  const before = JSON.stringify(ctx.rows);
+  const result = await (await ctx.handle({ mode: 'cancel_paid_checkout', guest_order_token: null })).json();
+  assert.equal(result.ok, true, JSON.stringify(result)); assert.equal(result.benefit_reservations_released, true);
+  assert.equal((await ctx.runWebhook(event)).status, 200); assert.equal(JSON.stringify(ctx.rows), before);
+  assert.equal(ctx.rows.OperationalAlert.length, 1);
 });
 const routeRequest = { mode: 'prepare_route_review', customer_acknowledged_hold: true,
   items: [{ ...body.items[0], quantity: 5 }], guest_order_token: null };
