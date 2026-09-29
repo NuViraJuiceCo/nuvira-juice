@@ -30,6 +30,8 @@ const harnesses = [
   'scripts/migration/run-birthday-checkout-ui-tests.mjs',
   'scripts/migration/run-birthday-entitlement-tests.mjs',
   'scripts/migration/run-paid-checkout-recovery-tests.mjs',
+  'scripts/migration/run-checkout-receipt-handoff-tests.mjs',
+  'scripts/migration/run-cancellation-race-tests.mjs',
   'scripts/migration/run-catalog-checkout-authority-tests.mjs',
   'scripts/migration/run-checkout-credit-reservation-tests.mjs',
   'scripts/migration/run-checkout-record-persistence-tests.mjs',

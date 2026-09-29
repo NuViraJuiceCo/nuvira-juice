@@ -2,6 +2,7 @@ import { creditAccountState, creditCents, settleCheckoutCredit } from '../../sha
 import { readPointsAccount } from '../enrollNewCustomerInLoyalty/pointsAccount.js';
 import { hasBirthdayCheckout, verifyBirthdayCheckoutHold, settleVerifiedBirthdayCheckout } from './birthdayCheckout.js';
 import { readRouteReview, claimRouteDecision, finishRouteDecision } from '../../shared/routeReview.js';
+import { canFinalizeCanceledCheckout, finalizeCanceledCheckout } from '../../shared/canceledCheckout.js';
 
 export const PAID_RECOVERY_REVISION = '2026-09-08.paid-checkout-recovery-v1';
 const keyPattern = /^[A-Za-z0-9_-]{20,200}$/;
@@ -68,9 +69,8 @@ async function proof({ base44, stripe, user, body, now = Date.now() }) {
     && creditCents(data.total) === payment.amount && creditCents(order.total) === payment.amount
     && ['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing', 'requires_capture', 'succeeded', 'canceled'].includes(payment.status));
   if (payment.status === 'succeeded') assert(payment.amount_received === payment.amount);
-  if (resumable.has(payment.status)) assert(pending(order));
-  if (payment.status === 'canceled') assert(pending(order)
-    || (order.status === 'cancelled' && order.payment_status === 'cancelled' && order.payment_captured === false));
+  if (resumable.has(payment.status)) assert(pending(order) && canFinalizeCanceledCheckout(order));
+  if (payment.status === 'canceled') assert(payment.amount_received === 0 && canFinalizeCanceledCheckout(order));
   assert(Array.isArray(data.items) && data.items.length > 0 && data.items.length <= 50
     && data.items.every(item => typeof item.title === 'string' && item.title.trim()
       && Number.isSafeInteger(item.quantity) && item.quantity > 0 && item.quantity <= 100
@@ -165,17 +165,7 @@ export async function cancelPaidCheckout(options) {
     const result = await settleCheckoutCredit({ entities: ctx.entities, payment: ctx.payment, email: ctx.email });
     assert(result.reservation_status === 'released');
   }
-  if (pending(ctx.order)) {
-    const result = await ctx.entities.Order.updateMany({ id: ctx.order.id, stripe_payment_intent_id: ctx.payment.id,
-      status: 'pending_payment', payment_status: 'pending', financial_status: 'pending', payment_captured: false },
-    { $set: { status: 'cancelled', payment_status: 'cancelled', financial_status: 'cancelled',
-      do_not_recover: true, abandoned_checkout: true } });
-    assert(result?.success === true && result.has_more === false && [0, 1].includes(result.updated));
-  }
-  const confirmed = one(await ctx.entities.Order.filter({ id: ctx.order.id }, undefined, 2));
-  assert(confirmed.status === 'cancelled' && confirmed.payment_status === 'cancelled'
-    && confirmed.financial_status === 'cancelled' && confirmed.payment_captured === false
-    && confirmed.do_not_recover === true && confirmed.abandoned_checkout === true);
+  await finalizeCanceledCheckout({ entities: ctx.entities, payment: ctx.payment, now: ctx.now });
   if (ctx.route) await finishRouteDecision(ctx.entities, ctx.payment, 'denied', ctx.now);
   return { ok: true, revision: PAID_RECOVERY_REVISION, order_number: ctx.orderNumber,
     payment_attempt_canceled: true, benefit_reservations_released: true, order_cancelled: true,

@@ -213,10 +213,11 @@ await test('storage-clear failure after a no-write response is handled without u
 await test('viewing a recovered completed confirmation clears its cart/marker and opens receipt verification', () => {
   const calls = [];
   const callback = vm.runInNewContext(`(${completedRecoveryCallback})`, {
-    clearCart: () => calls.push('clear-cart'), forgetRewardAttempt: () => calls.push('clear-attempt'),
-    navigate: url => calls.push(url), encodeURIComponent, rewardCheckoutRecovery: hint,
+    forgetRewardAttempt: () => calls.push('clear-attempt'),
+    handoffToReceipt: (url, options) => { assert.equal(options.clearPurchasedCart, true); calls.push('clear-cart', url); },
+    encodeURIComponent, rewardCheckoutRecovery: hint,
   });
-  callback(); assert.deepEqual(calls, ['clear-cart', 'clear-attempt', `/order-confirmation?order_number=${orderNumber}`]);
+  callback(); assert.deepEqual(calls, ['clear-attempt', 'clear-cart', `/order-confirmation?order_number=${orderNumber}`]);
 });
 function frontFixture({ pending = true, state = 'open', failure = false, deferred = false } = {}) {
   const store = storage(); if (pending) attempt.saveRewardCheckoutAttempt(store, owner, attemptKey);

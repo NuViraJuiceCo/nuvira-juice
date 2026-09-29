@@ -180,7 +180,7 @@ await test('checkout normalization and idempotency do not consume browser advert
   assert.equal(normalize({ ...value, customer_email: 'private@example.test' }).customer_email, undefined);
   assert.doesNotMatch(payment, /google_ad_measurement_consent|google_measurement_consent_revision|google_ad_measurement_requires_explicit_consent/);
   assert.equal((payment.match(/google_measurement_context: normalizedGoogleMeasurementContext/g) || []).length, 2);
-  assert.match(read('base44/functions/stripeWebhook/entry.ts'), /stripe-webhook-runtime-20260909-credit-settlement-v8/);
+  assert.match(read('base44/functions/stripeWebhook/entry.ts'), /stripe-webhook-runtime-20260929-cancellation-recovery-v9/);
 });
 await test('server advertising permission stays DENIED even with explicit browser or forged context grants', async () => {
   for (const [consent, consentVersion] of [[undefined, undefined], ['granted', undefined], ['granted', 'old'], ['denied', version], ['granted', version]]) {

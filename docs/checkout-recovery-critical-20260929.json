@@ -1,0 +1,826 @@
+{
+  "ok": true,
+  "suite": "g50c-critical-regressions",
+  "git_commit": "2db8d636cb2216fe34bc1132efc2134c4195c9dd",
+  "generated_at_utc": "2026-09-29T19:42:55.587Z",
+  "harness_count": 163,
+  "writes_performed": false,
+  "provider_calls_performed": false,
+  "results": [
+    {
+      "harness": "scripts/migration/run-social-share-card-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 163
+    },
+    {
+      "harness": "scripts/migration/run-shopping-offer-continuity-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 290
+    },
+    {
+      "harness": "scripts/migration/run-minimum-order-shopping-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 71
+    },
+    {
+      "harness": "scripts/migration/run-mobile-shop-search-framing-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 306
+    },
+    {
+      "harness": "scripts/migration/run-g189-local-delivery-shopping-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 284
+    },
+    {
+      "harness": "scripts/migration/run-g196-google-ads-consent-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 1173
+    },
+    {
+      "harness": "scripts/migration/run-live-catalog-reward-parity-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 94
+    },
+    {
+      "harness": "scripts/migration/run-route-review-communications-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 77
+    },
+    {
+      "harness": "scripts/migration/run-refund-communications-integration-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 243
+    },
+    {
+      "harness": "scripts/migration/run-refund-native-recovery-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 183
+    },
+    {
+      "harness": "scripts/migration/run-birthday-checkout-ui-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 150
+    },
+    {
+      "harness": "scripts/migration/run-birthday-entitlement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 130
+    },
+    {
+      "harness": "scripts/migration/run-paid-checkout-recovery-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 330
+    },
+    {
+      "harness": "scripts/migration/run-checkout-receipt-handoff-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 345
+    },
+    {
+      "harness": "scripts/migration/run-cancellation-race-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 211
+    },
+    {
+      "harness": "scripts/migration/run-catalog-checkout-authority-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 85
+    },
+    {
+      "harness": "scripts/migration/run-checkout-credit-reservation-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 139
+    },
+    {
+      "harness": "scripts/migration/run-checkout-record-persistence-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 566
+    },
+    {
+      "harness": "scripts/migration/run-reward-checkout-quote-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 245
+    },
+    {
+      "harness": "scripts/migration/run-points-reservation-accounting-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 204
+    },
+    {
+      "harness": "scripts/migration/run-checkout-abandonment-safety-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 212
+    },
+    {
+      "harness": "scripts/migration/run-no-payment-reward-settlement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 624
+    },
+    {
+      "harness": "scripts/migration/run-no-payment-checkout-start-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 291
+    },
+    {
+      "harness": "scripts/migration/run-reward-embedded-checkout-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 383
+    },
+    {
+      "harness": "scripts/migration/run-reward-checkout-reload-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 448
+    },
+    {
+      "harness": "scripts/migration/run-reward-handoff-recovery-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 170
+    },
+    {
+      "harness": "scripts/migration/run-reward-customer-handoff-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 421
+    },
+    {
+      "harness": "scripts/migration/run-reward-native-handoff-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 279
+    },
+    {
+      "harness": "scripts/migration/run-reward-shopify-handoff-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 127
+    },
+    {
+      "harness": "scripts/migration/run-reward-complete-handoff-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 258
+    },
+    {
+      "harness": "scripts/migration/run-reward-webhook-handoff-integration-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 931
+    },
+    {
+      "harness": "scripts/migration/run-order-confirmation-truth-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 150
+    },
+    {
+      "harness": "scripts/migration/run-payment-benefit-retry-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 248
+    },
+    {
+      "harness": "scripts/migration/run-full-refund-loyalty-recovery-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 284
+    },
+    {
+      "harness": "scripts/migration/run-g71-bag-return-activation-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 389
+    },
+    {
+      "harness": "scripts/migration/run-reward-selection-safety-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 208
+    },
+    {
+      "harness": "scripts/migration/run-reward-order-minimum-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 75
+    },
+    {
+      "harness": "scripts/migration/run-first-order-offer-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 251
+    },
+    {
+      "harness": "scripts/migration/run-shopify-legacy-sync-auth-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 359
+    },
+    {
+      "harness": "scripts/migration/run-admin-package-promotion-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 396
+    },
+    {
+      "harness": "scripts/migration/run-auth-startup-performance-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 163
+    },
+    {
+      "harness": "scripts/migration/run-g183-auth-return-state-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 250
+    },
+    {
+      "harness": "scripts/migration/run-g184-auth-transport-consent-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 155
+    },
+    {
+      "harness": "scripts/migration/run-g185-auth-query-isolation-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 147
+    },
+    {
+      "harness": "scripts/migration/run-g186-native-auth-interleaving-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 240
+    },
+    {
+      "harness": "scripts/migration/run-g187-credential-operation-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 144
+    },
+    {
+      "harness": "scripts/migration/run-g181-session-gateway-auth-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 182
+    },
+    {
+      "harness": "scripts/migration/run-g182-admin-swipe-back-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g179-native-auth-reliability-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 66
+    },
+    {
+      "harness": "scripts/migration/run-g180-native-provider-browser-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 64
+    },
+    {
+      "harness": "scripts/migration/run-g177-native-auth-viewport-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 65
+    },
+    {
+      "harness": "scripts/migration/run-g178-native-external-auth-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 67
+    },
+    {
+      "harness": "scripts/migration/run-g176-android-release-optimization-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g175-address-selection-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 294
+    },
+    {
+      "harness": "scripts/migration/run-mobile-checkout-experience-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 67
+    },
+    {
+      "harness": "scripts/migration/run-g50b-native-startup-hotfix-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 65
+    },
+    {
+      "harness": "scripts/migration/run-g49a-checkout-processing-error-boundary-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 67
+    },
+    {
+      "harness": "scripts/migration/run-g51c-delivery-status-sync-freshness-guard-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g51b-admin-compliance-batch-linkage-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 67
+    },
+    {
+      "harness": "scripts/migration/run-g55-backend-live-use-readiness-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 65
+    },
+    {
+      "harness": "scripts/migration/run-g59-google-play-mobile-readiness-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 66
+    },
+    {
+      "harness": "scripts/migration/run-g60-android-play-store-readiness-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 68
+    },
+    {
+      "harness": "scripts/migration/run-brclub-discount-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 119
+    },
+    {
+      "harness": "scripts/migration/run-customer-order-adjustment-choice-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 172
+    },
+    {
+      "harness": "scripts/migration/run-customer-order-adjustment-stripe-refund-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 248
+    },
+    {
+      "harness": "scripts/migration/run-g61-checkout-customer-identity-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 71
+    },
+    {
+      "harness": "scripts/migration/run-g62-website-only-seo-links-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g63-capacitor-live-update-bootstrap-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g64-native-push-transport-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g65-security-and-loyalty-auth-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 74
+    },
+    {
+      "harness": "scripts/migration/run-g66-customer-journey-automation-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 77
+    },
+    {
+      "harness": "scripts/migration/run-g67-function-estate-cleanup-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 173
+    },
+    {
+      "harness": "scripts/migration/run-g68-authoritative-loyalty-and-ingestion-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 76
+    },
+    {
+      "harness": "scripts/migration/run-g69-production-prestart-modal-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 107
+    },
+    {
+      "harness": "scripts/migration/run-g70-route-delivery-integrity-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 120
+    },
+    {
+      "harness": "scripts/migration/run-g72-legacy-event-runtime-retirement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 100
+    },
+    {
+      "harness": "scripts/migration/run-g113-legacy-native-order-status-cleanup-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 70
+    },
+    {
+      "harness": "scripts/migration/run-g73-operations-trust-and-navigation-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 93
+    },
+    {
+      "harness": "scripts/migration/run-g74-supported-function-contract-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g75-live-function-routing-integrity-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 117
+    },
+    {
+      "harness": "scripts/migration/run-g76-order-session-error-boundary-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g76-product-cart-accessibility-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g83-fulfillment-operational-gate-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g85-react-router-security-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 124
+    },
+    {
+      "harness": "scripts/migration/run-g86-subscription-gateway-readiness-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g87-production-immediate-idempotency-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 70
+    },
+    {
+      "harness": "scripts/migration/run-g89-customer-app-native-production-cutover-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 107
+    },
+    {
+      "harness": "scripts/migration/run-g90-terminal-hub-fallback-suppression-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 115
+    },
+    {
+      "harness": "scripts/migration/run-g92-native-production-batch-materialization-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 118
+    },
+    {
+      "harness": "scripts/migration/run-g115-automatic-paid-order-production-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 135
+    },
+    {
+      "harness": "scripts/migration/run-g39f-admin-production-planning-native-first-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 124
+    },
+    {
+      "harness": "scripts/migration/run-g39d-admin-delivery-route-native-first-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 132
+    },
+    {
+      "harness": "scripts/migration/run-g39h-admin-calendar-events-native-first-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 110
+    },
+    {
+      "harness": "scripts/migration/run-g56a-food-demand-based-inventory-policy-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 100
+    },
+    {
+      "harness": "scripts/migration/run-g93-hub-operator-retirement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 111
+    },
+    {
+      "harness": "scripts/migration/run-g94-customer-app-compliance-authority-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 124
+    },
+    {
+      "harness": "scripts/migration/run-g94-hub-operational-read-retirement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 104
+    },
+    {
+      "harness": "scripts/migration/run-g94-customer-hub-bridge-retirement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 100
+    },
+    {
+      "harness": "scripts/migration/run-g95-hub-write-retirement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 105
+    },
+    {
+      "harness": "scripts/migration/run-g96-native-pos-claim-activation-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 380
+    },
+    {
+      "harness": "scripts/migration/run-g97-native-cutover-monitor-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 447
+    },
+    {
+      "harness": "scripts/migration/run-g98-native-compliance-document-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 536
+    },
+    {
+      "harness": "scripts/migration/run-g99-compliance-document-upload-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 68
+    },
+    {
+      "harness": "scripts/migration/run-g100-customer-order-journey-tracker-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g101-order-item-product-thumbnails-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 70
+    },
+    {
+      "harness": "scripts/migration/run-g102-customer-delivery-proof-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 70
+    },
+    {
+      "harness": "scripts/migration/run-g103-premium-program-journey-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 393
+    },
+    {
+      "harness": "scripts/migration/run-g105-event-publishing-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 67
+    },
+    {
+      "harness": "scripts/migration/run-g106-mobile-operations-and-test-order-visibility-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g107-mobile-operator-workspace-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g108-account-program-membership-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 70
+    },
+    {
+      "harness": "scripts/migration/run-g109-account-spacing-and-notification-center-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 101
+    },
+    {
+      "harness": "scripts/migration/run-g110-inventory-shopify-pos-and-native-health-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 113
+    },
+    {
+      "harness": "scripts/migration/run-g116-event-production-pos-inventory-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 123
+    },
+    {
+      "harness": "scripts/migration/run-g118-event-welcome-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 85
+    },
+    {
+      "harness": "scripts/migration/run-g119-pos-event-attribution-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 71
+    },
+    {
+      "harness": "scripts/migration/run-g111-unified-email-communications-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g112-communication-completion-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g125-delivery-live-activity-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 159
+    },
+    {
+      "harness": "scripts/migration/run-g126-distance-aware-delivery-progress-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 172
+    },
+    {
+      "harness": "scripts/migration/run-g128-google-merchant-quality-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 81
+    },
+    {
+      "harness": "scripts/migration/run-g131-google-analytics-consent-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 75
+    },
+    {
+      "harness": "scripts/migration/run-g132-google-merchant-structured-content-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 70
+    },
+    {
+      "harness": "scripts/migration/run-g133-google-pay-domain-readiness-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 70
+    },
+    {
+      "harness": "scripts/migration/run-g134-native-android-google-pay-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 68
+    },
+    {
+      "harness": "scripts/migration/run-g135-google-guest-wallet-checkout-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g136-stripe-guest-provider-sandbox-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 70
+    },
+    {
+      "harness": "scripts/migration/run-g137-marketing-measurement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 76
+    },
+    {
+      "harness": "scripts/migration/run-g138-meta-capi-purchase-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 81
+    },
+    {
+      "harness": "scripts/migration/run-meta-funnel-capi-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 398
+    },
+    {
+      "harness": "scripts/migration/run-meta-production-origin-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 92
+    },
+    {
+      "harness": "scripts/migration/run-g140-meta-catalog-match-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g141-growth-measurement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g142-meta-registration-measurement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 74
+    },
+    {
+      "harness": "scripts/migration/run-g143-snapchat-measurement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g145-retention-measurement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 75
+    },
+    {
+      "harness": "scripts/migration/run-g146-privacy-disclosure-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g147-retention-conversion-measurement-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g148-route-seo-page-boundary-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 71
+    },
+    {
+      "harness": "scripts/migration/run-g149-android-app-links-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g150-mobile-performance-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g151-product-crawler-seo-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 90
+    },
+    {
+      "harness": "scripts/migration/run-g152-mobile-accessibility-structure-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 70
+    },
+    {
+      "harness": "scripts/migration/run-g153-single-toast-runtime-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g154-local-font-delivery-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g155-merchant-return-policy-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 78
+    },
+    {
+      "harness": "scripts/migration/run-g156-merchant-delivery-information-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 74
+    },
+    {
+      "harness": "scripts/migration/run-g157-product-detail-touch-target-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 69
+    },
+    {
+      "harness": "scripts/migration/run-g158-core-conversion-touch-target-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g160-canonical-sitemap-contract-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g162-google-merchant-canonical-links-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-g164-production-recipe-preload-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 72
+    },
+    {
+      "harness": "scripts/migration/run-g165-isolated-production-lifecycle-routing-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 71
+    },
+    {
+      "harness": "scripts/migration/run-g166-event-pos-stock-alert-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 81
+    },
+    {
+      "harness": "scripts/migration/run-g167-google-measurement-protocol-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 1122
+    },
+    {
+      "harness": "scripts/migration/run-g168-google-merchant-additional-image-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 85
+    },
+    {
+      "harness": "scripts/migration/run-g169-product-gallery-images-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 73
+    },
+    {
+      "harness": "scripts/migration/run-approved-product-primary-media-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 139
+    },
+    {
+      "harness": "scripts/migration/run-g170-authentic-product-gallery-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 77
+    },
+    {
+      "harness": "scripts/migration/run-g171-broken-product-gallery-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 64
+    },
+    {
+      "harness": "scripts/migration/run-g172-guest-loyalty-activation-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 68
+    },
+    {
+      "harness": "scripts/migration/run-g173-product-schema-deduplication-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 71
+    },
+    {
+      "harness": "scripts/migration/run-g174-guest-address-lookup-tests.mjs",
+      "exit_code": 0,
+      "duration_ms": 198
+    }
+  ]
+}
