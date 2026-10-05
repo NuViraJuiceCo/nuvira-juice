@@ -1,8 +1,11 @@
 import { Capacitor } from '@capacitor/core';
+import { hasStartupAuthParams } from './publicStorefrontStartup';
 
 const isNode = typeof window === 'undefined';
 const windowObj = isNode ? { localStorage: new Map() } : window;
 const storage = windowObj.localStorage;
+// Preserve the callback boundary before getAppParams removes token URL fields.
+export const startedWithAuthReturn = !isNode && hasStartupAuthParams(window.location.search, window.location.hash);
 const DEFAULT_BASE44_APP_ID = '69d48d0c39891f7945481152';
 const DEFAULT_BASE44_APP_BASE_URL = 'https://nuvirajuice.com';
 const isNuViraProductionDomain = !isNode && /(^|\.)nuvirajuice\.com$/i.test(window.location.hostname);

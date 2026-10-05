@@ -40,7 +40,7 @@ export default function Home({ seoActive = true }) {
 
   const displayFirstName = cachedFirstName || user?.first_name;
 
-  const { data: products = [] } = useQuery({
+  const { data: products = [], refetch: refetchProducts } = useQuery({
     queryKey: ['products'],
     queryFn: async () => {
       try {
@@ -78,17 +78,6 @@ export default function Home({ seoActive = true }) {
     enabled: !!user?.email,
   });
 
-  const { data: userProfile, refetch: refetchProfile } = useQuery({
-    queryKey: ['user-profile', user?.email],
-    queryFn: async () => {
-      const res = await base44.entities.UserProfile.filter({ customer_email: user?.email });
-      return res[0] || null;
-    },
-    enabled: !!user?.email,
-  });
-
-
-
   const featured = products.filter(p => p.is_featured);
   const bestSellers = products.filter(p => p.is_best_seller);
   const seasonal = products.filter(p => p.is_seasonal);
@@ -97,8 +86,6 @@ export default function Home({ seoActive = true }) {
   const unreadCount = notifications.length;
   const showWebsiteFooter = !isNativeAppRuntime();
 
-  // Pull refetch handles from the queries already registered above — no duplicate registration
-  const { refetch: refetchProducts } = useQuery({ queryKey: ['products'] });
   const handleRefresh = async () => {
     await refetchProducts();
   };

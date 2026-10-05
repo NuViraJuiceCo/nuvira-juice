@@ -9,7 +9,9 @@
       "status": "blocked_excluded_from_release",
       "acknowledged_by": "codex-g50c-amendment",
       "acknowledged_at": "2026-06-23T00:00:00Z",
-      "expires_at": "2026-09-30T00:00:00Z"
+      "reviewed_at": "2026-10-05T00:00:00Z",
+      "reviewed_by": "codex-storefront-performance-release",
+      "expires_at": "2026-11-04T00:00:00Z"
     }
   ]
 }

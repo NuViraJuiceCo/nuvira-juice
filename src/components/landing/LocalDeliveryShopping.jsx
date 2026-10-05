@@ -87,7 +87,7 @@ export default function LocalDeliveryShopping({ page }) {
               </a>
             </div>
             <a href="#first-order-offer-details" className="mt-3 inline-flex min-h-11 flex-wrap items-center gap-x-1 rounded-lg bg-primary/8 px-3 py-2 text-xs font-semibold text-foreground sm:mt-4 sm:text-sm">
-              First order? Take 10% off with <strong className="tracking-wide text-primary">WELCOME10.</strong><span className="text-xs font-normal underline underline-offset-2">Terms apply.</span>
+              First online order? Take 10% off with <strong className="tracking-wide text-primary">WELCOME10.</strong><span className="text-xs font-normal underline underline-offset-2">Terms apply.</span>
             </a>
             <p className="mt-2 hidden text-xs leading-5 text-muted-foreground sm:block">Guest checkout is available for standard delivery. Extended routes require review.</p>
           </div>
@@ -149,9 +149,9 @@ export default function LocalDeliveryShopping({ page }) {
             ))}
           </div>
 
-          <aside id="first-order-offer-details" className="mt-6 scroll-mt-24 rounded-2xl border border-primary/25 bg-primary/5 p-5 sm:flex sm:items-start sm:gap-6" aria-label="First-order offer and terms">
-            <div className="shrink-0"><p className="font-heading text-xl font-bold">Your first order, 10% off.</p><p className="mt-1 text-sm">Use <strong className="tracking-wider text-primary">WELCOME10</strong> at checkout.</p></div>
-            <p className="mt-3 max-w-xl text-xs leading-5 text-muted-foreground sm:mt-0">First orders only, once per customer. Order minimums, delivery fees and applicable taxes apply. WELCOME10 cannot be combined with other discounts or reward redemptions. Eligibility is verified at checkout.</p>
+          <aside id="first-order-offer-details" className="mt-6 scroll-mt-24 rounded-2xl border border-primary/25 bg-primary/5 p-5 sm:flex sm:items-start sm:gap-6" aria-label="First-online-order offer and terms">
+            <div className="shrink-0"><p className="font-heading text-xl font-bold">Your first online order, 10% off.</p><p className="mt-1 text-sm">Use <strong className="tracking-wider text-primary">WELCOME10</strong> at app or website checkout.</p></div>
+            <p className="mt-3 max-w-xl text-xs leading-5 text-muted-foreground sm:mt-0">First online orders only, once per customer. Prior event or POS purchases do not disqualify you. Order minimums, delivery fees and applicable taxes apply. WELCOME10 cannot be combined with other discounts or reward redemptions. Eligibility is verified at checkout.</p>
           </aside>
         </div>
       </section>

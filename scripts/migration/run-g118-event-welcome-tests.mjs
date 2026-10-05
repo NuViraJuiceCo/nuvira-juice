@@ -19,7 +19,8 @@ const calendarEventEntity = read('base44/entities/Event.jsonc');
 const eventEditor = read('src/pages/admin/AdminEvents.jsx');
 
 assert.match(journey, /event_customer_welcome:\s*'nuvira\.event\.welcome\.ready'/);
-assert.match(journey, /event_customer_welcome:\s*\['customer_name', 'event_name', 'event_date', 'event_location', 'mailing_address'\]/);
+assert.match(journey, /event_customer_welcome:\s*\['customer_name', 'event_name', 'event_date', 'event_location', 'discount_code', 'mailing_address'\]/);
+assert.match(journey, /EVENT_LOCATION: config\.event_location,\s*DISCOUNT_CODE: 'WELCOME10'/);
 assert.match(journey, /event_welcome:<event_key>:<normalized_email>|event_welcome:\$\{config\.event_key\}:\$\{email\}/);
 assert.match(journey, /orderMatchesVerifiedEvent\(row, config\)/);
 assert.match(journey, /event_attribution_status === 'matched'/);

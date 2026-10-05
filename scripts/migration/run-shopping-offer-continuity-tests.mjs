@@ -62,6 +62,19 @@ const compiled = await build({
   bundle: true, write: false, format: 'cjs', platform: 'node', jsx: 'automatic',
   external: ['react', 'react/jsx-runtime', 'react-router-dom'], logLevel: 'silent',
   plugins: [{ name: 'real-local-source-aliases', setup(builder) {
+    // Icons are decorative for this copy/checkout contract. Stubbing the four
+    // imported symbols avoids traversing lucide's full icon library and keeps
+    // this regression deterministic on synced workspaces.
+    builder.onResolve({ filter: /^lucide-react$/ }, () => ({ path: 'lucide-react', namespace: 'test-icon-stub' }));
+    builder.onLoad({ filter: /.*/, namespace: 'test-icon-stub' }, () => ({
+      loader: 'jsx',
+      contents: `import React from 'react';
+        const Icon = (props) => <svg aria-hidden="true" {...props} />;
+        export const TicketPercent = Icon;
+        export const ArrowRight = Icon;
+        export const Plus = Icon;
+        export const Truck = Icon;`,
+    }));
     builder.onResolve({ filter: /^@\// }, args => {
       const candidate = path.join(root, 'src', args.path.slice(2));
       const found = [candidate, `${candidate}.js`, `${candidate}.jsx`].find(file => fs.existsSync(file));
@@ -80,10 +93,10 @@ const previousFetch = globalThis.fetch;
 globalThis.fetch = () => { throw new Error('External requests are forbidden in this regression harness'); };
 
 try {
-  await check('shared offer really renders evergreen first-order terms without claiming eligibility', () => {
+  await check('shared offer renders evergreen first-online-order terms without claiming eligibility', () => {
     const html = render(React.createElement(components.FirstOrderOffer));
-    assert.match(html, /aria-label="First-order offer"/);
-    for (const phrase of ['10% off', 'WELCOME10', 'Enter WELCOME10 at checkout', 'First orders only, once per customer', 'Cannot be combined with other discounts or reward redemptions', 'Order minimums, delivery fees and applicable taxes apply', 'Eligibility is verified at checkout']) assert.ok(text(html).includes(phrase), phrase);
+    assert.match(html, /aria-label="First-online-order offer"/);
+    for (const phrase of ['10% off', 'WELCOME10', 'Enter WELCOME10 at app or website checkout', 'First online orders only, once per customer', 'Prior event or POS purchases do not disqualify you', 'Cannot be combined with other discounts or reward redemptions', 'Order minimums, delivery fees and applicable taxes apply', 'Eligibility is verified at checkout']) assert.ok(text(html).includes(phrase), phrase);
     assert.doesNotMatch(html, /<button|<input|<form|<details|<summary|\shidden(?:=|\s|>)/);
     assert.doesNotMatch(text(html), /September|October|expires|automatically applied|already applied|free delivery|no minimum/i);
   });
@@ -102,7 +115,7 @@ try {
   await check('real ProductDetail offer slot is limited to juice, shot and bundle categories', () => {
     for (const category of ['juice', 'shot', 'bundle', ' JUICE ']) {
       const html = render(components.productOfferSlot({ category, title: 'Synthetic product', bottle_count: 3 }));
-      assert.match(html, /First-order offer/); assert.match(html, /Ordering and delivery details/);
+      assert.match(html, /First-online-order offer/); assert.match(html, /Ordering and delivery details/);
     }
     for (const category of ['merch', 'bag', 'wellness_pack', 'program', 'other', '', undefined]) {
       assert.equal(render(components.productOfferSlot({ category, title: 'Synthetic product' })), '');
