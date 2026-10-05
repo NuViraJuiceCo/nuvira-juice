@@ -1,0 +1,18 @@
+{
+  "scope": "website-only",
+  "approved_by": "Amar Kahlon",
+  "approval": "Owner approved proceeding with the scoped 30-day exception on 2026-10-05.",
+  "created_at": "2026-10-05T00:00:00Z",
+  "expires_at": "2026-11-04T00:00:00Z",
+  "advisories": ["GHSA-vfj7-8cjw-p6xm", "GHSA-m9gg-hp2v-232j", "GHSA-f596-whhp-79r4"],
+  "reviewed_versions": { "braces": "3.0.3", "@grpc/grpc-js": "1.9.16" },
+  "excluded_browser_packages": [
+    "braces", "micromatch", "chokidar", "fast-glob", "find-yarn-workspace-root",
+    "patch-package", "tailwindcss", "tailwindcss-animate", "@grpc/grpc-js",
+    "@firebase/firestore", "@firebase/firestore-compat", "firebase"
+  ],
+  "assessment": "braces processes repository-controlled build patterns, not customer input. Firestore and its Node gRPC dependencies are not used by the website. Rollup output must contain none of the excluded packages. The Capacitor messaging browser bridge is not the vulnerable gRPC implementation.",
+  "controls": "Only reviewed source and the locked dependency tree may be built. No untrusted build patterns. Exact audit fingerprints remain enforced. Version changes or expiry require renewed review. Production browser module inclusion is checked by every Vite build.",
+  "remediation": "Remove this exception when patched compatible dependencies are available, or migrate away from the affected dependency chains after regression testing. Review no later than expiry.",
+  "not_authorized": ["backend deployment", "native publication", "provider changes", "new advisories", "permanent acceptance"]
+}
