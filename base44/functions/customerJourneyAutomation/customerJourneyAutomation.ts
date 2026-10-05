@@ -131,7 +131,7 @@ const PROVIDER_REQUIRED_FIELDS: Record<string, string[]> = {
   subscription_recommended: ['customer_name', 'favorite_product', 'order_count', 'subscribe_url', 'mailing_address'],
   customer_winback_due: ['customer_name', 'favorite_product', 'favorite_product_description', 'favorite_product_image_url', 'last_order_date', 'program_summary', 'programs_url', 'shop_url', 'mailing_address'],
   marketing_sunset_due: ['customer_name', 'preferences_url', 'shop_url', 'mailing_address'],
-  event_customer_welcome: ['customer_name', 'event_name', 'event_date', 'event_location', 'mailing_address'],
+  event_customer_welcome: ['customer_name', 'event_name', 'event_date', 'event_location', 'discount_code', 'mailing_address'],
 };
 
 const PROVIDER_NUMBER_FIELDS: Record<string, string[]> = {
@@ -730,6 +730,7 @@ async function eventWelcomeSend(base44: any, body: Record<string, any>) {
         EVENT_NAME: config.event_name,
         EVENT_DATE: config.event_date,
         EVENT_LOCATION: config.event_location,
+        DISCOUNT_CODE: 'WELCOME10',
         MAILING_ADDRESS,
       },
     });
@@ -813,6 +814,7 @@ async function evaluateScheduledEventWelcomes(base44: any, now: Date, maxEvents:
           EVENT_NAME: config.event_name,
           EVENT_DATE: config.event_date,
           EVENT_LOCATION: config.event_location,
+          DISCOUNT_CODE: 'WELCOME10',
           MAILING_ADDRESS,
         },
       });
@@ -1565,7 +1567,7 @@ async function evaluateJourneys(base44: any) {
         CUSTOMER_NAME: customerName(profile),
         POINTS: finiteNumber(pointsRecord?.total_points, 0),
         POINTS_RATE: 10,
-        DISCOUNT_CODE: 'NuViraSummer',
+        DISCOUNT_CODE: 'WELCOME10',
         REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000)
           || DEFAULT_GOOGLE_REVIEW_URL,
         REWARDS_URL: protectedCustomerUrl('/rewards'),
@@ -1784,7 +1786,7 @@ async function previewRewardsCampaign(base44: any) {
 
 function journeyProofPayloads(profile: any): Record<string, Record<string, any>> {
   return {
-    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, POINTS_RATE: 10, DISCOUNT_CODE: 'NuViraSummer', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, REWARDS_URL: protectedCustomerUrl('/rewards'), MAILING_ADDRESS },
+    loyalty_joined: { CUSTOMER_NAME: customerName(profile), POINTS: 250, POINTS_RATE: 10, DISCOUNT_CODE: 'WELCOME10', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, REWARDS_URL: protectedCustomerUrl('/rewards'), MAILING_ADDRESS },
     cart_abandoned: { CUSTOMER_NAME: customerName(profile), CART_SUMMARY: '1x OASIS', ITEM_COUNT: 1, CART_TOTAL: 13, CART_IMAGE_URL: PRODUCT_CONTENT.oasis.image_url, RECOVERY_URL: `${APP_URL}/cart`, MAILING_ADDRESS },
     order_delivered: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', REVIEW_URL: normalizeSingleLine(Deno.env.get('NUVIRA_GOOGLE_REVIEW_URL'), 1000) || DEFAULT_GOOGLE_REVIEW_URL, SHOP_URL: `${APP_URL}/shop`, MAILING_ADDRESS },
     purchase_completed: { CUSTOMER_NAME: customerName(profile), ORDER_NUMBER: 'NUVIRA-SANDBOX', MAILING_ADDRESS },
@@ -1798,6 +1800,7 @@ function journeyProofPayloads(profile: any): Record<string, Record<string, any>>
       EVENT_NAME: 'Supplement Superstores St. Peters Customer Appreciation BBQ',
       EVENT_DATE: 'Saturday, August 22, 2026',
       EVENT_LOCATION: 'Supplement Superstores — St. Peters, 181 Mid Rivers Mall Dr., St. Peters, MO 63376',
+      DISCOUNT_CODE: 'WELCOME10',
       MAILING_ADDRESS,
     },
   };

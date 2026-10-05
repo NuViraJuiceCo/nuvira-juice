@@ -316,10 +316,10 @@ export default function DiscountCodes() {
 
             <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
               <div>
-                <p className="text-sm font-medium text-foreground">First order only</p>
-                <p className="text-xs text-muted-foreground">Guests and members without a previous paid purchase. Leave the end date blank for an ongoing offer. Cannot combine with other discounts or rewards.</p>
+                <p className="text-sm font-medium text-foreground">First online order only</p>
+                <p className="text-xs text-muted-foreground">Guests and members without a previous paid app or website purchase. Prior POS or event purchases do not disqualify them. Leave the end date blank for an ongoing offer. Cannot combine with other discounts or rewards.</p>
               </div>
-              <Switch aria-label="First order only" checked={form.first_order_only} onCheckedChange={(first_order_only) => setForm((prev) => ({ ...prev, first_order_only, once_per_customer: first_order_only || prev.once_per_customer }))} />
+              <Switch aria-label="First online order only" checked={form.first_order_only} onCheckedChange={(first_order_only) => setForm((prev) => ({ ...prev, first_order_only, once_per_customer: first_order_only || prev.once_per_customer }))} />
             </div>
 
             <Button type="button" onClick={saveCode} disabled={saving} className="w-full">

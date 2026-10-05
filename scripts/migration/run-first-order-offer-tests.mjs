@@ -91,8 +91,8 @@ await test('three deployment packages contain the identical standalone policy', 
   }
 });
 await test('existing offers require no new history reads or expiry', async () => {
-  assert.equal(policy.firstOrderOfferIsConfigured({ code: 'NUVIRASUMMER' }), true);
-  assert.equal(await policy.firstOrderEligibilityBlock({}, { code: 'NUVIRASUMMER' }, email), null);
+  assert.equal(policy.firstOrderOfferIsConfigured({ code: 'LEGACY10_TEST' }), true);
+  assert.equal(await policy.firstOrderEligibilityBlock({}, { code: 'LEGACY10_TEST' }, email), null);
 });
 await test('ongoing first-order offers require one-use enforcement, with valid optional expiration', () => {
   assert.equal(policy.firstOrderOfferIsConfigured(offer), true);
@@ -112,15 +112,30 @@ await test('member without paid history is eligible', async () => {
 for (const [name, evidence] of [
   ['native paid with no promotion', { Order: [paid()] }],
   ['native paid with a different code', { Order: [paid({ promotion_code: 'DIFFERENT' })] }],
-  ['Shopify POS purchase', { ShopifyOrder: [paid({ financial_status: 'paid', payment_status: '', source_channel: 'pos' })] }],
   ['Shopify online purchase', { ShopifyOrder: [paid({ financial_status: 'paid', payment_status: '', source_channel: 'online_store' })] }],
+  ['historical paid purchase without channel metadata', { ShopifyOrder: [paid({ financial_status: 'paid', payment_status: '' })] }],
   ['captured route review', { DeliveryApprovalRequest: [paid({ status: 'captured', payment_status: '' })] }],
   ['route authorization succeeded', { DeliveryApprovalRequest: [paid({ stripe_authorization_status: 'succeeded', payment_status: '' })] }],
   ['partially refunded paid purchase', { Order: [paid({ payment_status: 'partially_refunded' })] }],
   ['fully refunded paid purchase', { ShopifyOrder: [paid({ payment_status: '', financial_status: 'refunded' })] }],
 ]) {
-  await test(name + ' consumes first-order eligibility', async () => {
+  await test(name + ' consumes first-online-order eligibility', async () => {
     assert.equal(await errorCode(await policy.firstOrderEligibilityBlock(backend(evidence), offer, email)), 'FIRST_ORDER_OFFER_NOT_ELIGIBLE');
+  });
+}
+for (const [name, marker] of [
+  ['source channel', { source_channel: 'pos' }],
+  ['source type', { source_type: 'shopify_pos' }],
+  ['order type', { order_type: 'pos' }],
+  ['fulfillment method', { fulfillment_method: 'pos' }],
+  ['native source', { native_source: 'shopify_pos' }],
+  ['explicit flag', { is_pos_order: true }],
+  ['array tag', { tags: ['native_order_ops', 'event_sale'] }],
+  ['serialized tag', { tags: 'native_order_ops, pos_sale' }],
+]) {
+  await test('paid POS purchase identified by ' + name + ' preserves first-online-order eligibility', async () => {
+    const row = paid({ financial_status: 'paid', payment_status: '', ...marker });
+    assert.equal(await policy.firstOrderEligibilityBlock(backend({ ShopifyOrder: [row] }), offer, email), null);
   });
 }
 for (const [name, row] of [
@@ -133,7 +148,7 @@ for (const [name, row] of [
   ['sandbox number', paid({ order_number: 'NV-SBX-123' })],
   ['recording test order', paid({ order_number: 'G81-TEST-OASIS5-RECORDING' })],
 ]) {
-  await test(name + ' does not consume first-order eligibility', async () => {
+  await test(name + ' does not consume first-online-order eligibility', async () => {
     assert.equal(await policy.firstOrderEligibilityBlock(backend({ Order: [row] }), offer, email), null);
   });
 }
@@ -188,7 +203,7 @@ await test('missing email is blocked without history queries', async () => {
 await test('new offer does not stack; existing promo behavior is preserved', async () => {
   for (const amounts of [[1, 0, 0], [0, 2, 0], [0, 0, 3]]) assert.equal((await policy.firstOrderStackingBlock(offer, amounts)).status, 400);
   assert.equal(policy.firstOrderStackingBlock(offer, [0, 0, 0]), null);
-  assert.equal(policy.firstOrderStackingBlock({ code: 'NUVIRASUMMER' }, [3, 2, 1]), null);
+  assert.equal(policy.firstOrderStackingBlock({ code: 'LEGACY10_TEST' }, [3, 2, 1]), null);
 });
 await test('zero-dollar rewards and free items cannot bypass the new offer non-stacking rule', async () => {
   for (const checkout of [
@@ -201,7 +216,7 @@ await test('zero-dollar rewards and free items cannot bypass the new offer non-s
     { items: [{ product_id: 'synthetic', birthday_product_id: 'synthetic', price: 0 }] },
   ]) {
     assert.equal(policy.firstOrderStackingBlock(offer, [0, 0, 0], checkout).status, 400);
-    assert.equal(policy.firstOrderStackingBlock({ code: 'NUVIRASUMMER' }, [0, 0, 0], checkout), null);
+    assert.equal(policy.firstOrderStackingBlock({ code: 'LEGACY10_TEST' }, [0, 0, 0], checkout), null);
   }
   assert.equal(policy.firstOrderStackingBlock(offer, [0], { items: [{ product_id: 'synthetic', price: 13 }] }), null);
 });
@@ -371,11 +386,11 @@ await test('schema, UI, trusted command and gateway packaging support the opt-in
   const schema = JSON.parse(read('base44/entities/DiscountCode.jsonc'));
   assert.equal(schema.properties.first_order_only.default, false);
   assert.equal(schema.rls.update.user_condition.role, 'admin');
-  assert.match(read('src/pages/admin/DiscountCodes.jsx'), /First order only/);
+  assert.match(read('src/pages/admin/DiscountCodes.jsx'), /First online order only/);
   assert.match(read('src/pages/admin/DiscountCodes.jsx'), /first_order_only: form.first_order_only/);
   assert.match(read('src/pages/Checkout.jsx'), /points_discount: isGuestCheckout \? 0 : pointsDiscount/);
   for (const root of ['getAdminOperationsDashboardSummary', 'getCustomerAccountDashboardData']) {
     assert.match(read('base44/functions/' + root + '/entry.ts'), /Bundle revision: first-order-offer-20260907/);
   }
 });
-console.log('First-order offer tests: ' + passed + ' passed; mocked data/providers only, no live writes.');
+console.log('First-online-order offer tests: ' + passed + ' passed; mocked data/providers only, no live writes.');

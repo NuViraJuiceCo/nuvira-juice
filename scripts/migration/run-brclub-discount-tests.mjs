@@ -142,19 +142,19 @@ assert.equal(
   true,
 );
 
-assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend(), 'customer@example.com', 'NUVIRASUMMER'), false);
+assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend(), 'customer@example.com', 'LEGACY10_TEST'), false);
 assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend({
-  orders: [{ customer_email: 'customer@example.com', payment_status: 'pending', promotion_code: 'NUVIRASUMMER' }],
-}), 'customer@example.com', 'NUVIRASUMMER'), false);
+  orders: [{ customer_email: 'customer@example.com', payment_status: 'pending', promotion_code: 'LEGACY10_TEST' }],
+}), 'customer@example.com', 'LEGACY10_TEST'), false);
 assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend({
-  orders: [{ customer_email: 'customer@example.com', payment_status: 'paid', promotion_code: 'NUVIRASUMMER' }],
-}), 'customer@example.com', 'NUVIRASUMMER'), true);
+  orders: [{ customer_email: 'customer@example.com', payment_status: 'paid', promotion_code: 'LEGACY10_TEST' }],
+}), 'customer@example.com', 'LEGACY10_TEST'), true);
 assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend({
-  shopifyOrders: [{ customer_email: 'customer@example.com', financial_status: 'refunded', discount_codes: ['NUVIRASUMMER'] }],
-}), 'customer@example.com', 'NUVIRASUMMER'), true);
+  shopifyOrders: [{ customer_email: 'customer@example.com', financial_status: 'refunded', discount_codes: ['LEGACY10_TEST'] }],
+}), 'customer@example.com', 'LEGACY10_TEST'), true);
 assert.equal(await resolverContext.result.customerHasConsumedDiscount(redemptionBackend({
-  approvalRequests: [{ customer_email: 'customer@example.com', status: 'captured', discount_code: 'NUVIRASUMMER' }],
-}), 'customer@example.com', 'NUVIRASUMMER'), true);
+  approvalRequests: [{ customer_email: 'customer@example.com', status: 'captured', discount_code: 'LEGACY10_TEST' }],
+}), 'customer@example.com', 'LEGACY10_TEST'), true);
 
 assert.match(checkoutSource, /mode:\s*'validate_discount_code'/);
 assert.match(checkoutSource, /discount_code:\s*checkoutCode\?\.code/);

@@ -20,8 +20,24 @@ function testPurchase(row) {
     /^(?:NV-SBX-|G\d+-TEST-)/i.test(String(row?.order_number || row?.shopify_order_number || row?.created_order_number || ''));
 }
 
+function pointOfSalePurchase(row) {
+  if (!row) return false;
+  const values = [row.source_channel, row.source_type, row.order_type, row.fulfillment_method,
+    row.fulfillment_type, row.native_source]
+    .map(value => String(value || '').trim().toLowerCase());
+  const tags = Array.isArray(row.tags)
+    ? row.tags.map(value => String(value || '').trim().toLowerCase())
+    : String(row.tags || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+  return row.is_pos_order === true || values.some(value => value === 'pos' || value === 'shopify_pos') ||
+    tags.some(value => ['pos', 'pos_sale', 'event_pos', 'event_sale', 'shopify_pos'].includes(value));
+}
+
 export function hasPaidPurchaseEvidence(row) {
-  if (!row || testPurchase(row)) return false;
+  // WELCOME10 is an online-acquisition offer. A prior event/POS sale does not
+  // consume first-online-order eligibility, but every other paid purchase does.
+  // Unknown historical records remain blocking so missing channel metadata
+  // cannot make a repeat online buyer appear new.
+  if (!row || testPurchase(row) || pointOfSalePurchase(row)) return false;
   // Refunded purchases still count as a previous purchase, as with one-use codes.
   // Unpaid/cancelled attempts and un-captured authorization holds do not count.
   const states = [row.payment_status, row.financial_status, row.refund_status]
@@ -68,7 +84,7 @@ export async function firstOrderEligibilityBlock(base44, promotion, customerEmai
       for (const name of ['Order', 'ShopifyOrder', 'DeliveryApprovalRequest']) {
         if (await priorPurchaseForEmail(base44.asServiceRole.entities[name], identity)) {
           return Response.json({ ok: false, error_code: 'FIRST_ORDER_OFFER_NOT_ELIGIBLE',
-            error: 'This first-order offer is not available for this checkout. Remove it to continue.' }, { status: 409 });
+            error: 'This first-online-order offer is not available for this checkout. Remove it to continue.' }, { status: 409 });
         }
       }
     }
@@ -89,5 +105,5 @@ export function firstOrderStackingBlock(promotion, discounts = [], checkout = {}
       || String(item?.product_id || item?.id || '').startsWith('__free_reward_')));
   if (!selectedReward && !discounts.some(value => Number(value || 0) > 0)) return null;
   return Response.json({ ok: false, error_code: 'FIRST_ORDER_OFFER_NOT_COMBINABLE',
-    error: 'Use this first-order offer without other discounts or rewards.' }, { status: 400 });
+    error: 'Use this first-online-order offer without other discounts or rewards.' }, { status: 400 });
 }
