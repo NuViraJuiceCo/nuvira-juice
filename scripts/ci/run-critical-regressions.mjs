@@ -58,6 +58,7 @@ const harnesses = [
   'scripts/migration/run-shopify-legacy-sync-auth-tests.mjs',
   'scripts/migration/run-admin-package-promotion-tests.mjs',
   'scripts/migration/run-auth-startup-performance-tests.mjs',
+  'scripts/migration/run-public-storefront-startup-tests.mjs',
   'scripts/migration/run-g183-auth-return-state-tests.mjs',
   'scripts/migration/run-g184-auth-transport-consent-tests.mjs',
   'scripts/migration/run-g185-auth-query-isolation-tests.mjs',

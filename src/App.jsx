@@ -18,6 +18,9 @@ import { onboardingQueryOptions } from '@/lib/onboardingQuery';
 import { preloadStartupPage, startupPageLoaders } from '@/lib/startupPages';
 import { hasBase44AuthParamsInUrl, redirectToLogin } from '@/lib/nativeAuthRedirect';
 import { isAdminUser } from '@/lib/admin-access';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
+import { startedWithAuthReturn } from '@/lib/app-params';
+import { canRenderPublicStorefront } from '@/lib/publicStorefrontStartup';
 import {
   ensureAuthenticatedNativePushRegistration,
   installNativePushListeners,
@@ -294,6 +297,13 @@ const AuthenticatedApp = () => {
   );
   const shouldRouteToLogin = Boolean(authError?.type === 'auth_required' && !isResetSignInRoute);
   const isProtectedStartupRoute = /^\/(account|admin|notifications|rewards|return-reward)(\/|$)/.test(location.pathname);
+  const publicStorefrontReady = canRenderPublicStorefront({
+    pathname: location.pathname,
+    search: location.search,
+    hash: location.hash,
+    isNative: isNativeAppRuntime(),
+    startedWithAuthReturn,
+  });
 
   React.useEffect(() => {
     if (!shouldRouteToLogin) {
@@ -306,9 +316,12 @@ const AuthenticatedApp = () => {
     navigateToLogin();
   }, [navigateToLogin, shouldRouteToLogin]);
 
-  // Show loading spinner while checking app public settings, auth, or profile
+  // Public web browsing does not depend on account reads. Other routes still
+  // wait for verified auth/profile state, including native and OAuth returns.
   if (isLoadingPublicSettings || (!isResetSignInRoute && isLoadingAuth) || profileRequestPending) {
-    return <StartupStatus phase={profileRequestPending && !isLoadingAuth ? 'profile' : 'auth'} />;
+    if (!publicStorefrontReady) {
+      return <StartupStatus phase={profileRequestPending && !isLoadingAuth ? 'profile' : 'auth'} />;
+    }
   }
 
   if (isProtectedStartupRoute && !user && !isResetSignInRoute && authError?.type === 'bootstrap_timeout') {
@@ -340,7 +353,7 @@ const AuthenticatedApp = () => {
     }
   }
 
-  if (profileRequestFailed) {
+  if (profileRequestFailed && !publicStorefrontReady) {
     return (
       <div className="fixed inset-0 flex items-center justify-center px-6" role="alert" aria-live="polite">
         <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-5 text-center shadow-sm">
@@ -361,7 +374,7 @@ const AuthenticatedApp = () => {
   }
 
   // Route to account setup declaratively so native startup never hard-reloads during render.
-  if (shouldRouteToAccountSetup) {
+  if (shouldRouteToAccountSetup && !isLoadingAuth && !isLoadingPublicSettings) {
     const returnTo = `${location.pathname}${location.search || ''}${location.hash || ''}`;
     return <Navigate to={`/account-setup?return_to=${encodeURIComponent(returnTo)}`} replace />;
   }
