@@ -344,6 +344,32 @@
     ],
     "vulnerability_waivers": [
       {
+        "fingerprint": "460da61ce240d3bcc30bd87879de66c1e7f07f98dd9948b7e27d0eaf41dc8d02",
+        "package": "micromatch",
+        "dependency_path": "node_modules/micromatch",
+        "source_id": "braces",
+        "scope": "website-only",
+        "reason": "Same approved advisory/path; CI registry reports fix_available=false rather than the local true. No advisory or severity expansion.",
+        "reachability_assessment": "Repository-controlled build patterns only; no customer input. Affected modules are excluded from browser output.",
+        "compensating_controls": "config/release/website-dependency-exception.json; Vite enforces module exclusion, reviewed-version guard and expiry.",
+        "owner": "Amar Kahlon",
+        "created_at": "2026-10-05T00:00:00Z",
+        "expires_at": "2026-11-04T00:00:00Z"
+      },
+      {
+        "fingerprint": "94f364c157479261614bde887c07deb8484faef5011f37225477ad6306134b1b",
+        "package": "braces",
+        "dependency_path": "node_modules/braces",
+        "source_id": "1240992",
+        "scope": "website-only",
+        "reason": "Same approved advisory/path; CI registry reports fix_available=false rather than the local true. No advisory or severity expansion.",
+        "reachability_assessment": "Repository-controlled build patterns only; no customer input. Affected modules are excluded from browser output.",
+        "compensating_controls": "config/release/website-dependency-exception.json; Vite enforces module exclusion, reviewed-version guard and expiry.",
+        "owner": "Amar Kahlon",
+        "created_at": "2026-10-05T00:00:00Z",
+        "expires_at": "2026-11-04T00:00:00Z"
+      },
+      {
         "fingerprint": "1d7b69c0e637876e0e409c65158030247d7fdd18734a8df14cda9e7f302cee60",
         "package": "tailwindcss",
         "dependency_path": "node_modules/tailwindcss",
