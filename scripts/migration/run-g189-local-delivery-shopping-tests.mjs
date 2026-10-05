@@ -147,12 +147,12 @@ check('Trio count minimum never presented as universal area eligibility', () => 
   assert.ok(shopping.includes('at least 3 juices, 6 shots, or an equivalent mix'));
   assert.match(shopping, /not a straight-line radius/);
 });
-check('WELCOME10 offer retains explicit first order/nonstacking/minimum terms', () => {
-  for (const text of ['Your first order, 10% off.', 'WELCOME10', 'First orders only, once per customer.', 'WELCOME10 cannot be combined with other discounts or reward redemptions.', 'Eligibility is verified at checkout.']) assert.ok(shopping.includes(text), text);
+check('WELCOME10 offer retains explicit first online order/POS/nonstacking/minimum terms', () => {
+  for (const text of ['Your first online order, 10% off.', 'WELCOME10', 'First online orders only, once per customer.', 'Prior event or POS purchases do not disqualify you.', 'WELCOME10 cannot be combined with other discounts or reward redemptions.', 'Eligibility is verified at checkout.']) assert.ok(shopping.includes(text), text);
   assert.match(firstOrder, /once_per_customer === true/);
   assert.match(firstOrder, /FIRST_ORDER_OFFER_NOT_COMBINABLE/);
   assert.ok(!/September|ends tonight|limited.time|free delivery/i.test(shopping));
-  assert.ok(shopping.indexOf('First order? Take 10% off with') < shopping.indexOf('Featured NuVira Trio bundle'));
+  assert.ok(shopping.indexOf('First online order? Take 10% off with') < shopping.indexOf('Featured NuVira Trio bundle'));
   assert.ok(shopping.includes('href="#first-order-offer-details"'));
   assert.ok(!shopping.includes('No account required'));
   assert.ok(shopping.includes('Guest checkout is available for standard delivery. Extended routes require review.'));

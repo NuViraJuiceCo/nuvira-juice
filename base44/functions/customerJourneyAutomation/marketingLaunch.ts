@@ -582,7 +582,7 @@ function marketingHtml(): string {
 <tr><td style="padding:32px 28px;"><p style="margin:0 0 12px;font-size:16px;">Hi {{{contact.first_name|there}}},</p>
 <h1 style="margin:0 0 14px;font-size:28px;line-height:1.2;color:#173c32;">Thank you for being part of NuVira.</h1>
 <p style="margin:0 0 18px;font-size:16px;line-height:1.65;color:#38584f;">We are grateful that you have supported NuVira Juice Company. We would love to welcome you into NuVira Rewards, where eligible purchases can earn points toward future rewards.</p>
-<div style="margin:22px 0;padding:22px;border-radius:16px;background:#f6edd3;text-align:center;"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6b5421;">One-time 10% off your next purchase</div><div style="margin-top:8px;font-size:28px;font-weight:800;color:#173c32;">NuViraSummer</div></div>
+<div style="margin:22px 0;padding:22px;border-radius:16px;background:#f6edd3;text-align:center;"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6b5421;">10% off your first online order</div><div style="margin-top:8px;font-size:28px;font-weight:800;color:#173c32;">WELCOME10</div><div style="margin-top:8px;font-size:13px;line-height:1.5;color:#6b5421;">Use once at app or website checkout. Prior event or POS purchases do not disqualify you.</div></div>
 <p style="margin:22px 0;text-align:center;"><a href="${APP_URL}/rewards" style="display:inline-block;padding:13px 22px;border-radius:999px;background:#173c32;color:#fff;text-decoration:none;font-weight:800;">Join or View NuVira Rewards</a></p>
 <p style="margin:22px 0 0;font-size:16px;line-height:1.65;color:#38584f;">If NuVira has been part of your wellness journey, an honest Google review would mean a great deal to our small business.</p>
 <p style="margin:16px 0 24px;text-align:center;"><a href="${reviewUrl}" style="color:#173c32;font-weight:800;">Leave a Google Review</a></p>
@@ -650,7 +650,7 @@ async function createCustomerDraft(base44: any, body: any): Promise<Response> {
       unsubscribe_link: true,
       promotional_identification: true,
       google_review_link: true,
-      discount_code: 'NuViraSummer',
+      discount_code: 'WELCOME10',
       no_undefined_placeholders: true,
     },
   });
