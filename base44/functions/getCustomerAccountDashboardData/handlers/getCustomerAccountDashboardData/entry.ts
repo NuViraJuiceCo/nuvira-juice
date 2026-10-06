@@ -979,128 +979,170 @@ export default async function handler(req: Request) {
     }
     rememberProfile(customerProfile);
 
-    // ── STEP 3: Load subscriptions across all identities ─────────────────────
-    const allSubs = [];
-    const seenSubIds = new Set();
-    for (const email of identityList) {
-      const subs = await base44.asServiceRole.entities.Subscription.filter(
-        { customer_email: email },
-        '-created_date',
-        50
-      );
-      for (const sub of subs) {
-        const dedupeKey = sub.stripe_subscription_id || sub.id;
-        if (!seenSubIds.has(dedupeKey)) {
-          seenSubIds.add(dedupeKey);
-          allSubs.push(sub);
+    // Identity resolution must finish before any account-data read starts.
+    // These five sections are independent, read-only and fixed in number; keep
+    // each section's identity traversal and first-record/error rules unchanged.
+    const readSubscriptions = async () => {
+      // ── STEP 3: Load subscriptions across all identities ─────────────────────
+      const allSubs = [];
+      const seenSubIds = new Set();
+      for (const email of identityList) {
+        const subs = await base44.asServiceRole.entities.Subscription.filter(
+          { customer_email: email },
+          '-created_date',
+          50
+        );
+        for (const sub of subs) {
+          const dedupeKey = sub.stripe_subscription_id || sub.id;
+          if (!seenSubIds.has(dedupeKey)) {
+            seenSubIds.add(dedupeKey);
+            allSubs.push(sub);
+          }
         }
       }
-    }
 
-    // Active = status is active or paused (not cancelled, not refunded, not quarantined/failed)
-    const activeSubs = allSubs.filter(s =>
-      s.status === 'active' || s.status === 'paused'
-    );
-    const currentRitual = activeSubs.find(s => s.status === 'active') || activeSubs[0] || null;
-
-    // ── STEP 4: Load orders across all identities ─────────────────────────────
-    const allOrders = [];
-    const seenOrderPIs = new Set();
-    for (const email of identityList) {
-      const orders = await base44.asServiceRole.entities.Order.filter(
-        { customer_email: email },
-        '-created_date',
-        100
+      // Keep section-local validation before the next section's error is observed.
+      const activeSubs = allSubs.filter(s =>
+        s.status === 'active' || s.status === 'paused'
       );
-      for (const order of orders) {
-        // Dedupe by order_number first (most reliable), then PI, then entity id
-        // Using order_number prevents hiding a refunded order that shares a PI with another attempt
-        const dedupeKey = order.order_number || order.stripe_payment_intent_id || order.id;
-        if (!seenOrderPIs.has(dedupeKey)) {
-          seenOrderPIs.add(dedupeKey);
-          allOrders.push(order);
+      const currentRitual = activeSubs.find(s => s.status === 'active') || activeSubs[0] || null;
+      return { allSubs, activeSubs, currentRitual };
+    };
+
+    const readOrderHistory = async () => {
+      // ── STEP 4: Load orders across all identities ─────────────────────────────
+      const allOrders = [];
+      const seenOrderPIs = new Set();
+      for (const email of identityList) {
+        const orders = await base44.asServiceRole.entities.Order.filter(
+          { customer_email: email },
+          '-created_date',
+          100
+        );
+        for (const order of orders) {
+          // Dedupe by order_number first (most reliable), then PI, then entity id
+          // Using order_number prevents hiding a refunded order that shares a PI with another attempt
+          const dedupeKey = order.order_number || order.stripe_payment_intent_id || order.id;
+          if (!seenOrderPIs.has(dedupeKey)) {
+            seenOrderPIs.add(dedupeKey);
+            allOrders.push(order);
+          }
         }
       }
-    }
 
-    // Valid paid orders (for count display — excludes test/abandoned/unpaid)
-    const validOrders = allOrders.filter(o =>
-      (o.payment_status === 'paid' || o.payment_status === 'refunded' || o.payment_captured === true || o.financial_status === 'paid' || o.financial_status === 'refunded') &&
-      !o.is_abandoned_checkout &&
-      !o.is_test_order
-    );
+      // Valid paid orders (for count display — excludes test/abandoned/unpaid)
+      const validOrders = allOrders.filter(o =>
+        (o.payment_status === 'paid' || o.payment_status === 'refunded' || o.payment_captured === true || o.financial_status === 'paid' || o.financial_status === 'refunded') &&
+        !o.is_abandoned_checkout &&
+        !o.is_test_order
+      );
 
-    // All orders to show in Order History: everything real except test/abandoned/never-paid
-    // Keep: paid, refunded, cancelled-after-payment, delivered, any status where payment was captured
-    // Hide: test orders, abandoned checkouts, orders where payment was never captured (failed/pending with no capture)
-    let allOrdersForHistory = allOrders.filter(o => {
-      if (o.is_test_order) return false;
-      if (o.is_abandoned_checkout) return false;
-      // Never show orders where payment was never captured at all
-      const paymentWasCaptured = o.payment_captured === true
-        || o.payment_status === 'paid'
-        || o.payment_status === 'refunded'
-        || o.financial_status === 'paid'
-        || o.financial_status === 'refunded';
-      if (!paymentWasCaptured) return false;
-      return true;
-    });
-
-    allOrdersForHistory = await applyLimitedNativeFirstOrderHistory(base44, allOrdersForHistory);
-    const authoritativeOrders = await loadOwnedAuthoritativeOrders(base44, identityList, resolvedProfiles);
-    allOrdersForHistory = mergeOwnedAuthoritativeOrderHistory(allOrdersForHistory, authoritativeOrders);
-    allOrdersForHistory = await applyOwnedDeliveryProofToOrderHistory(base44, allOrdersForHistory, identityList);
-
-    console.log(`[getCustomerAccountDashboardData] sourceOrders=${allOrders.length} sourceValidOrders=${validOrders.length} authoritativeOrders=${authoritativeOrders.length} customerHistoryOrders=${allOrdersForHistory.length}`);
-
-    // ── STEP 5: Load credits across all identities ────────────────────────────
-    let creditRecord = null;
-    for (const email of identityList) {
-      const credits = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: email });
-      if (credits.length > 1) throw new Error('credit_account_ambiguous');
-      if (credits[0]) { creditRecord = credits[0]; break; }
-    }
-
-    const creditTotal = Number(creditRecord?.balance ?? 0);
-    const creditHeld = Number(creditRecord?.reserved_balance ?? 0);
-    const availableCredits = [creditTotal, creditHeld].every(value => Number.isFinite(value) && value >= 0)
-      && creditHeld <= creditTotal ? Math.round((creditTotal - creditHeld) * 100) / 100 : 0;
-
-    // ── STEP 6: Load loyalty points across all identities ─────────────────────
-    let pointsRecord = null;
-    let ownedPointsRows = [];
-    const rewardsNativeReadConfig = customerRewardsLimitedNativeFirstConfig();
-    const rewardsNativeReadActive = customerRewardsLimitedNativeReadsActive(rewardsNativeReadConfig);
-    for (const email of identityList) {
-      const pts = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: email });
-      if (rewardsNativeReadActive) ownedPointsRows = uniqueRows([...ownedPointsRows, ...pts]);
-      if (pts[0] && !pointsRecord) {
-        pointsRecord = pts[0];
-        if (!rewardsNativeReadActive) break;
-      }
-    }
-
-    if (rewardsNativeReadActive) {
-      const activeRewardTiers = await safeFilter(base44.asServiceRole.entities.RewardTier, { is_active: true }, 'sort_order', 20);
-      const selectedRewardsRead = selectLimitedNativeFirstRewardsPointsRecord({
-        currentPointsRecord: pointsRecord,
-        ownedPointsRows,
-        activeRewardTiers,
-        config: rewardsNativeReadConfig,
+      // All orders to show in Order History: everything real except test/abandoned/never-paid
+      // Keep: paid, refunded, cancelled-after-payment, delivered, any status where payment was captured
+      // Hide: test orders, abandoned checkouts, orders where payment was never captured (failed/pending with no capture)
+      let allOrdersForHistory = allOrders.filter(o => {
+        if (o.is_test_order) return false;
+        if (o.is_abandoned_checkout) return false;
+        // Never show orders where payment was never captured at all
+        const paymentWasCaptured = o.payment_captured === true
+          || o.payment_status === 'paid'
+          || o.payment_status === 'refunded'
+          || o.financial_status === 'paid'
+          || o.financial_status === 'refunded';
+        if (!paymentWasCaptured) return false;
+        return true;
       });
-      pointsRecord = selectedRewardsRead.pointsRecord;
-    }
 
-    // ── STEP 7: Unread notification count ─────────────────────────────────────
-    let unreadCount = 0;
-    for (const email of identityList) {
-      const notifs = await base44.asServiceRole.entities.Notification.filter(
-        { customer_email: email, is_read: false },
-        '-created_date',
-        50
-      );
-      unreadCount += notifs.length;
+      allOrdersForHistory = await applyLimitedNativeFirstOrderHistory(base44, allOrdersForHistory);
+      const authoritativeOrders = await loadOwnedAuthoritativeOrders(base44, identityList, resolvedProfiles);
+      allOrdersForHistory = mergeOwnedAuthoritativeOrderHistory(allOrdersForHistory, authoritativeOrders);
+      allOrdersForHistory = await applyOwnedDeliveryProofToOrderHistory(base44, allOrdersForHistory, identityList);
+
+      console.log(`[getCustomerAccountDashboardData] sourceOrders=${allOrders.length} sourceValidOrders=${validOrders.length} authoritativeOrders=${authoritativeOrders.length} customerHistoryOrders=${allOrdersForHistory.length}`);
+      return allOrdersForHistory;
+    };
+
+    const readCredits = async () => {
+      // ── STEP 5: Load credits across all identities ────────────────────────────
+      let creditRecord = null;
+      for (const email of identityList) {
+        const credits = await base44.asServiceRole.entities.NuViraCredit.filter({ customer_email: email });
+        if (credits.length > 1) throw new Error('credit_account_ambiguous');
+        if (credits[0]) { creditRecord = credits[0]; break; }
+      }
+
+      const creditTotal = Number(creditRecord?.balance ?? 0);
+      const creditHeld = Number(creditRecord?.reserved_balance ?? 0);
+      const availableCredits = [creditTotal, creditHeld].every(value => Number.isFinite(value) && value >= 0)
+        && creditHeld <= creditTotal ? Math.round((creditTotal - creditHeld) * 100) / 100 : 0;
+      return { creditRecord, availableCredits };
+    };
+
+    const readPoints = async () => {
+      // ── STEP 6: Load loyalty points across all identities ─────────────────────
+      let pointsRecord = null;
+      let ownedPointsRows = [];
+      const rewardsNativeReadConfig = customerRewardsLimitedNativeFirstConfig();
+      const rewardsNativeReadActive = customerRewardsLimitedNativeReadsActive(rewardsNativeReadConfig);
+      for (const email of identityList) {
+        const pts = await base44.asServiceRole.entities.UserPoints.filter({ customer_email: email });
+        if (rewardsNativeReadActive) ownedPointsRows = uniqueRows([...ownedPointsRows, ...pts]);
+        if (pts[0] && !pointsRecord) {
+          pointsRecord = pts[0];
+          if (!rewardsNativeReadActive) break;
+        }
+      }
+
+      if (rewardsNativeReadActive) {
+        const activeRewardTiers = await safeFilter(base44.asServiceRole.entities.RewardTier, { is_active: true }, 'sort_order', 20);
+        const selectedRewardsRead = selectLimitedNativeFirstRewardsPointsRecord({
+          currentPointsRecord: pointsRecord,
+          ownedPointsRows,
+          activeRewardTiers,
+          config: rewardsNativeReadConfig,
+        });
+        pointsRecord = selectedRewardsRead.pointsRecord;
+      }
+      return pointsRecord;
+    };
+
+    const readUnreadNotifications = async () => {
+      // ── STEP 7: Unread notification count ─────────────────────────────────────
+      let unreadCount = 0;
+      for (const email of identityList) {
+        const notifs = await base44.asServiceRole.entities.Notification.filter(
+          { customer_email: email, is_read: false },
+          '-created_date',
+          50
+        );
+        unreadCount += notifs.length;
+      }
+      return unreadCount;
+    };
+
+    // Observe every rejection immediately, then consume in the original section
+    // order. An early section failure need not wait for slower later sections,
+    // while simultaneous failures keep their existing error precedence. These
+    // reads never write; no partial data is returned when a section fails.
+    const sections = [
+      readSubscriptions(),
+      readOrderHistory(),
+      readCredits(),
+      readPoints(),
+      readUnreadNotifications(),
+    ].map(read => read.then(
+      value => ({ status: 'fulfilled', value }),
+      reason => ({ status: 'rejected', reason }),
+    ));
+    const values = [];
+    for (const sectionRead of sections) {
+      const section = await sectionRead;
+      if (section.status === 'rejected') throw section.reason;
+      values.push(section.value);
     }
+    const [subscriptionData, allOrdersForHistory, creditData, pointsRecord, unreadCount] = values;
+    const { allSubs, activeSubs, currentRitual } = subscriptionData;
+    const { creditRecord, availableCredits } = creditData;
 
     console.log(`[getCustomerAccountDashboardData] Done. identities=${identityList.length} subs=${allSubs.length} active_subs=${activeSubs.length} orders=${allOrdersForHistory.length} credits=${creditRecord?.balance || 0} pts=${pointsRecord?.total_points || 0}`);
 

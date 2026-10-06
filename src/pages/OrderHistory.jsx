@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { customerDashboardQueryOptions, customerDashboardOrders, customerDashboardOrderPollInterval } from '@/lib/customerDashboardQueries';
 import { useAuth } from '@/lib/AuthContext';
 import { ArrowLeft, ChevronRight, Package, RotateCcw, Leaf, MapPin, Camera } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
@@ -52,19 +53,10 @@ export default function OrderHistory() {
   });
 
   const { data: orders = [], isLoading, refetch } = useQuery({
-    queryKey: ['my-orders-all', user?.email],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
-      return res.data?.all_orders_raw || [];
-    },
-    enabled: !!user?.email,
-    staleTime: 30 * 1000,
-    refetchInterval: query => {
-      const rows = query.state.data || [];
-      return rows.some(order => !['delivered', 'picked_up', 'cancelled', 'refunded', 'failed'].includes(order?.status)) ? 60000 : false;
-    },
+    ...customerDashboardQueryOptions(base44, user),
+    select: customerDashboardOrders,
+    refetchInterval: customerDashboardOrderPollInterval,
     refetchIntervalInBackground: false,
-    refetchOnMount: 'always',
     refetchOnWindowFocus: true,
   });
 

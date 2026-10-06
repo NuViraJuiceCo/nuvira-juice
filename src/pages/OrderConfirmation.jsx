@@ -6,6 +6,8 @@ import { HEALTH_ADVISORY_CONFIG } from '@/components/HealthAdvisory';
 import { SAFE_TOP_PADDING } from '@/components/layout/MobilePageHeader';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateCustomerDashboard } from '@/lib/customerDashboardQueries';
 import { CheckCircle, Truck, ArrowRight, Home, Clock, Mail, Gift, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
@@ -38,6 +40,7 @@ const POLL_INTERVAL_MS = 3000;
  * NEVER navigates back to /checkout after a successful payment.
  */
 export default function OrderConfirmation() {
+  const queryClient = useQueryClient();
   const queryParams = new URLSearchParams(window.location.search);
   const sessionId   = queryParams.get('session_id');
   const orderNumber = queryParams.get('order_number');
@@ -63,6 +66,7 @@ export default function OrderConfirmation() {
   const timeoutRef = useRef(null);
   const startTime  = useRef(Date.now());
   const snapPurchaseTrackedRef = useRef('');
+  const dashboardOrdersInvalidatedRef = useRef(new Set());
 
   useEffect(() => {
     if (lookupMode === 'none') return;
@@ -203,6 +207,16 @@ export default function OrderConfirmation() {
 
     return stopPolling;
   }, []);
+
+  useEffect(() => {
+    // `order` is populated only by the accepted backend/entity readbacks above.
+    // URL parameters or Stripe-session status alone never refresh account data.
+    if (classifyOrderConfirmation(order) !== 'confirmed') return;
+    const orderKey = String(order.id || order.order_number || '');
+    if (!orderKey || dashboardOrdersInvalidatedRef.current.has(orderKey)) return;
+    dashboardOrdersInvalidatedRef.current.add(orderKey);
+    void invalidateCustomerDashboard(queryClient);
+  }, [order, queryClient]);
 
   useEffect(() => {
     if (!order || (lookupMode !== 'session_id' && lookupMode !== 'order_number')) return undefined;

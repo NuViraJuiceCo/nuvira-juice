@@ -29,7 +29,7 @@ function load(file, imports = {}, globals = {}) {
 const policy = load('src/lib/publicStorefrontStartup.js');
 const publicRoutes = ['/', '/shop', '/SHOP/', '/shop/product-id', '/product/oasis.html',
   '/products/aura', '/program/radiance', '/about', '/contact', '/support', '/events', '/delivery.html',
-  '/fresh-juice-delivery-st-louis'];
+  '/fresh-juice-delivery-st-louis', '/connect', '/CONNECT/', '/subscribe', '/SUBSCRIBE/'];
 for (const pathname of publicRoutes) {
   assert.equal(policy.canRenderPublicStorefront({ pathname, search: '?utm_source=google&gclid=test', hash: '#details' }), true, pathname);
   assert.equal(policy.canRenderPublicStorefront({ pathname, isNative: true }), false);
@@ -38,14 +38,47 @@ for (const pathname of publicRoutes) {
 const gatedRoutes = ['/cart', '/cart/123:2', '/checkout', '/order-confirmation/test', '/order-incomplete',
   '/account', '/account/orders', '/account-setup', '/admin/orders', '/operations', '/production',
   '/native-login', '/native-auth-bridge', '/login', '/register', '/reset-password', '/rewards',
-  '/notifications', '/order-tracker/test', '/shop/x/y', '/unknown', '', 'shop', '//outside.invalid'];
+  '/notifications', '/order-tracker/test', '/shop/x/y', '/unknown', '', 'shop', '//outside.invalid',
+  '/account/subscriptions', '/subscribe/manage', '/connect/private', '/partner', '/book-event', '/referral'];
 for (const pathname of gatedRoutes) assert.equal(policy.canRenderPublicStorefront({ pathname }), false, pathname);
 for (const key of ['access_token', 'clear_access_token', 'code', 'state', 'error', 'is_new_user',
   'native_provider_callback', 'native_browser_callback', 'reset_sign_in']) {
-  assert.equal(policy.canRenderPublicStorefront({ pathname: '/', search: `?${key}=test` }), false);
-  assert.equal(policy.canRenderPublicStorefront({ pathname: '/', hash: `#${key}=test` }), false);
+  for (const pathname of ['/', '/connect', '/subscribe']) {
+    assert.equal(policy.canRenderPublicStorefront({ pathname, search: `?${key}=test` }), false);
+    assert.equal(policy.canRenderPublicStorefront({ pathname, hash: `#${key}=test` }), false);
+  }
 }
 checks.push('Explicit public route allowlist; native, callbacks, cart, checkout, protected and unknown routes stay gated');
+
+// Load the actual display-only pages through an explicit dependency boundary.
+// Adding an auth/data/draft dependency must trigger a fresh startup-safety review.
+const staticPageImports = {
+  react: React,
+  'react-router-dom': {
+    Link: ({ to, children, ...props }) => React.createElement('a', { href: to, ...props }, children),
+    useNavigate: () => () => {},
+  },
+  'lucide-react': Object.fromEntries(['ArrowLeft', 'ExternalLink', 'Clock', 'ShoppingBag']
+    .map(name => [name, () => null])),
+  'framer-motion': { motion: Object.fromEntries(['div', 'a'].map(tag => [tag,
+    ({ initial, animate, exit, transition, children, ...props }) => React.createElement(tag, props, children)])) },
+  '@/components/SEO': { default: () => null },
+  '@/components/ui/button': { Button: ({ variant, children, ...props }) => React.createElement('button', props, children) },
+};
+for (const [file, heading] of [
+  ['src/pages/Connect.jsx', 'Connect With Us'],
+  ['src/pages/Subscribe.jsx', 'Subscription Plans Coming Soon'],
+]) {
+  const source = read(file);
+  assert.doesNotMatch(source, /\b(?:useState|useEffect|useReducer|useAuth|useQuery|useMutation|fetch|localStorage|sessionStorage)\b/,
+    `${file} gained a state/data dependency; review early public rendering`);
+  const Page = load(file, staticPageImports).default;
+  const markup = renderToStaticMarkup(React.createElement(Page));
+  assert.ok(markup.includes(heading), file);
+  assert.doesNotMatch(markup, /<(?:form|input|textarea|select)\b/, `${file} must not expose editable drafts before auth settles`);
+  assert.match(markup, /href=/, `${file} retains its public navigation`);
+}
+checks.push('Actual Connect and Subscribe pages remain display-only, with no account/data imports or editable drafts');
 
 // Real app-param initialization strips token fields. Its boolean snapshot must survive.
 const storage = new Map();
@@ -118,7 +151,7 @@ function render(pathname, { loading = true, user = null, error = null, pending =
   }
 }
 const verified = { id: 'test-user', email: 'member@example.test' };
-for (const pathname of ['/', '/shop', '/contact', '/support', '/product/oasis.html', '/program/radiance']) {
+for (const pathname of ['/', '/shop', '/contact', '/support', '/connect', '/subscribe', '/product/oasis.html', '/program/radiance']) {
   assert.match(render(pathname), /data-route-rendered/, `Public content waits for auth: ${pathname}`);
   assert.match(render(pathname, { loading: false, user: verified, pending: true }), /data-route-rendered/);
   assert.match(render(pathname, { loading: false, user: verified, failed: true }), /data-route-rendered/);
@@ -129,7 +162,7 @@ checks.push('Actual App renders public content with pending auth/profile and fai
 for (const pathname of gatedRoutes.filter(p => p.startsWith('/') && !p.startsWith('//'))) {
   assert.match(render(pathname), /data-startup-phase="auth"/, pathname);
 }
-for (const pathname of ['/', '/contact', '/support']) {
+for (const pathname of ['/', '/contact', '/support', '/connect', '/subscribe']) {
   native = true;
   assert.match(render(pathname), /data-startup-phase="auth"/);
   native = false;
@@ -144,12 +177,14 @@ assert.match(render('/account', { loading: false, error: { type: 'bootstrap_time
 assert.doesNotMatch(render('/admin/orders', { loading: false, user: verified, data: { onboarding_complete: true } }), /data-route-rendered/);
 assert.match(render('/admin/orders', { loading: false, user: verified, data: { onboarding_complete: true } }), /Admin access required/);
 checks.push('Actual App retains native/callback/protected loading, checkout profile recovery and admin authorization');
-for (const data of [null, { onboarding_complete: false }]) {
-  assert.match(render('/', { loading: false, user: verified, data }), /data-redirect="\/account-setup/);
-  assert.doesNotMatch(render('/', { loading: true, user: verified, data }), /data-redirect/);
+for (const pathname of ['/', '/connect', '/subscribe']) {
+  for (const data of [null, { onboarding_complete: false }]) {
+    assert.match(render(pathname, { loading: false, user: verified, data }), /data-redirect="\/account-setup/);
+    assert.doesNotMatch(render(pathname, { loading: true, user: verified, data }), /data-redirect/);
+  }
+  assert.match(render(pathname, { loading: false, error: { type: 'user_not_registered' } }), /Not registered/);
+  assert.doesNotMatch(render(pathname, { loading: false, error: { type: 'auth_required' } }), /data-route-rendered/);
 }
-assert.match(render('/', { loading: false, error: { type: 'user_not_registered' } }), /Not registered/);
-assert.doesNotMatch(render('/', { loading: false, error: { type: 'auth_required' } }), /data-route-rendered/);
 const app = read('src/App.jsx');
 assert.match(app, /QueryClientProvider key=\{authSessionEpoch\} client=\{sessionQueryClient\}/);
 assert.match(read('src/lib/AuthContext.jsx'), /await checkUserAuth\(\{ timeoutMs: authTimeoutMs \}\)/);

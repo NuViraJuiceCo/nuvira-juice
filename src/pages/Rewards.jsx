@@ -3,8 +3,9 @@ import SEO from '@/components/SEO';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import { base44 } from '@/api/base44Client';
 import { redirectToLogin } from '@/lib/nativeAuthRedirect';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
+import { customerDashboardQueryOptions, invalidateCustomerDashboard } from '@/lib/customerDashboardQueries';
 import { motion } from 'framer-motion';
 import { Star, Gift, ShoppingBag, Users, Cake, Flame, Sparkles, ArrowRight, Loader2, RefreshCw, CheckCircle } from 'lucide-react';
 import { useBirthdayCheckoutEligibility } from '@/lib/useBirthdayCheckoutEligibility';
@@ -320,6 +321,7 @@ function GuestView() {
 // ── Main authenticated view ─────────────────────────────────────────────────
 export default function Rewards() {
   const { user, isLoadingAuth } = useAuth();
+  const queryClient = useQueryClient();
   const { setEarnedRewardSelection, clearEarnedRewardItems } = useCart();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -336,15 +338,7 @@ export default function Rewards() {
     isLoading: isLoadingRewards,
     isError: rewardsLoadFailed,
     refetch: refetchRewards,
-  } = useQuery({
-    queryKey: ['account-dashboard', user?.email],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
-      return res.data || {};
-    },
-    enabled: !!user?.email,
-    staleTime: 60 * 1000,
-  });
+  } = useQuery(customerDashboardQueryOptions(base44, user));
 
   const pointsData = dashData?.points_record || null;
   const validOrders = dashData?.orders || [];
@@ -423,7 +417,9 @@ export default function Rewards() {
     if (rewardSelectionRef.current) return;
     rewardSelectionRef.current = true;
     setIsSelectingReward(true);
+    let selectionAttempted = false;
     try {
+      selectionAttempted = true;
       const selected = await selectActiveReward(reward, user?.email);
       if (currentEmailRef.current !== user?.email) return;
       if (rewardSelectionCount(selected) > 0) {
@@ -439,6 +435,11 @@ export default function Rewards() {
     } catch (err) {
       toast.error(err?.data?.error || err?.message || 'Unable to select this reward. Please try again.');
     } finally {
+      // A lost response can hide a successful claim. Refresh after any attempted
+      // claim, including the picker branch, but never a retired/changed session.
+      if (selectionAttempted && currentEmailRef.current === user?.email) {
+        void invalidateCustomerDashboard(queryClient);
+      }
       rewardSelectionRef.current = false;
       setIsSelectingReward(false);
     }

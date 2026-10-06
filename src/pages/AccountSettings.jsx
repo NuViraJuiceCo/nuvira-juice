@@ -10,10 +10,13 @@ import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import NotificationPreferencesPanel from '@/components/NotificationPreferencesPanel';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateCustomerDashboard } from '@/lib/customerDashboardQueries';
 
 export default function AccountSettings() {
   const navigate = useNavigate();
   const { user, logout, refreshUser } = useAuth();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({ firstName: '', lastName: '', phone: '', address: '', birthday: '' });
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -51,9 +54,11 @@ export default function AccountSettings() {
     }
     setIsSaving(true);
     setSaveSuccess(false);
+    let profileWriteAttempted = false;
     try {
       const addrString = [address.street, address.city, address.state, address.zip].filter(Boolean).join(', ');
       const profiles = await base44.entities.UserProfile.filter({ customer_email: user?.email });
+      profileWriteAttempted = true;
       if (profiles.length > 0) {
         await base44.entities.UserProfile.update(profiles[0].id, {
           first_name: normalizedFirstName,
@@ -80,6 +85,9 @@ export default function AccountSettings() {
       console.error('Save error:', err);
       toast.error('Failed to save settings');
     } finally {
+      // A profile write may have succeeded even if auth update/readback failed.
+      // The helper rejects retired clients after a sign-in boundary change.
+      if (profileWriteAttempted) void invalidateCustomerDashboard(queryClient);
       setIsSaving(false);
     }
   }

@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { customerDashboardQueryOptions } from '@/lib/customerDashboardQueries';
 
 import {
   ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Gift, Shirt, Handshake, PartyPopper, Leaf, Crown, Wallet, Star, Package
@@ -65,18 +66,7 @@ function AdminToolRow({ item, index, isLast }) {
 
 export default function Account() {
   const { user, logout, navigateToLogin } = useAuth();
-  // staleTime: 2min — cached data shows instantly on back-navigation (stale-while-revalidate)
-  // isLoading is only true on first load (no cached data yet), not on background refreshes
-  const { data: dashData, isLoading: isDashLoading } = useQuery({
-    queryKey: ['account-dashboard', user?.email],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
-      return res.data || {};
-    },
-    enabled: !!user?.email,
-    staleTime: 2 * 60 * 1000,
-    gcTime: 5 * 60 * 1000,
-  });
+  const { data: dashData, isLoading: isDashLoading } = useQuery(customerDashboardQueryOptions(base44, user));
 
   const userProfile = dashData?.customer_profile || null;
   const orders = dashData?.orders || [];

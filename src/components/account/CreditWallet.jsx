@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
+import { customerDashboardQueryOptions } from '@/lib/customerDashboardQueries';
 import { motion } from 'framer-motion';
 import { Leaf, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
@@ -37,13 +38,8 @@ export default function CreditWallet({ dashData: propDashData }) {
 
   // Only fetch independently if dashData not passed from parent
   const { data: ownDashData, isLoading: isLoadingOwn } = useQuery({
-    queryKey: ['account-dashboard', user?.email],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
-      return res.data || {};
-    },
+    ...customerDashboardQueryOptions(base44, user),
     enabled: !!user?.email && !propDashData,
-    staleTime: 60 * 1000,
   });
 
   const dashData = propDashData || ownDashData;

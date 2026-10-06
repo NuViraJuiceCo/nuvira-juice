@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import SEO from '@/components/SEO';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -24,8 +24,10 @@ import {
 import HealthAdvisory from '@/components/HealthAdvisory';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/lib/cartContext';
-import { normalizeProductIdentifier, productLookupKeys, productPath } from '@/lib/seo-slugs';
+import { normalizeProductIdentifier, productPath } from '@/lib/seo-slugs';
 import { findPublicProductFallback } from '@/lib/public-products';
+import { productDetailQueryOptions } from '@/lib/productDetailQueries';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import {
   buildProductSeoMetadata,
   buildProductStructuredData,
@@ -153,6 +155,7 @@ export default function ProductDetail() {
   const { id, slug, handle } = useParams();
   const identifier = normalizeProductIdentifier(slug || handle || id || '');
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { addItem, items } = useCart();
   const [quantity, setQuantity] = useState(1);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -161,29 +164,16 @@ export default function ProductDetail() {
   const trackedMetaProductIdRef = useRef('');
   const trackedSnapProductIdRef = useRef('');
 
-  const { data: product, isLoading } = useQuery({
-    queryKey: ['product-detail', identifier],
-    queryFn: async () => {
-      const fallbackProduct = findPublicProductFallback(identifier);
-
-      try {
-        const availableProducts = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 200);
-        const productByLookupKey = availableProducts.find(p => productLookupKeys(p).includes(identifier));
-        if (productByLookupKey) return productByLookupKey;
-
-        if (/^[a-f0-9]{24}$/.test(identifier)) {
-          const productsById = await base44.entities.Product.filter({ id: identifier });
-          if (productsById?.[0]) return productsById[0];
-        }
-
-        return fallbackProduct;
-      } catch (error) {
-        console.warn('[ProductDetail] Falling back to public product metadata for SEO route', identifier, error);
-        return fallbackProduct;
-      }
+  const { data: product, isLoading } = useQuery(productDetailQueryOptions({
+    identifier: slug || handle || id || '',
+    isNative: isNativeAppRuntime(),
+    queryClient,
+    readProducts: (...args) => base44.entities.Product.filter(...args),
+    findFallback: findPublicProductFallback,
+    onReadError: (lookup, error) => {
+      console.warn('[ProductDetail] Falling back to public product metadata for SEO route', lookup, error);
     },
-    enabled: !!identifier,
-  });
+  }));
 
   const { data: relatedProducts = [] } = useQuery({
     queryKey: ['related-products', product?.category],

@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSessionMutation as useMutation } from '@/lib/useSessionMutation';
 import { isCurrentAuthQueryClient } from '@/lib/authQuerySession';
+import { invalidateCustomerDashboard } from '@/lib/customerDashboardQueries';
 import { Camera, X, Loader2, Crown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -102,6 +103,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
       setIsUploading(false);
       setShowMenu(false);
     },
+    onSettled: () => { void invalidateCustomerDashboard(queryClient); },
   });
 
   const removePhotoMutation = useMutation({
@@ -121,6 +123,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
       toast.error('Failed to remove photo');
       setShowMenu(false);
     },
+    onSettled: () => { void invalidateCustomerDashboard(queryClient); },
   });
 
   const handleFileSelect = async (e) => {

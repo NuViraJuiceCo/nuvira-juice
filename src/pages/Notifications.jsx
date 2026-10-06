@@ -5,6 +5,7 @@ import PullToRefresh from '@/components/PullToRefresh';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionMutation as useMutation } from '@/lib/useSessionMutation';
 import { useAuth } from '@/lib/AuthContext';
+import { invalidateCustomerDashboard } from '@/lib/customerDashboardQueries';
 import {
   AlertCircle,
   ArrowLeft,
@@ -235,7 +236,10 @@ export default function Notifications() {
       queryClient.setQueryData(queryKey, context?.previous || []);
       toast.error('That update could not be changed. Please try again.');
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+    onSettled: () => {
+      void invalidateCustomerDashboard(queryClient);
+      return queryClient.invalidateQueries({ queryKey });
+    },
   });
 
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
