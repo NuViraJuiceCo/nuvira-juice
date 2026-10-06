@@ -2,6 +2,10 @@
 
 Status: isolated implementation and local verification; not published. V3 remains separate.
 
+Final local checks: 170/170 regression harnesses, zero lint/typecheck diagnostics, zero new audit fingerprints, secret scan and build passed. Existing audit findings remain 13 high-severity packages, no critical findings; existing review policy is unchanged. Final site: 47,281,817 bytes across 381 files.
+
+PR #808 initially failed in shared CI because main had independently advanced to `bdbd0b4` (Base44's automated SDK update back to `^0.8.53`). Main was incorporated while restoring the already owner-approved exact 0.8.52 manifest/lock entries. This preserves the original tested runtime; it does not disable the SDK consent guard or introduce a new dependency decision. No automation permissions were changed. Recheck main and exact dependency parity again immediately before any publication.
+
 ## Source and scope
 
 Base: `d4b8af7b0b133912102542e65e5c26945b632d4c`, the published desktop website and SDK-preservation release. Branch: `codex/website-performance-20261006`.
