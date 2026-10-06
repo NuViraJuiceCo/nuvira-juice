@@ -66,4 +66,12 @@ node scripts/qa/serve-desktop-preview.mjs
 
 Open `http://127.0.0.1:4196/` in a desktop-width browser (at least 1024 CSS pixels). The fixture server cannot submit purchases or contact messages. Its visible notice is preview-only and is not in the website bundle. The one-time structural scope verifier intentionally compares this presentation patch against the exact released base; it is not a blanket permanent freeze on future business-code development.
 
-Draft review: [PR #806](https://github.com/NuViraJuiceCo/nuvira-juice/pull/806). Initial website, release-policy, and Android CI checks passed; iOS CI identified the build-reference mismatch above. Updated checks must pass before this draft is cleared. Publishing requires separate approval after visual review. No live website, native V3, backend, or provider changes are included in this handoff.
+Review: [PR #806](https://github.com/NuViraJuiceCo/nuvira-juice/pull/806) passed all four checks and merged as `0c983cd1ff145ed0fbb60946afb3cf527f8957b5`. The owner approved desktop website publication, keeping V3 separate.
+
+### Post-merge SDK review and owner-approved preservation
+
+Base44's automated commit `3ad58b3fda763aa11863eff5d718a1efcf432fe8` updated the SDK from 0.8.52 to 0.8.53 and follow-redirects from 1.16.0 to 1.16.1 before publication. Exact-source checks stopped that release for review. Although the build and 165 regression harnesses passed, package-source inspection and isolated no-network execution found new automatic UTM/ad-click attribution in SDK analytics initialization, outside NuVira's separate Google/Meta/Snap consent controls.
+
+The owner approved retaining the prior SDK for this desktop release. It is exact-pinned to 0.8.52 with its original published integrity; the separately reviewed follow-redirects 1.16.1 patch remains. No existing analytics/consent implementation is changed. A new critical regression harness verifies the exact pin and installed analytics-runtime hash and rejects six drift cases. The desktop scope verifier retains its original baseline and exact protected-file checks, with only the reviewed dependency receipts updated. A future SDK update must deliberately revisit this guard and its consent review.
+
+Publication must use a fresh isolated build from the final canonical approved commit, not the original checkout's `dist` folder, where numbered duplicate files reappeared. Preserve pre/post source checks, asset hashes, public-domain parity and responsive smoke evidence. Website publication is not V3, Appflow promotion or native distribution; historical native release-range manifest issues remain separate from website verification.
