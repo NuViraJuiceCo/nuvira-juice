@@ -39,6 +39,8 @@ function fixture({ query = '?order_number=NV-SYNTHETIC', row = paid, guestToken 
     require: name => {
       if (name === 'react') return { ...react, default: react, __esModule: true };
       if (name === 'react-router-dom') return { Link: passthrough };
+      if (name === '@tanstack/react-query') return { useQueryClient: () => ({}) };
+      if (name.endsWith('customerDashboardQueries')) return { invalidateCustomerDashboard: () => {} };
       if (name === 'lucide-react') return icons;
       if (name === 'framer-motion') return { motion: { div: passthrough } };
       if (name === 'date-fns') return { format: () => 'Synthetic delivery date' };

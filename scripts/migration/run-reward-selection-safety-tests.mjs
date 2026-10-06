@@ -110,6 +110,7 @@ await test('actual Rewards apply handler does not show success or mutate cart on
   const body = source.slice(source.indexOf('  const handleApplyReward ='), source.indexOf('  const handleFreeProductSelect ='));
   const effects = []; const refs = { current: false };
   const ctx = { rewardSelectionRef: refs, currentEmailRef: { current: email }, user: { email },
+    queryClient: {}, invalidateCustomerDashboard: () => {},
     setIsSelectingReward: () => {}, rewardSelectionCount: selection.rewardSelectionCount, selectActiveReward: async () => { throw new Error('Insufficient points'); },
     localStorage: { setItem: () => effects.push('stored') }, clearEarnedRewardItems: () => effects.push('cart'),
     setActiveReward: () => effects.push('active'), setPendingReward: () => effects.push('pending'), setPickerOpen: () => effects.push('picker'),
@@ -122,6 +123,7 @@ await test('actual Rewards handler suppresses a late claim after sign-in changes
   const source = read('src/pages/Rewards.jsx');
   const body = source.slice(source.indexOf('  const handleApplyReward ='), source.indexOf('  const handleFreeProductSelect ='));
   const effects = []; const ctx = { rewardSelectionRef: { current: false }, currentEmailRef: { current: 'other@example.test' }, user: { email },
+    queryClient: {}, invalidateCustomerDashboard: () => {},
     setIsSelectingReward: () => {}, rewardSelectionCount: selection.rewardSelectionCount, selectActiveReward: async () => reward,
     localStorage: { setItem: () => effects.push('stored') }, clearEarnedRewardItems: () => effects.push('cart'),
     setActiveReward: () => effects.push('active'), setPendingReward: () => effects.push('pending'), setPickerOpen: () => effects.push('picker'),

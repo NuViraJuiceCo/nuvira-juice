@@ -23,7 +23,8 @@ import { Label } from '@/components/ui/label';
 import { useCart } from '@/lib/cartContext';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { invalidateCustomerDashboard } from '@/lib/customerDashboardQueries';
 import { Switch } from '@/components/ui/switch';
 import { base44, invokeCustomerGateway } from '@/api/base44Client';
 import { redirectToLogin } from '@/lib/nativeAuthRedirect';
@@ -144,6 +145,15 @@ function CheckoutFlow() {
   }, []);
 
   const { user, isLoadingAuth } = useAuth();
+  const dashboardQueryClient = useQueryClient();
+  // A checkout may reserve benefits even if the customer goes back or a request
+  // times out. Never treat a pre-checkout account balance as freshly validated
+  // on return. No payment authority changes. Entry starts no request; exit may
+  // refresh an already-mounted destination observer to avoid a pending/idle page.
+  React.useEffect(() => {
+    void invalidateCustomerDashboard(dashboardQueryClient, { refetchType: 'none' });
+    return () => { void invalidateCustomerDashboard(dashboardQueryClient); };
+  }, [dashboardQueryClient]);
   const journeyCheckoutTrackedRef = useRef(false);
   const fulfillmentType = 'delivery';
   const isGuestCheckout = !user?.email;

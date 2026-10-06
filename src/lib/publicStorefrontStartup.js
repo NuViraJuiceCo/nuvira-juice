@@ -1,5 +1,7 @@
 const PUBLIC_PAGES = new Set([
   '/', '/shop', '/about', '/our-story', '/why-nuvira', '/events', '/merch', '/contact', '/support',
+  // Display-only pages; account subscriptions and editable inquiry routes stay gated.
+  '/connect', '/subscribe',
   '/delivery', '/delivery.html', '/returns', '/returns.html', '/legal',
   '/cold-pressed-juice-delivery', '/fresh-juice-delivery-st-louis',
   '/cold-pressed-juice-wentzville', '/juice-cleanse-wentzville',

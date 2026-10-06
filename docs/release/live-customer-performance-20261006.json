@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-06",
+  "status": "implemented_and_locally_verified_not_published",
+  "baseline_commit": "cbb224c81197dd5efd141c968e6d195bd9212522",
+  "scope": "Existing public website and released customer-app shared code; private V3 untouched",
+  "changes": [
+    "Account, Orders, Rewards, Subscriptions and CreditWallet share one full identity-resolved in-memory dashboard query; observers select their own fields.",
+    "30-second navigation freshness with explicit refresh, active-order polling, principal-scoped cache replacement and targeted invalidation after relevant writes.",
+    "Invalidation cancels old in-flight reads before marking stale; checkout entry marks stale without fetching, exit refreshes any already-mounted destination.",
+    "Five independent backend read sections start after unchanged authentication and identity resolution. Traversal, limits, filters, response shape and error precedence remain unchanged.",
+    "Website product detail can reuse a fresh matching actual catalog item; cache misses retain the prior 200-item lookup and ID fallback. Static fallback records and missing results do not become authoritative fresh data. Native product lookup is unchanged.",
+    "Static Connect and Subscribe pages no longer wait for web auth; native, callback, protected and onboarding boundaries remain enforced.",
+    "Cancelled-only subscriptions show the existing no-active-subscriptions state; failures show retry guidance. A checkout URL no longer claims payment was received."
+  ],
+  "local_verification": {
+    "critical_regression_harnesses": { "passed": 174, "total": 174 },
+    "lint_errors": 0,
+    "typecheck_errors": 0,
+    "new_dependency_audit_fingerprints": 0,
+    "existing_dependency_audit": { "high": 13, "critical": 0, "not_remediated_by_this_patch": true },
+    "backend_parity": "19 synthetic baseline-versus-candidate scenarios; no real customer reads or writes",
+    "backend_timing": "Deterministic simulated critical paths 255 to 145 and 590 to 305 logical milliseconds; NOT live latency estimates",
+    "query_tests": "Real TanStack QueryObservers verify reuse, refresh, in-flight cancellation, raw selectors, polling, denial and principal retirement",
+    "browser_smoke": "Chrome, loopback-only built candidate: Shop to AURA, Connect, Subscribe. Historical local catalog only; CSP blocks external traffic; writes/functions denied. Not an authenticated or native-device test.",
+    "build_command": "DISABLE_BASE44_VITE_PLUGIN=true npm run build",
+    "site_bytes": 47284157,
+    "site_files": 382,
+    "entry_asset": "/assets/index-DDGtEWUy.js",
+    "entry_sha256": "190ec8860b8a2edc24defc99a674c0265ee43e04f9dda960a0a2cd1a7b670d51",
+    "manifest_sha256": "950e6afecd347c7d95adec005a5b8f482c491e5c34db83d1c26839a8f18bc7d6",
+    "manifest_algorithm": "sha256(JSON.stringify({path,bytes,sha256} records sorted by relative path with localeCompare en))"
+  },
+  "release_boundaries": {
+    "website": "Requires approved exact source, CI, preserved rollback and action-time publish approval. Website publication does not update installed apps.",
+    "backend": "Requires fresh deployed gateway source parity, scoped change review and approval. The gateway bundles other actions; do not deploy unrelated repository functions or overwrite unverified live differences.",
+    "installed_apps": "Current source and archived released binaries explicitly sync Appflow app 044c03e1 Production at startup/resume. Verify current active source/snapshot, compatibility and separate iOS/Android smoke tests before an approved OTA promotion. No native plugin/config changes are included.",
+    "out_of_scope": ["Private V3", "live purchases", "payment/provider mutations", "native archive or upload", "Appflow promotion", "backend or website deployment"]
+  },
+  "remaining_performance_work": [
+    "Re-measure cold HTML/server response and exact slow gateway actions after separately approved scoped releases; the frontend cannot remove hosting/provider response latency.",
+    "Authenticated browser and physical iOS/Android timing and functional checks remain required. Local query tests and archived native source are not current installed-device proof.",
+    "Investigate remaining large hero images and unconditional homepage preload without changing artwork/crops or delaying homepage image discovery.",
+    "Do not claim instant performance, Google ranking improvement or passing field Core Web Vitals from synthetic or single local observations."
+  ],
+  "workspace_evidence": "outputs/live-performance-20261006/"
+}

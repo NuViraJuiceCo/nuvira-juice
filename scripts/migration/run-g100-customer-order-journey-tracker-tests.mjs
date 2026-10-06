@@ -82,7 +82,10 @@ assert.doesNotMatch(tracker, /stages\.findIndex\(s => s\.key === displayOrder\.s
 const history = read('src/pages/OrderHistory.jsx');
 assert.match(history, /getCustomerOrderJourney/);
 assert.match(history, /journey\.progressPercent/);
-assert.match(history, /refetchInterval: query =>/);
+assert.match(history, /refetchInterval: customerDashboardOrderPollInterval/);
+const { customerDashboardOrderPollInterval } = await import('../../src/lib/customerDashboardQueries.js');
+assert.equal(customerDashboardOrderPollInterval({ state: { data: { all_orders_raw: [{ status: 'out_for_delivery' }] } } }), 60000);
+assert.equal(customerDashboardOrderPollInterval({ state: { data: { all_orders_raw: [{ status: 'delivered' }] } } }), false);
 
 console.log(JSON.stringify({
   success: true,

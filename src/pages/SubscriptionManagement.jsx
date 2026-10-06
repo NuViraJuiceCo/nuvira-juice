@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { customerDashboardQueryOptions, customerDashboardSubscriptions, invalidateCustomerDashboard } from '@/lib/customerDashboardQueries';
 // Parse YYYY-MM-DD date strings as local dates (avoids UTC→local shift off-by-one)
 function formatLocalDate(dateStr) {
   if (!dateStr) return '—';
@@ -42,6 +43,7 @@ function getSinceLabel(sub) {
 
 export default function SubscriptionManagement() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [showPauseModal, setShowPauseModal] = useState(false);
@@ -52,15 +54,9 @@ export default function SubscriptionManagement() {
 
   // Use backend function to resolve Apple relay and linked identity subscriptions
   // placeholderData keeps previous resolved list visible during background refresh (no false empty flash)
-  const { data: subscriptions = [], isLoading: isLoadingSubs, refetch } = useQuery({
-    queryKey: ['subscriptions', user?.email],
-    queryFn: async () => {
-      const res = await base44.functions.invoke('getCustomerAccountDashboardData', {});
-      return res.data?.all_subscriptions || [];
-    },
-    enabled: !!user?.email,
-    staleTime: 2 * 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+  const { data: subscriptions = [], isLoading: isLoadingSubs, isError: subscriptionsFailed, refetch } = useQuery({
+    ...customerDashboardQueryOptions(base44, user),
+    select: customerDashboardSubscriptions,
     placeholderData: (prev) => prev,
   });
 
@@ -89,11 +85,11 @@ export default function SubscriptionManagement() {
     const hasSubscribed = params.get('subscribed') === 'true';
     if (hasSession || hasSubscribed) {
       setActivating(true);
-      toast.success('Payment received! Activating your subscription...');
+      toast.info('Checking your subscription status...');
       window.history.replaceState({}, '', window.location.pathname);
-      refetch();
+      refetch({ cancelRefetch: false });
       // Poll every 2s for up to 30s waiting for webhook to create Subscription
-      const pollInterval = setInterval(() => refetch(), 2000);
+      const pollInterval = setInterval(() => refetch({ cancelRefetch: false }), 2000);
       const timeout = setTimeout(() => {
         clearInterval(pollInterval);
         setActivating(false);
@@ -123,11 +119,12 @@ export default function SubscriptionManagement() {
         subscription_id: subId,
         paused_until: resumeDate,
       });
-      refetch();
       setShowPauseModal(false);
       toast.success(res.data?.message || `Next month paused. Resumes ${new Date(resumeDate).toLocaleDateString()}.`);
     } catch (error) {
       toast.error('Failed to pause subscription');
+    } finally {
+      void invalidateCustomerDashboard(queryClient);
     }
     setLoading(false);
   };
@@ -154,10 +151,11 @@ export default function SubscriptionManagement() {
       await base44.entities.Subscription.update(subId, {
         next_delivery_date: nextDate.toISOString().split('T')[0],
       });
-      refetch();
       toast.success('Delivery skipped. Next delivery scheduled for next week.');
     } catch (error) {
       toast.error('Failed to skip delivery');
+    } finally {
+      void invalidateCustomerDashboard(queryClient);
     }
     setLoading(false);
   };
@@ -171,10 +169,11 @@ export default function SubscriptionManagement() {
       const res = await base44.functions.invoke('cancelSubscriptionFutureRenewal', {
         subscription_id: subId,
       });
-      refetch();
       toast.success(res.data?.message || 'Your renewal has been cancelled. This month\'s deliveries continue as scheduled.');
     } catch (error) {
       toast.error('Failed to cancel renewal. Please try again or contact support.');
+    } finally {
+      void invalidateCustomerDashboard(queryClient);
     }
     setLoading(false);
   };
@@ -194,10 +193,11 @@ export default function SubscriptionManagement() {
         cancel_at_period_end: false,
         cancel_effective_date: null,
       });
-      refetch();
       toast.success('Renewal reactivated!');
     } catch (error) {
       toast.error('Please use Manage Billing to reactivate your renewal.');
+    } finally {
+      void invalidateCustomerDashboard(queryClient);
     }
     setLoading(false);
   };
@@ -207,10 +207,11 @@ export default function SubscriptionManagement() {
     setLoading(true);
     try {
       await base44.entities.Subscription.update(subId, { status: 'cancelled' });
-      refetch();
       toast.success('Subscription cancelled');
     } catch (error) {
       toast.error('Failed to cancel subscription');
+    } finally {
+      void invalidateCustomerDashboard(queryClient);
     }
     setLoading(false);
   };
@@ -222,10 +223,11 @@ export default function SubscriptionManagement() {
         status: 'active',
         paused_until: null,
       });
-      refetch();
       toast.success('Subscription resumed!');
     } catch (error) {
       toast.error('Failed to resume subscription');
+    } finally {
+      void invalidateCustomerDashboard(queryClient);
     }
     setLoading(false);
   };
@@ -467,7 +469,14 @@ export default function SubscriptionManagement() {
         )}
 
         {/* Empty State — no subscription AND no pending checkout */}
-        {!activating && !isLoadingSubs && subscriptions.length === 0 && !hasRecentPendingCheckout && (
+        {subscriptionsFailed && (
+          <div role="alert" className="rounded-2xl border border-border p-5 text-center">
+            <p className="text-sm text-muted-foreground">We couldn’t refresh your subscriptions. Please try again.</p>
+            <Button variant="outline" className="mt-3" onClick={() => refetch()}>Try again</Button>
+          </div>
+        )}
+
+        {!activating && !isLoadingSubs && !subscriptionsFailed && activeSubscriptions.length === 0 && pausedSubscriptions.length === 0 && !hasRecentPendingCheckout && (
           <div className="text-center py-12">
             <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mx-auto mb-3">
               <Plus className="w-6 h-6 text-muted-foreground" />
