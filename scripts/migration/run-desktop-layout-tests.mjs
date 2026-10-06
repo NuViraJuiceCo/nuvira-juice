@@ -20,11 +20,23 @@ import {
 } from '../qa/serve-desktop-preview.mjs';
 
 const DEFAULT_BASE = 'b0127bdca0c1de2127b41966e2203571346eeecf';
-// Separately reviewed website dependency maintenance, not a UI-baseline reset or
-// an audit waiver. Native projects and every other protected file stay byte-frozen.
+// Separately reviewed dependency maintenance, not a UI-baseline reset or an audit
+// waiver. Only the exact npm files and two iOS build-reference receipts below may
+// differ; all other protected files, including native application code, stay frozen.
 const REVIEWED_DEPENDENCY_SHA256 = Object.freeze({
   'package.json': '464005fa07ded3b212da3da9a49a24e9e395fb10de44c481b2190786485ca445',
   'package-lock.json': '760a20d87988101e0fd6c904a958eb7589857d60623218792e897d36a62ffd2b',
+});
+const IOS_PACKAGE_PATH = 'ios/App/CapApp-SPM/Package.swift';
+const IOS_RESOLVED_PATH = 'ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved';
+const REVIEWED_IOS_METADATA_SHA256 = Object.freeze({
+  [IOS_PACKAGE_PATH]: 'd9c91ab2354bd92abb8c0a1baa4a0f63c5a9e32edbb7aea44235673951507ea0',
+  [IOS_RESOLVED_PATH]: 'b12ff0f15f0262dde5b9321ba6f02f50a20fd51991dda7061f7624eeb4ae4323',
+});
+const REVIEWED_IOS_ORIGIN_HASH = '945911a109e12ad517ebb401d96c49c842dcf5a9683d80ebf339f30bdd2803e1';
+const REVIEWED_IOS_CAPACITOR_STATE = Object.freeze({
+  revision: '89e0d8ec2321025f549ddb19259a717467943b97',
+  version: '8.4.3',
 });
 const REVIEWED_LOCK_UPDATES = Object.freeze({
   '@capacitor/android': {
@@ -175,11 +187,11 @@ const changed = git('diff', '--name-only', base, '--', 'src').toString().trim().
 const protectedFiles = git('ls-tree', '-r', '--name-only', base).toString().trim().split('\n').filter(file =>
   /^(src\/(lib|api|components\/checkout)\/|base44\/|functions\/|ios\/|android\/|shopify\/|patches\/)/.test(file) ||
   /^(package(-lock)?\.json|capacitor\.config\.[^/]+|vite\.config\.[^/]+|src\/App\.jsx|index\.html)$/.test(file));
-check('Business rules, prices, catalog, auth/API, checkout, backend, native and providers preserve baseline bytes; dependencies match the exact reviewed security receipt', () => {
+check('Protected sources preserve baseline bytes except exact reviewed npm dependency and two iOS build-reference receipts', () => {
   for (const file of protectedFiles) {
     const baselineHash = crypto.createHash('sha256').update(git('show', `${base}:${file}`)).digest('hex');
     const currentHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(REPO_ROOT, file))).digest('hex');
-    const expectedHash = REVIEWED_DEPENDENCY_SHA256[file] || baselineHash;
+    const expectedHash = REVIEWED_DEPENDENCY_SHA256[file] || REVIEWED_IOS_METADATA_SHA256[file] || baselineHash;
     assert.equal(currentHash, expectedHash, `Protected source changed outside its exact reviewed bytes: ${file}`);
     receipts[file] = currentHash;
   }
@@ -209,6 +221,32 @@ check('Dependency maintenance has only three exact Capacitor pins and two overri
     Object.assign(expectedLock.packages[`node_modules/${name}`], update);
   }
   assert.deepEqual(afterLock, expectedLock, 'Lock metadata or package contents changed beyond the exact reviewed update');
+});
+check('iOS metadata changes only the exact Capacitor reference, resolved Capacitor pin and reviewed resolver originHash; all other 15 pins remain unchanged', () => {
+  const beforePackage = git('show', `${DEFAULT_BASE}:${IOS_PACKAGE_PATH}`).toString();
+  const oldReference = '.package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.3.4")';
+  const newReference = '.package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "8.4.3")';
+  assert.equal(beforePackage.split(oldReference).length, 2, 'Baseline must contain exactly one original Capacitor package reference');
+  assert.equal(read(IOS_PACKAGE_PATH), beforePackage.replace(oldReference, newReference),
+    'Package.swift changed beyond the exact reviewed Capacitor version replacement');
+
+  const beforeResolved = JSON.parse(git('show', `${DEFAULT_BASE}:${IOS_RESOLVED_PATH}`).toString());
+  const afterResolved = JSON.parse(read(IOS_RESOLVED_PATH));
+  assert.equal(beforeResolved.pins.length, 16, 'Expected the original 16 Swift package pins');
+  assert.equal(new Set(beforeResolved.pins.map(pin => pin.identity)).size, 16, 'Baseline Swift package identities must be unique');
+  assert.deepEqual(afterResolved.pins.map(pin => pin.identity), beforeResolved.pins.map(pin => pin.identity),
+    'Swift package pins were added, removed, reordered or renamed');
+  const changedPins = beforeResolved.pins.filter((pin, index) => !isDeepStrictEqual(pin, afterResolved.pins[index]));
+  assert.deepEqual(changedPins.map(pin => pin.identity), ['capacitor-swift-pm'],
+    'Only the Capacitor pin may change; all other 15 Swift package pins must remain identical');
+  const expectedResolved = structuredClone(beforeResolved);
+  const capacitorPin = expectedResolved.pins.find(pin => pin.identity === 'capacitor-swift-pm');
+  assert.deepEqual(capacitorPin.state, { revision: '992959f0467c781eb6a1637e69d87481238c3672', version: '8.3.4' },
+    'Expected the original Capacitor Swift package state');
+  capacitorPin.state = { ...REVIEWED_IOS_CAPACITOR_STATE };
+  expectedResolved.originHash = REVIEWED_IOS_ORIGIN_HASH;
+  assert.deepEqual(afterResolved, expectedResolved,
+    'Package.resolved changed beyond the reviewed Capacitor state and exact resolver-generated originHash');
 });
 
 const classOnlyFiles = changed.filter(file => file.endsWith('.jsx') && !['src/main.jsx', 'src/components/layout/AppLayout.jsx'].includes(file));
@@ -418,6 +456,9 @@ console.log(JSON.stringify({
   protected_sha256: receipts, built_preview_handler_checked: Boolean(dist),
   dependency_review: { baseline: DEFAULT_BASE, sha256: REVIEWED_DEPENDENCY_SHA256,
     changed_lock_packages: Object.keys(REVIEWED_LOCK_UPDATES), added_lock_packages: 0, removed_lock_packages: 0 },
+  ios_metadata_review: { baseline: DEFAULT_BASE, sha256: REVIEWED_IOS_METADATA_SHA256,
+    capacitor_state: REVIEWED_IOS_CAPACITOR_STATE, resolver_origin_hash: REVIEWED_IOS_ORIGIN_HASH,
+    unchanged_other_swift_package_pins: 15, native_application_code_changes_authorized: false },
   limitation: 'Structural and local-handler evidence only. Browser geometry, interaction, mobile visual parity, native devices, live auth/checkout/providers and analytics require separate verification.',
 }, null, 2));
 if (failures.length) process.exitCode = 1;
