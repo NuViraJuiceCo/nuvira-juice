@@ -23,6 +23,7 @@ import {
 } from '@/lib/metaPixel';
 import { trackSnapSearch } from '@/lib/snapPixel';
 import { productImageUrl } from '@/lib/product-seo';
+import { publicCatalogQueryOptions, PUBLIC_WEBSITE_PRODUCT_LIMIT } from '@/lib/publicCatalogQueries';
 
 const ALL_CATEGORIES = [
   { key: 'all', label: 'All' },
@@ -42,6 +43,7 @@ export default function Shop({ seoActive = true }) {
   const trackedGoogleSearchesRef = useRef(new Set());
   const trackedMetaSearchesRef = useRef(new Set());
   const trackedSnapSearchesRef = useRef(new Set());
+  const isNative = isNativeAppRuntime();
   const showWebsiteSeoLinks = seoActive && !isNativeAppRuntime();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -57,18 +59,20 @@ export default function Shop({ seoActive = true }) {
     queryKey: ['products'],
     queryFn: async () => {
       try {
-        const liveProducts = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 100);
+        const liveProducts = await base44.entities.Product.filter({ is_available: true }, 'sort_order', isNative ? 100 : PUBLIC_WEBSITE_PRODUCT_LIMIT);
         return liveProducts?.length ? liveProducts : PUBLIC_PRODUCT_FALLBACKS;
       } catch (error) {
         console.warn('[Shop] Falling back to public product catalog', error);
         return PUBLIC_PRODUCT_FALLBACKS;
       }
     },
+    ...publicCatalogQueryOptions('products', isNative),
   });
 
   const { data: bundles = [] } = useQuery({
     queryKey: ['bundles'],
     queryFn: () => base44.entities.SubscriptionBundle.list('sort_order', 100),
+    ...publicCatalogQueryOptions('bundles', isNative),
   });
 
 
