@@ -14,9 +14,10 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-40px' }}
       transition={{ duration: 0.5 }}
-      className="mt-7"
+      className="nv-home-product-row mt-7"
+      style={{ '--desktop-product-columns': Math.min(products.length, 4) }}
     >
-      <div className="flex items-center justify-between px-5 mb-3">
+      <div className="nv-home-section-heading flex items-center justify-between px-5 mb-3">
          <div>
            <h3 className="font-heading text-lg font-bold">{title}</h3>
            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
@@ -27,7 +28,7 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
            </Link>
          )}
        </div>
-       <MobileCarousel>
+       <MobileCarousel className="nv-home-products-grid">
          {products.map((product, i) => (
            <motion.div
              key={product.id}
@@ -35,7 +36,7 @@ export default function ProductRow({ title, subtitle, products, linkTo }) {
              whileInView={{ opacity: 1, x: 0 }}
              viewport={{ once: true }}
              transition={{ delay: i * 0.07, duration: 0.4 }}
-             className="w-40"
+             className="nv-home-product-item w-40"
            >
             <ProductCard product={product} compact />
           </motion.div>

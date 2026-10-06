@@ -41,8 +41,8 @@ const HIGHLIGHTS = [
 
 export default function NuViraHighlights() {
   return (
-    <div className="mt-10">
-      <div className="px-5 mb-4">
+    <div className="nv-home-highlights mt-10">
+      <div className="nv-home-section-heading px-5 mb-4">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -55,7 +55,7 @@ export default function NuViraHighlights() {
       </div>
 
       {/* Horizontal scrollable highlights */}
-      <MobileCarousel className="gap-3">
+      <MobileCarousel className="nv-home-highlights-grid gap-3">
         {HIGHLIGHTS.map((highlight, i) => {
           const Icon = highlight.icon;
           return (
@@ -65,7 +65,7 @@ export default function NuViraHighlights() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.08 }}
-              className="nuvira-vivid-panel w-[280px] rounded-2xl border p-4"
+              className="nv-home-highlight nuvira-vivid-panel w-[280px] rounded-2xl border p-4"
             >
               {/* Icon badge */}
               <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: `${highlight.accentColor}20` }}>
@@ -81,14 +81,14 @@ export default function NuViraHighlights() {
       </MobileCarousel>
 
       {/* Optional CTA card */}
-      <div className="px-5 mt-3">
+      <div className="nv-home-highlights-rewards px-5 mt-3">
         <Link to="/rewards">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.32 }}
-            className="rounded-2xl p-4 flex items-center justify-between border border-border/50 shadow-sm"
+            className="nv-home-rewards-card rounded-2xl p-4 flex items-center justify-between border border-border/50 shadow-sm"
             style={{
               background: `linear-gradient(135deg, rgba(200,232,106,0.18) 0%, rgba(61,184,74,0.12) 100%)`,
               borderColor: 'rgba(61,184,74,0.3)',

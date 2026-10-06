@@ -94,7 +94,7 @@ export default function Home({ seoActive = true }) {
     <>
     <BrowserAppPrompt pageRoute="/" />
     <PullToRefresh onRefresh={handleRefresh}>
-    <div className="pb-4">
+    <div className="storefront-home pb-4">
       {seoActive && (
         <>
           <SEO
@@ -113,7 +113,7 @@ export default function Home({ seoActive = true }) {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="flex items-center justify-between px-5 pb-2"
+        className="storefront-home-header flex items-center justify-between px-5 pb-2"
         style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))' }}
       >
         <div>

@@ -1,0 +1,104 @@
+/* Desktop is a composition, not an enlarged phone canvas. These opt-in
+   overrides leave mobile, tablet, admin and Capacitor layouts untouched. */
+@media (min-width: 1024px) {
+  [data-desktop-storefront="true"] main[data-storefront-page] {
+    max-width: 1280px;
+    padding-inline: 16px;
+    padding-top: 16px;
+  }
+
+  [data-desktop-storefront="true"] main:is(
+    [data-storefront-page="/checkout"],
+    [data-storefront-page="/notifications"],
+    [data-storefront-page="/account/orders"],
+    [data-storefront-page="/account/settings"]
+  ) {
+    max-width: 880px;
+  }
+
+  [data-desktop-storefront="true"] .storefront-home-header {
+    padding-bottom: 16px;
+  }
+
+  [data-desktop-storefront="true"] .storefront-shop {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 380px);
+    align-items: center;
+    row-gap: 12px;
+  }
+
+  [data-desktop-storefront="true"] .storefront-shop-heading {
+    padding-inline: 20px;
+    padding-bottom: 4px;
+  }
+
+  [data-desktop-storefront="true"] .storefront-shop-heading > :first-child {
+    font-size: 2rem;
+    line-height: 1.2;
+  }
+
+  [data-desktop-storefront="true"] .storefront-shop-heading > p {
+    margin-top: 8px;
+    font-size: 0.875rem;
+  }
+
+  [data-desktop-storefront="true"] .storefront-shop-search {
+    margin-bottom: 0;
+    padding-inline: 20px;
+  }
+
+  [data-desktop-storefront="true"] .storefront-shop > :not(
+    .storefront-shop-heading, .storefront-shop-search
+  ) {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  [data-desktop-storefront="true"] .storefront-shop-filters {
+    flex-wrap: wrap;
+    padding: 12px 20px 20px;
+    overflow: visible;
+  }
+
+  [data-desktop-storefront="true"] .storefront-shop-programs h2 {
+    font-size: 1.25rem;
+  }
+
+  [data-desktop-storefront="true"] .storefront-product-grid {
+    gap: 24px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  [data-desktop-storefront="true"] .storefront-product-card {
+    height: 100%;
+    border-radius: 20px;
+    box-shadow: 0 6px 20px rgb(6 42 32 / 5%);
+  }
+
+  [data-desktop-storefront="true"] .storefront-product-card-copy {
+    padding: 16px;
+  }
+
+  [data-desktop-storefront="true"] .storefront-product-card-copy > p:first-child {
+    font-size: 1rem;
+  }
+
+  [data-desktop-storefront="true"] .storefront-customer-sheet {
+    width: calc(100% - 48px);
+    max-width: 640px;
+    margin-inline: auto;
+    bottom: 24px;
+    border-radius: 24px;
+    box-shadow: 0 24px 80px rgb(0 0 0 / 24%);
+  }
+}
+
+@media (min-width: 1440px) {
+  [data-desktop-storefront="true"] main[data-storefront-page] {
+    padding-inline: 24px;
+  }
+
+  [data-desktop-storefront="true"] .storefront-product-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

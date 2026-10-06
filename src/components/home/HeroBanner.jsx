@@ -80,7 +80,7 @@ export default function HeroBanner({ banners = [] }) {
 
   return (
     <section
-      className="relative mt-1 overflow-hidden bg-[#061c14] md:mt-0"
+      className="nv-home-hero relative mt-1 overflow-hidden bg-[#061c14] md:mt-0"
       style={{ minHeight: 'clamp(500px, 72svh, 680px)' }}
     >
       {/* LCP image */}
@@ -130,7 +130,7 @@ export default function HeroBanner({ banners = [] }) {
         </AnimatePresence>
       )}
 
-      <div className="relative z-10 flex min-h-[clamp(500px,72svh,680px)] flex-col justify-between px-5 py-5 sm:px-7 md:px-10 md:py-8">
+      <div className="nv-home-hero-inner relative z-10 flex min-h-[clamp(500px,72svh,680px)] flex-col justify-between px-5 py-5 sm:px-7 md:px-10 md:py-8">
         <div className="flex items-center gap-2">
           <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/85 backdrop-blur-md sm:text-[11px]">
             <Sparkles className="h-3.5 w-3.5 text-[#C8E86A]" />
@@ -140,19 +140,19 @@ export default function HeroBanner({ banners = [] }) {
 
         <motion.div
           initial={false}
-          className="max-w-3xl pb-4 md:pb-5"
+          className="nv-home-hero-copy max-w-3xl pb-4 md:pb-5"
         >
           <p
-            className="max-w-[12ch] text-balance font-heading text-[2.25rem] font-bold leading-[0.92] text-white drop-shadow-2xl min-[360px]:text-[2.75rem] min-[390px]:text-[3rem] min-[430px]:text-[3.35rem] sm:text-6xl md:max-w-[14ch] md:text-7xl lg:text-8xl"
+            className="nv-home-hero-title max-w-[12ch] text-balance font-heading text-[2.25rem] font-bold leading-[0.92] text-white drop-shadow-2xl min-[360px]:text-[2.75rem] min-[390px]:text-[3rem] min-[430px]:text-[3.35rem] sm:text-6xl md:max-w-[14ch] md:text-7xl lg:text-8xl"
             style={{ whiteSpace: 'pre-line' }}
           >
             {banner.title}
           </p>
-          <p className="mt-5 max-w-xl text-base leading-relaxed text-white/80 drop-shadow md:text-lg">
+          <p className="nv-home-hero-subtitle mt-5 max-w-xl text-base leading-relaxed text-white/80 drop-shadow md:text-lg">
             {banner.subtitle}
           </p>
 
-          <div className="mt-7 grid w-full max-w-[22rem] grid-cols-1 items-center gap-3 min-[360px]:grid-cols-2 sm:flex sm:max-w-md sm:flex-wrap">
+          <div className="nv-home-hero-actions mt-7 grid w-full max-w-[22rem] grid-cols-1 items-center gap-3 min-[360px]:grid-cols-2 sm:flex sm:max-w-md sm:flex-wrap">
             <Button asChild className="h-12 w-full rounded-full bg-[linear-gradient(135deg,#b8ef5b_0%,#35c848_48%,#0fa34a_100%)] px-5 text-sm font-bold text-white shadow-2xl shadow-black/30 hover:brightness-105 sm:w-auto sm:px-8 md:px-9">
               <Link to={banner.link_to || '/shop'} className="min-w-0">
                 Order Now <ArrowRight className="ml-2 h-4 w-4" />
@@ -190,7 +190,7 @@ export default function HeroBanner({ banners = [] }) {
             ))}
           </div>
 
-          <div className="mt-8 hidden max-w-3xl grid-cols-3 gap-3 text-white sm:grid">
+          <div className="nv-home-hero-stats mt-8 hidden max-w-3xl grid-cols-3 gap-3 text-white sm:grid">
             {heroStats.map(([title, subtitle]) => (
               <div key={title} className="rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-md">
                 <p className="font-heading text-sm font-bold md:text-base">{title}</p>

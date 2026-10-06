@@ -101,10 +101,10 @@ export default function Account() {
   };
 
   return (
-    <div className="pb-6">
+    <div className="nuvira-account-page pb-6">
       <BrowserAppPrompt pageRoute="/account" />
       {/* Premium Member Dashboard Header */}
-      <div className="relative overflow-hidden px-5 pt-10 pb-8 mb-4" style={{ 
+      <div className="nuvira-account-hero relative overflow-hidden px-5 pt-10 pb-8 mb-4" style={{
         paddingTop: 'max(2.5rem, env(safe-area-inset-top))',
         background: `
           radial-gradient(circle at 50% 0%, hsl(var(--primary) / 0.2) 0%, transparent 65%),
@@ -116,7 +116,7 @@ export default function Account() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent rounded-full" />
         
         {/* Main dashboard card */}
-        <div className="relative rounded-3xl border p-5 nuvira-premium-card backdrop-blur-sm">
+        <div className="nuvira-account-profile relative rounded-3xl border p-5 nuvira-premium-card backdrop-blur-sm">
           <div className="flex items-start gap-4">
             {/* Avatar with profile photo upload */}
             <ProfileAvatar userProfile={userProfile} size="large" />
@@ -184,7 +184,7 @@ export default function Account() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="grid grid-cols-3 gap-2 mt-3"
+            className="nuvira-account-stats grid grid-cols-3 gap-2 mt-3"
           >
             <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm">
               <div className="flex items-center justify-center gap-1.5 mb-1">
@@ -226,10 +226,10 @@ export default function Account() {
       </div>
 
       {/* NuVira Wallet / Credits Card - Refined contrast */}
-      {user && <div className="mt-2"><CreditWallet dashData={dashData} /></div>}
+      {user && <div className="nuvira-account-wallet mt-2"><CreditWallet dashData={dashData} /></div>}
 
       {/* Member program and referral actions */}
-      <div className="px-5 mt-5 mb-6">
+      <div className="nuvira-account-section nuvira-account-programs px-5 mt-5 mb-6">
         <div className="grid gap-3">
           <MemberProgramCard
             journey={activeJourney}
@@ -261,7 +261,7 @@ export default function Account() {
       </div>
 
       {/* Member Actions - Core NuVira Experience */}
-      <div className="px-5 mt-8 mb-8">
+      <div className="nuvira-account-section nuvira-account-actions px-5 mt-8 mb-8">
         <div className="flex items-center gap-2 mb-4">
           <Leaf className="w-4 h-4 text-primary" />
           <p className="text-sm font-bold text-foreground">Your Account</p>
@@ -293,7 +293,7 @@ export default function Account() {
       </div>
 
       {/* Brand Discovery - Editorial Lifestyle Section */}
-      <div className="px-5 mb-8">
+      <div className="nuvira-account-section nuvira-account-discover px-5 mb-8">
         <div className="mb-4">
           <p className="text-xs font-bold text-foreground mb-1">Discover NuVira</p>
           <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/85">Our story, philosophy & community</p>
@@ -360,7 +360,7 @@ export default function Account() {
       </div>
 
       {/* Support & Settings - Utility Section (Quieter) */}
-      <div className="px-5 mb-8">
+      <div className="nuvira-account-section nuvira-account-support px-5 mb-8">
         <p className="text-[10px] font-semibold text-foreground/50 dark:text-muted-foreground/80 uppercase tracking-wider mb-3">Support</p>
         <div className="rounded-2xl border border-border/50 dark:border-primary/20 overflow-hidden bg-card/40 dark:bg-card/30">
           {supportMenuItems.map(({ icon: Icon, label, path, desc }, i) => (
@@ -388,7 +388,7 @@ export default function Account() {
       </div>
 
       {/* Merch Teaser - Lifestyle */}
-      <div className="px-5 mb-8">
+      <div className="nuvira-account-section nuvira-account-merch px-5 mb-8">
         <Link to="/merch">
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
@@ -415,7 +415,7 @@ export default function Account() {
 
       {/* Admin Tools - Utility Section */}
       {isAdminUser(user) && (
-        <div className="px-5 mb-8">
+        <div className="nuvira-account-section px-5 mb-8">
           <div className="rounded-2xl border border-border/50 dark:border-primary/20 overflow-hidden bg-card/40 dark:bg-card/25">
             <div className="px-4 py-2.5 border-b border-border/50 dark:border-primary/20">
               <p className="text-[10px] font-semibold text-foreground/50 dark:text-muted-foreground/75 uppercase tracking-wider">Admin Tools</p>
@@ -433,7 +433,7 @@ export default function Account() {
       )}
 
       {/* Sign Out - Clean & Simple */}
-      <div className="px-5 mt-4 mb-8">
+      <div className="nuvira-account-signout px-5 mt-4 mb-8">
         <button
           onClick={handleLogout}
           className="w-full flex items-center justify-center gap-2 text-sm font-medium py-3 rounded-xl border border-border/50 dark:border-primary/25 bg-transparent hover:bg-secondary/30 dark:hover:bg-primary/10 transition-all active:scale-[0.98]"
@@ -444,7 +444,7 @@ export default function Account() {
       </div>
 
       {/* Brand Footer - Minimal & Elegant */}
-      <div className="text-center px-5 mt-10 pb-8">
+      <div className="nuvira-account-footer text-center px-5 mt-10 pb-8">
         <img
           src="https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png"
           alt="NuVira Juice Company"

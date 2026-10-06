@@ -1,0 +1,311 @@
+/* Customer web utility pages only. Keep the existing mobile/native layouts intact. */
+@media (min-width: 1024px) {
+  [data-desktop-storefront="true"] :is(.nuvira-contact-layout, .nuvira-utility-header, .nuvira-support-page, .nuvira-account-page, .nuvira-rewards-page, .nuvira-rewards-guest) {
+    width: 100%;
+    max-width: 72rem;
+    margin-inline: auto;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-utility-header {
+    position: static;
+    padding: 1.5rem 2rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-contact-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    grid-template-rows: auto auto 1fr;
+    gap: 2rem 3rem;
+    align-items: start;
+    padding: 2.5rem 2rem 3.5rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-contact-layout > * {
+    min-width: 0;
+    margin-block: 0;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-contact-intro {
+    grid-column: 1 / -1;
+    max-width: 44rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-contact-intro h1 {
+    margin-bottom: 0.75rem;
+    font-size: 2.25rem;
+    line-height: 1.15;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-contact-intro p {
+    max-width: 64ch;
+    font-size: 1rem;
+    line-height: 1.75;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-contact-details {
+    gap: 1rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-contact-form {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    padding: 2rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-contact-social {
+    grid-column: 1;
+    text-align: left;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-contact-social > div {
+    justify-content: flex-start;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-utility-form > * + * {
+    margin-top: 1.125rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-utility-form label {
+    font-size: 0.8125rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-utility-form input {
+    min-height: 2.75rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-utility-form textarea {
+    min-height: 10rem;
+    resize: vertical;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-utility-form > button {
+    width: auto;
+    min-width: 12rem;
+    min-height: 2.75rem;
+    margin-left: auto;
+    display: flex;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-support-page {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 1.5rem 2.5rem;
+    align-items: start;
+    padding: 2rem 2rem 4rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-support-header {
+    grid-column: 1 / -1;
+    padding: 0 0 1rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-support-header h1 {
+    font-size: 2rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-support-form {
+    grid-row: span 3;
+    margin: 0;
+    padding: 1.75rem;
+  }
+
+  [data-desktop-storefront="true"] :is(.nuvira-support-faq, .nuvira-support-review, .nuvira-support-legal) {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-support-answer {
+    font-size: 0.875rem;
+    line-height: 1.75;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-account-page {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2rem;
+    align-items: start;
+    padding: 2rem 2rem 3rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-account-hero {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: 2rem;
+    align-items: center;
+    margin: 0;
+    padding: 2rem;
+    border-radius: 1.75rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-account-profile {
+    min-width: 0;
+    padding: 1.5rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-account-profile h1 {
+    font-size: 1.5rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-account-stats {
+    margin-top: 0;
+    gap: 0.75rem;
+  }
+
+  [data-desktop-storefront="true"] :is(.nuvira-account-section, .nuvira-account-wallet, .nuvira-account-wallet > div) {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-account-signout {
+    grid-column: 1 / -1;
+    width: 20rem;
+    margin: 0 auto;
+    padding: 0;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-account-footer {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 0;
+  }
+
+  [data-desktop-storefront="true"] :is(.nuvira-rewards-page, .nuvira-rewards-guest) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem 2rem;
+    align-items: start;
+    padding: 2rem 2rem 4rem;
+  }
+
+  [data-desktop-storefront="true"] :is(.nuvira-rewards-header, .nuvira-rewards-status, .nuvira-rewards-tier, .nuvira-rewards-stats, .nuvira-rewards-birthday, .nuvira-rewards-catalogue, .nuvira-rewards-earn, .nuvira-rewards-referral, .nuvira-rewards-actions, .nuvira-rewards-activity, .nuvira-rewards-guest-hero, .nuvira-rewards-guest-earn, .nuvira-rewards-preview) {
+    min-width: 0;
+    margin: 0;
+  }
+
+  [data-desktop-storefront="true"] :is(.nuvira-rewards-header, .nuvira-rewards-catalogue-header) {
+    padding-inline: 0;
+  }
+
+  [data-desktop-storefront="true"] :is(.nuvira-rewards-header, .nuvira-rewards-status, .nuvira-rewards-catalogue, .nuvira-rewards-earn, .nuvira-rewards-activity, .nuvira-rewards-preview) {
+    grid-column: 1 / -1;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-tier {
+    grid-row: span 2;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-stats {
+    align-self: end;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-birthday {
+    align-self: start;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+    overflow: visible;
+    padding: 0;
+    transform: none;
+    will-change: auto;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-reward-card {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-reward-card-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-reward-card-content > p:first-child {
+    font-size: 0.9375rem;
+    line-height: 1.4;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-reward-card-content > p:nth-child(2) {
+    display: block;
+    overflow: visible;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-reward-card-content > div:last-child {
+    margin-top: auto;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-reward-card-content button {
+    min-height: 2.25rem;
+    padding-inline: 0.875rem;
+    font-size: 0.75rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-earn-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-actions {
+    align-self: center;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-guest-hero {
+    align-self: center;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-guest-hero button {
+    max-width: 20rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-guest-earn {
+    align-self: center;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-rewards-preview-grid > * {
+    margin-block: 0;
+  }
+
+  [data-desktop-storefront="true"] :is(.nuvira-rewards-swipe-hint, .nuvira-rewards-spacer) {
+    display: none;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-about-container {
+    max-width: 72rem;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-about-title {
+    max-width: 20ch;
+  }
+
+  [data-desktop-storefront="true"] .nuvira-about-reading {
+    max-width: 62ch;
+  }
+
+  /* The disabled iOS prompt is not portaled; keep any future desktop-width
+     presentation bounded without changing its visibility or native behavior. */
+  [data-desktop-storefront="true"] .nuvira-browser-app-prompt {
+    left: auto;
+    right: 1.5rem;
+    bottom: 1rem;
+    width: 26rem;
+    padding-inline: 0;
+  }
+}

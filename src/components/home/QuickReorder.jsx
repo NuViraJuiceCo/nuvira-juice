@@ -26,10 +26,10 @@ export default function QuickReorder({ lastOrder }) {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }}
         transition={{ delay: 0.1 }}
-        className="mx-5 mt-4"
+        className="nv-home-reorder mx-5 mt-4"
       >
         <Link to="/account/orders">
-          <div className="flex items-center gap-3 bg-secondary/60 rounded-xl p-3.5 border border-border/50">
+          <div className="nv-home-reorder-card flex items-center gap-3 bg-secondary/60 rounded-xl p-3.5 border border-border/50">
             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
               <RotateCcw className="w-4 h-4 text-primary" />
             </div>

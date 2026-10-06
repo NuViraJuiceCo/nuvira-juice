@@ -61,7 +61,7 @@ export default function ProductCard({ product, compact = false }) {
       <motion.div
         whileTap={{ scale: 0.94 }}
         transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-        className="relative overflow-hidden rounded-2xl border border-border/50 bg-card shadow-md"
+        className="storefront-product-card-compact relative overflow-hidden rounded-2xl border border-border/50 bg-card shadow-md"
         style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)' }}
       >
         <div className="relative overflow-hidden" style={{ aspectRatio: '1/1' }}>
@@ -103,7 +103,7 @@ export default function ProductCard({ product, compact = false }) {
             </div>
           )}
         </div>
-        <div className="px-2.5 py-2">
+        <div className="storefront-product-card-compact-copy px-2.5 py-2">
           <p className="truncate text-xs font-semibold text-foreground">{product.title}</p>
           {product.size && <p className="text-[10px] text-foreground/55">{product.size}</p>}
         </div>
@@ -123,7 +123,7 @@ export default function ProductCard({ product, compact = false }) {
     <motion.div
       whileTap={{ scale: 0.97 }}
       transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-      className="relative overflow-hidden rounded-xl border border-border/50 bg-card shadow-md"
+      className="storefront-product-card relative overflow-hidden rounded-xl border border-border/50 bg-card shadow-md"
       style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)' }}
     >
       <div className="relative aspect-square overflow-hidden bg-secondary/50">
@@ -146,7 +146,7 @@ export default function ProductCard({ product, compact = false }) {
           <Plus className="h-4 w-4" />
         </button>
       </div>
-      <div className="p-3">
+      <div className="storefront-product-card-copy p-3">
         <p className="text-sm font-semibold text-foreground">{product.title}</p>
         {product.short_description && (
           <p className="mt-0.5 line-clamp-1 text-xs text-foreground/55">{product.short_description}</p>
