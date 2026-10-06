@@ -4,7 +4,8 @@ import { ArrowLeft, ArrowRight, Calendar, CheckCircle2, GlassWater, Leaf, MapPin
 import SEO from '@/components/SEO';
 import LocalDeliveryShopping from '@/components/landing/LocalDeliveryShopping';
 import { absoluteUrl } from '@/lib/seo-slugs';
-import { BRAND_IMAGES, brandImageUrl } from '@/lib/brandImages';
+import { BRAND_IMAGES, brandImageUrl, websiteBrandImageProps } from '@/lib/brandImages';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 const DELIVERY_URL = BRAND_IMAGES.bottlesCoolerWide;
 const FRESH_URL = BRAND_IMAGES.bottlesCoolerVertical;
@@ -530,6 +531,7 @@ function buildStructuredData(page) {
 }
 
 export default function LocalSeoLanding({ pageKey }) {
+  const website = !isNativeAppRuntime();
   const page = SEO_LANDING_PAGES[pageKey] || SEO_LANDING_PAGES['cold-pressed-juice-delivery'];
   const Icon = page.icon;
   const isDeliveryShopping = page.path === '/cold-pressed-juice-delivery';
@@ -568,7 +570,7 @@ export default function LocalSeoLanding({ pageKey }) {
       </header>
 
       {isDeliveryShopping ? <LocalDeliveryShopping page={page} /> : <section className="relative isolate overflow-hidden border-b border-border/50">
-        <img src={page.image} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <img {...websiteBrandImageProps(page.image, { website })} alt="" className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,22,15,0.92),rgba(7,22,15,0.72)_48%,rgba(7,22,15,0.38))]" />
         <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-background/90 to-transparent" />
         <div className="relative mx-auto grid min-h-[calc(100svh-12rem)] max-w-6xl gap-7 px-5 pb-24 pt-12 sm:min-h-[33rem] sm:px-6 sm:py-16 md:min-h-[32rem] md:px-8 lg:min-h-[35rem] lg:grid-cols-[1.1fr_0.9fr] lg:items-end lg:py-20">

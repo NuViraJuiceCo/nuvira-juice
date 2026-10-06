@@ -5,6 +5,8 @@ import { isAdminUser } from '@/lib/admin-access';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { customerDashboardQueryOptions } from '@/lib/customerDashboardQueries';
+import { customerWebsiteMotionOverrides } from '@/lib/customerWebsiteMotion';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 import {
   ShoppingBag, Bell, HelpCircle, Settings, ChevronRight, LogOut, BookOpen, Sparkles, Calendar, Gift, Shirt, Handshake, PartyPopper, Leaf, Crown, Wallet, Star, Package
@@ -66,6 +68,7 @@ function AdminToolRow({ item, index, isLast }) {
 
 export default function Account() {
   const { user, logout, navigateToLogin } = useAuth();
+  const immediateMotion = customerWebsiteMotionOverrides(isNativeAppRuntime());
   const { data: dashData, isLoading: isDashLoading } = useQuery(customerDashboardQueryOptions(base44, user));
 
   const userProfile = dashData?.customer_profile || null;
@@ -174,6 +177,7 @@ export default function Account() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
+            {...immediateMotion}
             className="nuvira-account-stats grid grid-cols-3 gap-2 mt-3"
           >
             <div className="rounded-xl border border-border/60 dark:border-primary/25 p-3 text-center bg-card/80 dark:bg-card/40 backdrop-blur-sm">
@@ -233,6 +237,7 @@ export default function Account() {
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.18 }}
+              {...immediateMotion}
               className="group relative overflow-hidden rounded-2xl p-4 nuvira-premium-card active:scale-[0.97] transition-all hover:shadow-md" style={{ touchAction: 'pan-y' }}
             >
               <div className="relative flex items-center gap-3.5">
@@ -263,6 +268,7 @@ export default function Account() {
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.25 + i * 0.05 }}
+              {...immediateMotion}
             >
               <Link to={path}>
                 <div className="group relative overflow-hidden rounded-2xl bg-card dark:bg-card/60 border border-border/50 dark:border-primary/25 p-4 active:scale-[0.98] transition-all shadow-sm hover:shadow-md">
@@ -295,6 +301,7 @@ export default function Account() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.35 + i * 0.05 }}
+              {...immediateMotion}
             >
               <Link to={path}>
                 <div className="group relative overflow-hidden rounded-2xl nuvira-premium-card p-4 active:scale-[0.98] transition-all">
@@ -314,6 +321,7 @@ export default function Account() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.45 + i * 0.05 }}
+              {...immediateMotion}
             >
               <Link to={path}>
                 <div className="group relative overflow-hidden rounded-2xl bg-accent/12 dark:bg-accent/18 border border-accent/30 dark:border-accent/35 p-4 active:scale-[0.98] transition-all">
@@ -332,6 +340,7 @@ export default function Account() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.55 }}
+          {...immediateMotion}
           className="mt-2"
         >
           <Link to="/book-event">
@@ -359,6 +368,7 @@ export default function Account() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.6 + i * 0.04 }}
+              {...immediateMotion}
             >
               <Link to={path}>
                 <div className={`flex items-center gap-3.5 p-3.5 active:bg-secondary/40 transition-colors ${i !== supportMenuItems.length - 1 ? 'border-b border-border/40 dark:border-primary/15' : ''}`}>
@@ -384,6 +394,7 @@ export default function Account() {
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.7 }}
+            {...immediateMotion}
             className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-accent/18 via-accent/12 to-accent/8 dark:from-accent/25 dark:via-accent/18 dark:to-accent/12 border border-accent/30 dark:border-accent/40 p-5 active:scale-[0.98] transition-all"
           >
             <div className="absolute top-0 right-0 w-20 h-20 bg-accent/15 dark:bg-accent/20 rounded-full blur-2xl" />

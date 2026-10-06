@@ -27,7 +27,7 @@ assert.match(
 );
 assert.match(
   productDetailSource,
-  /onError=\{\(event\) => \{[\s\S]*?if \(image\.thumbnail && event\.currentTarget\.getAttribute\('src'\) === image\.thumbnail\) \{[\s\S]*?event\.currentTarget\.src = image\.src;[\s\S]*?return;[\s\S]*?\}[\s\S]*?handleGalleryImageError\(image\.src, index\);/,
+  /onError=\{\(event\) => \{[\s\S]*?const thumbnail = productGalleryThumbnail\(image, \{ website: !isNativeAppRuntime\(\) \}\);[\s\S]*?if \(thumbnail !== image\.src && event\.currentTarget\.getAttribute\('src'\) === thumbnail\) \{[\s\S]*?event\.currentTarget\.src = image\.src;[\s\S]*?return;[\s\S]*?\}[\s\S]*?handleGalleryImageError\(image\.src, index\);/,
   'Thumbnail derivative failure must retry its primary before removing the gallery image',
 );
 assert.match(

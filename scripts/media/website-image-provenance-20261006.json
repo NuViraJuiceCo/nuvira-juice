@@ -1,0 +1,495 @@
+{
+  "source_commit": "27bd7d184e7d957a07aef59b33744f01e7af1c08",
+  "input_manifest": "scripts/media/website-image-inputs-20261006.json",
+  "policy": "Only resize and WebP-encode these frozen, already-published images. Preserve full composition, aspect ratio and source XMP; retain all originals. No AI generation, retouching, relabeling, provider writes or native asset replacements.",
+  "encoder": {
+    "sharp": "0.35.4",
+    "vips": "8.18.6",
+    "webp": "1.6.0",
+    "resize_kernel": "lanczos3",
+    "crop": "none",
+    "orientation_change": "none",
+    "color_adjustment": "none"
+  },
+  "website_only": true,
+  "originals_retained": true,
+  "native_original_paths_retained": true,
+  "metadata": "Original XMP retained byte-for-byte; orientation already1. Resizing and lossy encoding are disclosed; decoded pixels are not claimed identical.",
+  "output_count": 18,
+  "output_bytes": 1392818,
+  "assets": [
+    {
+      "path": "public/images/brand/nuvira-bottles-cooler-wide.jpg",
+      "role": "hero",
+      "sha256": "ec2fdbbdc6575cf6b017a2dc6f1e303d4ba2e575c9b0b4baa818d0c4fab7a8d4",
+      "bytes": 510211,
+      "width": 1800,
+      "height": 1200,
+      "widths": [
+        1800
+      ],
+      "xmp_sha256": "da7eb08b6f9bbaa8b553df7cabfdab2c033be292833331ddd95a28ab3daf534b",
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/heroes/nuvira-bottles-cooler-wide-1800.webp",
+          "bytes": 204526,
+          "sha256": "f64dc262ede107deaac5784695a538bd34a0752262c7499d9b4f013e899ced20",
+          "width": 1800,
+          "height": 1200,
+          "quality": 82,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 38.389,
+          "bytes_saved_against_original": 305685,
+          "reduction_percent": 59.91
+        }
+      ]
+    },
+    {
+      "path": "public/images/brand/nuvira-bottles-cooler-vertical.jpg",
+      "role": "hero",
+      "sha256": "8afd63036b5570c764ae7ac55e696a112fbc77101b705190d247f40351592ee4",
+      "bytes": 202190,
+      "width": 800,
+      "height": 1200,
+      "widths": [
+        800
+      ],
+      "xmp_sha256": "b2e755456b92c155058760bdcd433e9f084a0fa28483b44c839f936f7ae711c8",
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/heroes/nuvira-bottles-cooler-vertical-800.webp",
+          "bytes": 80462,
+          "sha256": "5cf35f3c7982eda0e5a9da7a79d8336c8f6eb7ba322f5fc826a8816f92a2f903",
+          "width": 800,
+          "height": 1200,
+          "quality": 82,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 39.195,
+          "bytes_saved_against_original": 121728,
+          "reduction_percent": 60.2
+        }
+      ]
+    },
+    {
+      "path": "public/images/brand/nuvira-event-booth-field.jpg",
+      "role": "hero",
+      "sha256": "b78b0031b23710edb7b3d0cb710fadcae03b1413bad0c584f1e5db55f77729c5",
+      "bytes": 738504,
+      "width": 1800,
+      "height": 1200,
+      "widths": [
+        840,
+        1800
+      ],
+      "xmp_sha256": "e1b834e12f22b3760b06fe064118a613d0135760f26cd35d3364f8f580e1d821",
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/heroes/nuvira-event-booth-field-840.webp",
+          "bytes": 104366,
+          "sha256": "21db543677446dd2bdcc5db4cf2d0c21c92ecb3ada9003544cd599b59bfaa3c7",
+          "width": 840,
+          "height": 560,
+          "quality": 82,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 35.216,
+          "bytes_saved_against_original": 634138,
+          "reduction_percent": 85.87
+        },
+        {
+          "path": "public/images/website-performance-20261006/heroes/nuvira-event-booth-field-1800.webp",
+          "bytes": 434264,
+          "sha256": "36c25644fd2d53e96fa6e2ded6ec479d4ad3192fa6fdab735bdd6ddf8d6d81fb",
+          "width": 1800,
+          "height": 1200,
+          "quality": 82,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 36.789,
+          "bytes_saved_against_original": 304240,
+          "reduction_percent": 41.2
+        }
+      ]
+    },
+    {
+      "path": "public/images/brand/nuvira-about-hero-event.jpg",
+      "role": "hero",
+      "sha256": "7c21abdbc7802a665dc9874244120a8ba23067d46bb8535783c761cc37b65469",
+      "bytes": 505127,
+      "width": 1800,
+      "height": 1271,
+      "widths": [
+        1440
+      ],
+      "xmp_sha256": "9882241e0d35e48f01cbef0b757a0b56b149d6cd4ebc59cb80c4c57a6adeb2c1",
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/heroes/nuvira-about-hero-event-1440.webp",
+          "bytes": 144726,
+          "sha256": "2a586e98ef6e1aa1cf0c2af33433416347514fc335dc436e806d1f4ae1f7966e",
+          "width": 1440,
+          "height": 1017,
+          "quality": 82,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 38.071,
+          "bytes_saved_against_original": 360401,
+          "reduction_percent": 71.35
+        }
+      ]
+    },
+    {
+      "path": "public/images/brand/nuvira-about-hero-mobile.jpg",
+      "role": "hero",
+      "sha256": "3fe4be0168fd412588fa03b4e77674304e276e0d25f400a00cd73d56d65462ca",
+      "bytes": 285513,
+      "width": 1066,
+      "height": 1600,
+      "widths": [
+        1066
+      ],
+      "xmp_sha256": "24c7666d57b5f02832d30fd38eaa4cc463e366a35d76fe99b190cde0b4c5dccc",
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/heroes/nuvira-about-hero-mobile-1066.webp",
+          "bytes": 105976,
+          "sha256": "314b1ac0bfedb45b5c7378fa39bc88ccbfaedccf7335a2230cdd13e29bd8d22c",
+          "width": 1066,
+          "height": 1600,
+          "quality": 82,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 39.762,
+          "bytes_saved_against_original": 179537,
+          "reduction_percent": 62.88
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/aura/aura-bench.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "a635f07853af50507af415c94d028d81999bbcd62f517332da1540c9532b1a3c",
+      "bytes": 364990,
+      "width": 1800,
+      "height": 1200,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/aura-bench-384.webp",
+          "bytes": 23474,
+          "sha256": "8988d2c43cd7bd049dc9cc17f95a38256e8cf6bb5cd1df7dd4a3e9e081a0c4f0",
+          "width": 384,
+          "height": 256,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 32.53,
+          "bytes_saved_against_original": 341516,
+          "reduction_percent": 93.57
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/aura/aura-conversation.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "7fe8ba87988521228a917b56a58ba4099fbbc9d77d62bb8abd3b93def5d44f16",
+      "bytes": 261448,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/aura-conversation-384.webp",
+          "bytes": 27956,
+          "sha256": "89dd913c40325301c60c65370056c99a48d8d2d5eb47d6df1a3d4f99ab5df0fb",
+          "width": 384,
+          "height": 576,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 38.339,
+          "bytes_saved_against_original": 233492,
+          "reduction_percent": 89.31
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/aura/aura-drinking.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "c99339dbb293b06f31ebf6b37a052592f007d6e97f2458707bb1ca497a41602a",
+      "bytes": 252366,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/aura-drinking-384.webp",
+          "bytes": 22480,
+          "sha256": "78d19fefed21ae4fc73389f61095f5104a914341cab23c29edfcd8957657cea6",
+          "width": 384,
+          "height": 576,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 38.701,
+          "bytes_saved_against_original": 229886,
+          "reduction_percent": 91.09
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/oasis/oasis-event-cooler.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "e32b87db2b52e3057f3f6167d7da922846f188568b6e263b78171f87e748907d",
+      "bytes": 331470,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/oasis-event-cooler-384.webp",
+          "bytes": 32144,
+          "sha256": "ac54144c3aa0d807fb8db8d503873f6a10f127aae168707464d25dbc06b66655",
+          "width": 384,
+          "height": 576,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 36.574,
+          "bytes_saved_against_original": 299326,
+          "reduction_percent": 90.3
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/oasis/oasis-sunset-bottle.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "0450ca8496e7450154230f62c787e50d1375069cffbcc0d13fceb4c0829846b1",
+      "bytes": 269501,
+      "width": 1189,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": "e8ef36c48339e3680a05a79a0c78044022785fae74f5cfe1ba5999e3d32b47ef",
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/oasis-sunset-bottle-384.webp",
+          "bytes": 25626,
+          "sha256": "21631a88996e6dfc8fe5c7eaff8c201f1d2320bd230568ca982a07e8cb05c179",
+          "width": 384,
+          "height": 582,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 35.751,
+          "bytes_saved_against_original": 243875,
+          "reduction_percent": 90.49
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/oasis/oasis-sunset-trio.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "598bf76dbc5e682f481f31bed2e858298a9284be61b9b5c5c71d102598b8b5e9",
+      "bytes": 373844,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/oasis-sunset-trio-384.webp",
+          "bytes": 35882,
+          "sha256": "06794d3fdc108d26211238d4af32a6566aca27df7ce64760e3bc924d46e1a8b4",
+          "width": 384,
+          "height": 576,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 33.971,
+          "bytes_saved_against_original": 337962,
+          "reduction_percent": 90.4
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/re-nu/re-nu-bench.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "ae4bf562f119bea5a00800be07cb5449262dbd35441ddb0c60518a46c10f0229",
+      "bytes": 449835,
+      "width": 1800,
+      "height": 1200,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/re-nu-bench-384.webp",
+          "bytes": 28936,
+          "sha256": "b5266d6d4b2a0d1355173b851c9359579b294d95372e028640a341783e7df496",
+          "width": 384,
+          "height": 256,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 30.608,
+          "bytes_saved_against_original": 420899,
+          "reduction_percent": 93.57
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/re-nu/re-nu-conversation.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "6e414c2163654c7f8922a6a6e9406ba8b94e86211adb9e14b7454d0c55baf378",
+      "bytes": 260228,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/re-nu-conversation-384.webp",
+          "bytes": 28128,
+          "sha256": "5deb1e16945881ccaae394c1358cf54ee23f309f5c3a00b51164e3bceb2959ae",
+          "width": 384,
+          "height": 576,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 37.906,
+          "bytes_saved_against_original": 232100,
+          "reduction_percent": 89.19
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/re-nu/re-nu-shared-drink.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "468ecbc73820b0f2e8f5e0eafa0908e454d28d321775918284a98df50a8ef158",
+      "bytes": 248935,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/re-nu-shared-drink-384.webp",
+          "bytes": 22788,
+          "sha256": "dabf73d8fa9ecf4d9061205e290c460e98f223b06f8686aa8eff21c02b3269ba",
+          "width": 384,
+          "height": 576,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 38.393,
+          "bytes_saved_against_original": 226147,
+          "reduction_percent": 90.85
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/trio/trio-outdoor-bag.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "5fbd168bedb92588cc6d48fd54d10399dd11081b4add830e03007df7c29c1c13",
+      "bytes": 234274,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/trio-outdoor-bag-384.webp",
+          "bytes": 22968,
+          "sha256": "9e86c7cabf36f74aa44c3921a3c1d91438cb10fedb317c84d0b24ee2275b51bc",
+          "width": 384,
+          "height": 576,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 36.637,
+          "bytes_saved_against_original": 211306,
+          "reduction_percent": 90.2
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/trio/trio-outdoor-lineup.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "401c1ad5bbe4cfc49b3a07b4faaecb6186eddc7fa3f1209bd5fbc32f116cf7a1",
+      "bytes": 211312,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/trio-outdoor-lineup-384.webp",
+          "bytes": 18134,
+          "sha256": "0a7f1a9f57c776497146d1e48b61876c3ba7fe89cafeac350d96b01a0e308791",
+          "width": 384,
+          "height": 576,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 36.434,
+          "bytes_saved_against_original": 193178,
+          "reduction_percent": 91.42
+        }
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/trio/trio-sunset-lineup.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "e5ca0c3d9767e802b1790fb58258c494168c4cdf215794da82e00bb9ead98bd9",
+      "bytes": 313292,
+      "width": 1244,
+      "height": 1800,
+      "widths": [
+        384
+      ],
+      "xmp_sha256": null,
+      "outputs": [
+        {
+          "path": "public/images/website-performance-20261006/gallery/trio-sunset-lineup-384.webp",
+          "bytes": 29982,
+          "sha256": "380c0831a14ee3bc9f6944c1b4c446b207009e7868026a268dad9f64fe4afc9c",
+          "width": 384,
+          "height": 556,
+          "quality": 84,
+          "effort": 6,
+          "xmp_preserved": true,
+          "psnr_db_against_same_size_original": 34.521,
+          "bytes_saved_against_original": 283310,
+          "reduction_percent": 90.43
+        }
+      ]
+    }
+  ]
+}

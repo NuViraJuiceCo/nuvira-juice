@@ -1,0 +1,194 @@
+{
+  "source_commit": "27bd7d184e7d957a07aef59b33744f01e7af1c08",
+  "policy": "Only resize and WebP-encode these frozen, already-published images. Preserve full composition, aspect ratio and source XMP; retain all originals. No AI generation, retouching, relabeling, provider writes or native asset replacements.",
+  "inputs": [
+    {
+      "path": "public/images/brand/nuvira-bottles-cooler-wide.jpg",
+      "role": "hero",
+      "sha256": "ec2fdbbdc6575cf6b017a2dc6f1e303d4ba2e575c9b0b4baa818d0c4fab7a8d4",
+      "bytes": 510211,
+      "width": 1800,
+      "height": 1200,
+      "widths": [
+        1800
+      ]
+    },
+    {
+      "path": "public/images/brand/nuvira-bottles-cooler-vertical.jpg",
+      "role": "hero",
+      "sha256": "8afd63036b5570c764ae7ac55e696a112fbc77101b705190d247f40351592ee4",
+      "bytes": 202190,
+      "width": 800,
+      "height": 1200,
+      "widths": [
+        800
+      ]
+    },
+    {
+      "path": "public/images/brand/nuvira-event-booth-field.jpg",
+      "role": "hero",
+      "sha256": "b78b0031b23710edb7b3d0cb710fadcae03b1413bad0c584f1e5db55f77729c5",
+      "bytes": 738504,
+      "width": 1800,
+      "height": 1200,
+      "widths": [
+        840,
+        1800
+      ]
+    },
+    {
+      "path": "public/images/brand/nuvira-about-hero-event.jpg",
+      "role": "hero",
+      "sha256": "7c21abdbc7802a665dc9874244120a8ba23067d46bb8535783c761cc37b65469",
+      "bytes": 505127,
+      "width": 1800,
+      "height": 1271,
+      "widths": [
+        1440
+      ]
+    },
+    {
+      "path": "public/images/brand/nuvira-about-hero-mobile.jpg",
+      "role": "hero",
+      "sha256": "3fe4be0168fd412588fa03b4e77674304e276e0d25f400a00cd73d56d65462ca",
+      "bytes": 285513,
+      "width": 1066,
+      "height": 1600,
+      "widths": [
+        1066
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/aura/aura-bench.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "a635f07853af50507af415c94d028d81999bbcd62f517332da1540c9532b1a3c",
+      "bytes": 364990,
+      "width": 1800,
+      "height": 1200,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/aura/aura-conversation.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "7fe8ba87988521228a917b56a58ba4099fbbc9d77d62bb8abd3b93def5d44f16",
+      "bytes": 261448,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/aura/aura-drinking.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "c99339dbb293b06f31ebf6b37a052592f007d6e97f2458707bb1ca497a41602a",
+      "bytes": 252366,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/oasis/oasis-event-cooler.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "e32b87db2b52e3057f3f6167d7da922846f188568b6e263b78171f87e748907d",
+      "bytes": 331470,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/oasis/oasis-sunset-bottle.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "0450ca8496e7450154230f62c787e50d1375069cffbcc0d13fceb4c0829846b1",
+      "bytes": 269501,
+      "width": 1189,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/oasis/oasis-sunset-trio.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "598bf76dbc5e682f481f31bed2e858298a9284be61b9b5c5c71d102598b8b5e9",
+      "bytes": 373844,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/re-nu/re-nu-bench.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "ae4bf562f119bea5a00800be07cb5449262dbd35441ddb0c60518a46c10f0229",
+      "bytes": 449835,
+      "width": 1800,
+      "height": 1200,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/re-nu/re-nu-conversation.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "6e414c2163654c7f8922a6a6e9406ba8b94e86211adb9e14b7454d0c55baf378",
+      "bytes": 260228,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/re-nu/re-nu-shared-drink.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "468ecbc73820b0f2e8f5e0eafa0908e454d28d321775918284a98df50a8ef158",
+      "bytes": 248935,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/trio/trio-outdoor-bag.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "5fbd168bedb92588cc6d48fd54d10399dd11081b4add830e03007df7c29c1c13",
+      "bytes": 234274,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/trio/trio-outdoor-lineup.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "401c1ad5bbe4cfc49b3a07b4faaecb6186eddc7fa3f1209bd5fbc32f116cf7a1",
+      "bytes": 211312,
+      "width": 1200,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    },
+    {
+      "path": "public/images/authentic-products/trio/trio-sunset-lineup.jpg",
+      "role": "gallery-thumbnail",
+      "sha256": "e5ca0c3d9767e802b1790fb58258c494168c4cdf215794da82e00bb9ead98bd9",
+      "bytes": 313292,
+      "width": 1244,
+      "height": 1800,
+      "widths": [
+        384
+      ]
+    }
+  ]
+}

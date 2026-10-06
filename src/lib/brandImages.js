@@ -25,3 +25,38 @@ export function brandImageUrl(path) {
 }
 
 export const BRAND_OG_IMAGE = brandImageUrl(BRAND_IMAGES.ogCooler);
+
+// Delivery-only derivatives of the same photos. Original/native/SEO URLs stay
+// unchanged; callers must explicitly opt into the website's responsive sources.
+const WEBSITE_HERO_SOURCES = Object.freeze({
+  [BRAND_IMAGES.bottlesCoolerWide]: { widths: [1800], originalWidth: 1800 },
+  [BRAND_IMAGES.bottlesCoolerVertical]: { widths: [800], originalWidth: 800 },
+  [BRAND_IMAGES.eventBoothField]: { widths: [840, 1800], originalWidth: 1800 },
+  [BRAND_IMAGES.aboutHeroEvent]: { widths: [1440], originalWidth: 1800 },
+  [BRAND_IMAGES.aboutHeroMobile]: { widths: [1066], originalWidth: 1066 },
+});
+
+export function websiteBrandImageProps(src, { website = false, sizes = '100vw' } = {}) {
+  const source = WEBSITE_HERO_SOURCES[src];
+  if (website !== true || !source) return { src };
+  const name = src.split('/').pop().replace(/\.jpg$/, '');
+  const candidates = source.widths.map(width => `/images/website-performance-20261006/heroes/${name}-${width}.webp ${width}w`);
+  // Keep the original resolution available for larger/high-DPR displays.
+  if (source.originalWidth > Math.max(...source.widths)) candidates.push(`${src} ${source.originalWidth}w`);
+  return {
+    src, // The unmodified JPEG remains the browser/error fallback.
+    srcSet: candidates.join(', '),
+    sizes,
+    decoding: 'async',
+    onError: (event) => {
+      const image = event.currentTarget;
+      if (!image.getAttribute('srcset')) return;
+      image.removeAttribute('srcset');
+      // About's desktop source uses a different original photo from mobile.
+      // Restore both picture branches instead of switching the selected crop.
+      image.parentElement?.querySelectorAll('source[data-original-srcset]').forEach(source => {
+        source.setAttribute('srcset', source.getAttribute('data-original-srcset'));
+      });
+    },
+  };
+}

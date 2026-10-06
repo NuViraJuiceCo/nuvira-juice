@@ -1,7 +1,8 @@
 import React from 'react';
 
-// Route code can load without covering the website navigation. This is not an
-// authentication fallback and never stands in for verified account data.
+// Public or already-authorized member route code can load without covering the
+// website navigation. This neutral state contains no previous account data and
+// is never an authentication fallback or permission to mount a protected page.
 export default function PublicRouteLoading() {
   return (
     <section className="min-h-[40vh] flex items-center justify-center px-6 py-16" role="status" aria-live="polite" data-public-route-loading="true">
