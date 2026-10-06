@@ -1,13 +1,23 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import MobileNav from './MobileNav';
 import SideNav from './SideNav';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
+import { canRenderPublicStorefront } from '@/lib/publicStorefrontStartup';
+import { startedWithAuthReturn } from '@/lib/app-params';
+import PublicRouteLoading from './PublicRouteLoading';
 
 export default function AppLayout() {
   const location = useLocation();
   const adminShell = location.pathname.startsWith('/admin');
+  const publicWebsiteRoute = canRenderPublicStorefront({
+    pathname: location.pathname,
+    search: location.search,
+    hash: location.hash,
+    isNative: isNativeAppRuntime(),
+    startedWithAuthReturn,
+  });
   const mainClassName = adminShell
     ? 'pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-0 max-w-none mx-auto overflow-x-hidden w-full'
     : 'pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto overflow-x-hidden w-full';
@@ -34,7 +44,11 @@ export default function AppLayout() {
               style={{ willChange: 'opacity, transform' }}
               data-page-transition="true"
             >
-              <Outlet />
+              {publicWebsiteRoute ? (
+                <Suspense fallback={<PublicRouteLoading />}>
+                  <Outlet />
+                </Suspense>
+              ) : <Outlet />}
             </motion.div>
           </AnimatePresence>
         </main>

@@ -28,7 +28,7 @@ function load(file, imports = {}, globals = {}) {
 }
 const policy = load('src/lib/publicStorefrontStartup.js');
 const publicRoutes = ['/', '/shop', '/SHOP/', '/shop/product-id', '/product/oasis.html',
-  '/products/aura', '/program/radiance', '/about', '/events', '/delivery.html',
+  '/products/aura', '/program/radiance', '/about', '/contact', '/support', '/events', '/delivery.html',
   '/fresh-juice-delivery-st-louis'];
 for (const pathname of publicRoutes) {
   assert.equal(policy.canRenderPublicStorefront({ pathname, search: '?utm_source=google&gclid=test', hash: '#details' }), true, pathname);
@@ -118,7 +118,7 @@ function render(pathname, { loading = true, user = null, error = null, pending =
   }
 }
 const verified = { id: 'test-user', email: 'member@example.test' };
-for (const pathname of ['/', '/shop', '/product/oasis.html', '/program/radiance']) {
+for (const pathname of ['/', '/shop', '/contact', '/support', '/product/oasis.html', '/program/radiance']) {
   assert.match(render(pathname), /data-route-rendered/, `Public content waits for auth: ${pathname}`);
   assert.match(render(pathname, { loading: false, user: verified, pending: true }), /data-route-rendered/);
   assert.match(render(pathname, { loading: false, user: verified, failed: true }), /data-route-rendered/);
@@ -129,13 +129,15 @@ checks.push('Actual App renders public content with pending auth/profile and fai
 for (const pathname of gatedRoutes.filter(p => p.startsWith('/') && !p.startsWith('//'))) {
   assert.match(render(pathname), /data-startup-phase="auth"/, pathname);
 }
-native = true;
-assert.match(render('/'), /data-startup-phase="auth"/);
-native = false;
-initialCallback = true;
-assert.match(render('/'), /data-startup-phase="auth"/);
-initialCallback = false;
-assert.match(render('/?access_token=test'), /data-startup-phase="auth"/);
+for (const pathname of ['/', '/contact', '/support']) {
+  native = true;
+  assert.match(render(pathname), /data-startup-phase="auth"/);
+  native = false;
+  initialCallback = true;
+  assert.match(render(pathname), /data-startup-phase="auth"/);
+  initialCallback = false;
+  assert.match(render(`${pathname}?access_token=test`), /data-startup-phase="auth"/);
+}
 assert.match(render('/account', { loading: false, user: verified, pending: true }), /data-startup-phase="profile"/);
 assert.match(render('/checkout', { loading: false, user: verified, failed: true }), /could not load your account setup/);
 assert.match(render('/account', { loading: false, error: { type: 'bootstrap_timeout' } }), /Sign-in check timed out/);

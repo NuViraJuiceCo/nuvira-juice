@@ -9,8 +9,10 @@ import SEO from '@/components/SEO';
 import { submitCustomerInquiry } from '@/lib/customerCommunications';
 import { trackGoogleGenerateLead } from '@/lib/googleAnalytics';
 import { trackMetaLead } from '@/lib/metaPixel';
+import { usePublicInquiryStartup } from '@/lib/usePublicInquiryStartup';
 
 export default function Contact() {
+  const formStartup = usePublicInquiryStartup();
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
   const [sending, setSending] = useState(false);
 
@@ -103,49 +105,54 @@ export default function Contact() {
         {/* Contact Form */}
         <div className="nuvira-contact-form nuvira-premium-card rounded-2xl p-5">
           <h2 className="font-heading text-base font-semibold mb-4">Send a Message</h2>
-          <form onSubmit={handleSubmit} className="nuvira-utility-form space-y-3">
-            <div>
-              <Label className="text-xs text-muted-foreground">Your Name</Label>
-              <Input
-                placeholder="Jane Smith"
-                value={form.name}
-                onChange={e => setForm({ ...form, name: e.target.value })}
-                className="rounded-lg h-10 mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Email Address</Label>
-              <Input
-                type="email"
-                placeholder="you@example.com"
-                value={form.email}
-                onChange={e => setForm({ ...form, email: e.target.value })}
-                className="rounded-lg h-10 mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Subject</Label>
-              <Input
-                placeholder="Order question, wholesale inquiry..."
-                value={form.subject}
-                onChange={e => setForm({ ...form, subject: e.target.value })}
-                className="rounded-lg h-10 mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Message</Label>
-              <textarea
-                placeholder="Tell us how we can help..."
-                value={form.message}
-                onChange={e => setForm({ ...form, message: e.target.value })}
-                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1 resize-none"
-                rows="4"
-              />
-            </div>
-            <Button type="submit" disabled={sending} className="nuvira-gradient-button w-full h-10 rounded-lg">
-              <Send className="w-3.5 h-3.5 mr-2" />
-              {sending ? 'Sending...' : 'Send Message'}
-            </Button>
+          <form onSubmit={handleSubmit} aria-busy={formStartup.disabled}>
+            {formStartup.disabled && (
+              <p role="status" aria-live="polite" className="mb-3 text-xs text-muted-foreground">{formStartup.message}</p>
+            )}
+            <fieldset disabled={formStartup.disabled} className="nuvira-utility-form min-w-0 space-y-3 border-0 p-0">
+              <div>
+                <Label className="text-xs text-muted-foreground">Your Name</Label>
+                <Input
+                  placeholder="Jane Smith"
+                  value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
+                  className="rounded-lg h-10 mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Email Address</Label>
+                <Input
+                  type="email"
+                  placeholder="you@example.com"
+                  value={form.email}
+                  onChange={e => setForm({ ...form, email: e.target.value })}
+                  className="rounded-lg h-10 mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Subject</Label>
+                <Input
+                  placeholder="Order question, wholesale inquiry..."
+                  value={form.subject}
+                  onChange={e => setForm({ ...form, subject: e.target.value })}
+                  className="rounded-lg h-10 mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Message</Label>
+                <textarea
+                  placeholder="Tell us how we can help..."
+                  value={form.message}
+                  onChange={e => setForm({ ...form, message: e.target.value })}
+                  className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1 resize-none"
+                  rows="4"
+                />
+              </div>
+              <Button type="submit" disabled={sending} className="nuvira-gradient-button w-full h-10 rounded-lg">
+                <Send className="w-3.5 h-3.5 mr-2" />
+                {sending ? 'Sending...' : 'Send Message'}
+              </Button>
+            </fieldset>
           </form>
         </div>
 

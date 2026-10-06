@@ -24,10 +24,12 @@ import { Bell } from 'lucide-react';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import ActiveProgramJourneyCard from '@/components/program/ActiveProgramJourneyCard';
 import { BRAND_IMAGES } from '@/lib/brandImages';
+import { publicCatalogQueryOptions, PUBLIC_WEBSITE_PRODUCT_LIMIT } from '@/lib/publicCatalogQueries';
 
 
 export default function Home({ seoActive = true }) {
   const { user } = useAuth();
+  const isNative = isNativeAppRuntime();
 
   // Read first name from localStorage cache so it reflects immediately after settings change
   const cachedFirstName = React.useMemo(() => {
@@ -44,18 +46,20 @@ export default function Home({ seoActive = true }) {
     queryKey: ['products'],
     queryFn: async () => {
       try {
-        const liveProducts = await base44.entities.Product.filter({ is_available: true }, 'sort_order', 50);
+        const liveProducts = await base44.entities.Product.filter({ is_available: true }, 'sort_order', isNative ? 50 : PUBLIC_WEBSITE_PRODUCT_LIMIT);
         return liveProducts?.length ? liveProducts : PUBLIC_PRODUCT_FALLBACKS;
       } catch (error) {
         console.warn('[Home] Falling back to public product catalog', error);
         return PUBLIC_PRODUCT_FALLBACKS;
       }
     },
+    ...publicCatalogQueryOptions('products', isNative),
   });
 
   const { data: banners = [] } = useQuery({
     queryKey: ['banners'],
     queryFn: () => base44.entities.Banner.filter({ is_active: true }, 'sort_order', 10),
+    ...publicCatalogQueryOptions('banners', isNative),
   });
 
   const { data: orders = [] } = useQuery({

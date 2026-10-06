@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import SEO from '@/components/SEO';
 import { submitCustomerInquiry } from '@/lib/customerCommunications';
+import { usePublicInquiryStartup } from '@/lib/usePublicInquiryStartup';
 
 const faqs = [
   {
@@ -66,6 +67,7 @@ const FAQ_SCHEMA_SUPPORT = {
 
 
 export default function Support() {
+  const formStartup = usePublicInquiryStartup();
   const navigate = useNavigate();
   const [openIndex, setOpenIndex] = useState(null);
   const [contactForm, setContactForm] = useState({ name: '', email: '', subject: '', message: '' });
@@ -114,49 +116,54 @@ export default function Support() {
           <MessageCircle className="w-5 h-5 text-primary" />
           <h2 className="font-heading text-base font-semibold">Get in Touch</h2>
         </div>
-        <form onSubmit={handleSubmit} className="nuvira-utility-form space-y-3">
-          <div>
-            <Label className="text-xs text-muted-foreground">Your Name</Label>
-            <Input
-              placeholder="John Doe"
-              value={contactForm.name}
-              onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-              className="rounded-lg h-10 mt-1"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Email Address</Label>
-            <Input
-              type="email"
-              placeholder="you@example.com"
-              value={contactForm.email}
-              onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
-              className="rounded-lg h-10 mt-1"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Subject</Label>
-            <Input
-              placeholder="How can we help?"
-              value={contactForm.subject}
-              onChange={(e) => setContactForm({ ...contactForm, subject: e.target.value })}
-              className="rounded-lg h-10 mt-1"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Message</Label>
-            <textarea
-              placeholder="Tell us what's on your mind..."
-              value={contactForm.message}
-              onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
-              className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1 resize-none"
-              rows="4"
-            />
-          </div>
-          <Button type="submit" disabled={isSending} className="w-full h-10 rounded-lg">
-            <Send className="w-3.5 h-3.5 mr-2" />
-            {isSending ? 'Sending...' : 'Send Message'}
-          </Button>
+        <form onSubmit={handleSubmit} aria-busy={formStartup.disabled}>
+          {formStartup.disabled && (
+            <p role="status" aria-live="polite" className="mb-3 text-xs text-muted-foreground">{formStartup.message}</p>
+          )}
+          <fieldset disabled={formStartup.disabled} className="nuvira-utility-form min-w-0 space-y-3 border-0 p-0">
+            <div>
+              <Label className="text-xs text-muted-foreground">Your Name</Label>
+              <Input
+                placeholder="John Doe"
+                value={contactForm.name}
+                onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                className="rounded-lg h-10 mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Email Address</Label>
+              <Input
+                type="email"
+                placeholder="you@example.com"
+                value={contactForm.email}
+                onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                className="rounded-lg h-10 mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Subject</Label>
+              <Input
+                placeholder="How can we help?"
+                value={contactForm.subject}
+                onChange={(e) => setContactForm({ ...contactForm, subject: e.target.value })}
+                className="rounded-lg h-10 mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Message</Label>
+              <textarea
+                placeholder="Tell us what's on your mind..."
+                value={contactForm.message}
+                onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1 resize-none"
+                rows="4"
+              />
+            </div>
+            <Button type="submit" disabled={isSending} className="w-full h-10 rounded-lg">
+              <Send className="w-3.5 h-3.5 mr-2" />
+              {isSending ? 'Sending...' : 'Send Message'}
+            </Button>
+          </fieldset>
         </form>
       </div>
 

@@ -8,6 +8,7 @@ import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import { adminNavGroups, isAdminNavActive } from './adminNavItems';
 import { useActiveProgramJourney } from '@/lib/program-journey-state';
 import { BRAND_IMAGES } from '@/lib/brandImages';
+import { isPublicNavigationPreloadRoute, preloadPublicNavigation } from '@/lib/startupPages';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
@@ -31,11 +32,20 @@ export default function SideNav() {
   const customerNavItems = journeyNavItem ? [navItems[0], journeyNavItem, ...navItems.slice(1)] : navItems;
   const visibleNavItems = isAdminUser(user) ? [...customerNavItems, adminNavItem] : customerNavItems;
   const showWebsiteFooter = !isNativeAppRuntime();
+  const publicIntentProps = (path) => {
+    if (!showWebsiteFooter || location.pathname.startsWith('/admin') || !isPublicNavigationPreloadRoute(path)) return {};
+    const preload = () => {
+      if (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches) {
+        void preloadPublicNavigation(path, { isNative: false, isAdmin: false });
+      }
+    };
+    return { onMouseEnter: preload, onFocus: preload };
+  };
 
   return (
     <aside className="hidden md:flex flex-col w-60 shrink-0 bg-card border-r border-nuvira min-h-screen fixed left-0 top-0 h-screen overflow-y-auto shadow-sm">
       {/* Logo */}
-      <Link to="/" className="px-6 border-b border-border block" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingBottom: '1.5rem' }}>
+      <Link to="/" {...publicIntentProps('/')} className="px-6 border-b border-border block" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))', paddingBottom: '1.5rem' }}>
         <img src={BRAND_IMAGES.wordmark} alt="NuVira Juice Co. — Cold-Pressed Juice Delivery" className="h-8 w-auto" width="82" height="32" />
         <p className="text-[10px] text-muted-foreground mt-1">Real. Living. Nutrition.</p>
       </Link>
@@ -87,6 +97,7 @@ export default function SideNav() {
               <Link
                 key={path}
                 to={path}
+                {...publicIntentProps(path)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors relative ${
                   isActive
                     ? label === 'Admin'
@@ -116,9 +127,9 @@ export default function SideNav() {
       {showWebsiteFooter && (
         <div className="px-6 py-4 border-t border-border space-y-1">
           <div className="flex flex-wrap gap-x-3 mb-2">
-            <Link to="/about" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">About</Link>
-            <Link to="/contact" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Contact</Link>
-            <Link to="/support" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">FAQ</Link>
+            <Link to="/about" {...publicIntentProps('/about')} className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">About</Link>
+            <Link to="/contact" {...publicIntentProps('/contact')} className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Contact</Link>
+            <Link to="/support" {...publicIntentProps('/support')} className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">FAQ</Link>
             <Link to="/delivery.html" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Delivery</Link>
             <Link to="/returns.html" className="inline-flex min-h-11 items-center justify-center min-w-11 text-[10px] text-muted-foreground transition-colors hover:text-foreground">Returns</Link>
           </div>
