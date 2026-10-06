@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import vm from 'node:vm';
+import { isDeepStrictEqual } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { parse } from '@babel/parser';
 import postcss from 'postcss';
@@ -19,6 +20,41 @@ import {
 } from '../qa/serve-desktop-preview.mjs';
 
 const DEFAULT_BASE = 'b0127bdca0c1de2127b41966e2203571346eeecf';
+// Separately reviewed website dependency maintenance, not a UI-baseline reset or
+// an audit waiver. Native projects and every other protected file stay byte-frozen.
+const REVIEWED_DEPENDENCY_SHA256 = Object.freeze({
+  'package.json': '464005fa07ded3b212da3da9a49a24e9e395fb10de44c481b2190786485ca445',
+  'package-lock.json': '760a20d87988101e0fd6c904a958eb7589857d60623218792e897d36a62ffd2b',
+});
+const REVIEWED_LOCK_UPDATES = Object.freeze({
+  '@capacitor/android': {
+    version: '8.4.3',
+    resolved: 'https://registry.npmjs.org/@capacitor/android/-/android-8.4.3.tgz',
+    integrity: 'sha512-VICd1+E2u5uPvCb5hseoZr84u7/wi334BqayKyXvSLeqURn/iw7nCFEWK29RQNW2rxiW5l1vTVHQ2K6tAJkpTQ==',
+    peerDependencies: { '@capacitor/core': '^8.4.0' },
+  },
+  '@capacitor/core': {
+    version: '8.4.3',
+    resolved: 'https://registry.npmjs.org/@capacitor/core/-/core-8.4.3.tgz',
+    integrity: 'sha512-5S04bZa2I9RabRaqhmwynR54Xkj9x/cKW8R6nXT5ZYg/3JkuOzyIEijIrb18Jra5bMT+f6HX7KonCyvNob6+0g==',
+  },
+  '@capacitor/ios': {
+    version: '8.4.3',
+    resolved: 'https://registry.npmjs.org/@capacitor/ios/-/ios-8.4.3.tgz',
+    integrity: 'sha512-ziFt4WskFjUFgwCcudhxklcCFMCPNTUk1yVuwutw6xxCvUZzmiOJjVLjDrZ+3A1G02nV+oizUiGPff97htPRIg==',
+    peerDependencies: { '@capacitor/core': '^8.4.0' },
+  },
+  'postcss-selector-parser': {
+    version: '7.1.6',
+    resolved: 'https://registry.npmjs.org/postcss-selector-parser/-/postcss-selector-parser-7.1.6.tgz',
+    integrity: 'sha512-7qASPzhKF2l2KLboRZux8CCTRMdGiV08vWmyKzPz22qZ7ZjQBOeY7rNzNoCLSUiftJ7HUq0GERHmxw/t0dCdMw==',
+  },
+  'source-map-js': {
+    version: '1.2.2',
+    resolved: 'https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.2.tgz',
+    integrity: 'sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==',
+  },
+});
 const args = process.argv.slice(2);
 let base = DEFAULT_BASE;
 let dist;
@@ -139,13 +175,40 @@ const changed = git('diff', '--name-only', base, '--', 'src').toString().trim().
 const protectedFiles = git('ls-tree', '-r', '--name-only', base).toString().trim().split('\n').filter(file =>
   /^(src\/(lib|api|components\/checkout)\/|base44\/|functions\/|ios\/|android\/|shopify\/|patches\/)/.test(file) ||
   /^(package(-lock)?\.json|capacitor\.config\.[^/]+|vite\.config\.[^/]+|src\/App\.jsx|index\.html)$/.test(file));
-check('Business rules, prices, catalog, auth/API, checkout, backend, native, providers and dependencies preserve baseline bytes', () => {
+check('Business rules, prices, catalog, auth/API, checkout, backend, native and providers preserve baseline bytes; dependencies match the exact reviewed security receipt', () => {
   for (const file of protectedFiles) {
     const baselineHash = crypto.createHash('sha256').update(git('show', `${base}:${file}`)).digest('hex');
     const currentHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(REPO_ROOT, file))).digest('hex');
-    assert.equal(currentHash, baselineHash, `Protected source changed: ${file}`);
+    const expectedHash = REVIEWED_DEPENDENCY_SHA256[file] || baselineHash;
+    assert.equal(currentHash, expectedHash, `Protected source changed outside its exact reviewed bytes: ${file}`);
     receipts[file] = currentHash;
   }
+});
+check('Dependency maintenance has only three exact Capacitor pins and two overrides; exactly five lock packages change and none are added or removed', () => {
+  // Always compare dependency scope with the fixed pre-desktop source, even if a
+  // caller uses --base for an additional UI comparison.
+  const beforeManifest = JSON.parse(git('show', `${DEFAULT_BASE}:package.json`).toString());
+  const beforeLock = JSON.parse(git('show', `${DEFAULT_BASE}:package-lock.json`).toString());
+  const afterManifest = JSON.parse(read('package.json'));
+  const afterLock = JSON.parse(read('package-lock.json'));
+  const expectedManifest = structuredClone(beforeManifest);
+  const expectedLock = structuredClone(beforeLock);
+  for (const name of ['@capacitor/android', '@capacitor/core', '@capacitor/ios']) {
+    expectedManifest.dependencies[name] = '8.4.3';
+    expectedLock.packages[''].dependencies[name] = '8.4.3';
+  }
+  assert.equal(beforeManifest.overrides, undefined, 'Dependency review requires the original override-free manifest');
+  expectedManifest.overrides = { 'postcss-selector-parser': '7.1.6', 'source-map-js': '1.2.2' };
+  assert.deepEqual(afterManifest, expectedManifest, 'Manifest changed beyond the three reviewed exact pins and two overrides');
+  assert.deepEqual(Object.keys(afterLock.packages).sort(), Object.keys(beforeLock.packages).sort(), 'Lock packages were added or removed');
+  const changedPackages = Object.keys(beforeLock.packages).filter(name => name &&
+    !isDeepStrictEqual(beforeLock.packages[name], afterLock.packages[name])).sort();
+  assert.deepEqual(changedPackages, Object.keys(REVIEWED_LOCK_UPDATES).map(name => `node_modules/${name}`).sort(),
+    'Exactly the five reviewed lock package entries must change');
+  for (const [name, update] of Object.entries(REVIEWED_LOCK_UPDATES)) {
+    Object.assign(expectedLock.packages[`node_modules/${name}`], update);
+  }
+  assert.deepEqual(afterLock, expectedLock, 'Lock metadata or package contents changed beyond the exact reviewed update');
 });
 
 const classOnlyFiles = changed.filter(file => file.endsWith('.jsx') && !['src/main.jsx', 'src/components/layout/AppLayout.jsx'].includes(file));
@@ -353,6 +416,8 @@ console.log(JSON.stringify({
   ok: failures.length === 0, baseline: base, checks, failures, desktop_css_rules: desktopRuleCount,
   markup_only_files: classOnlyFiles, protected_files_verified: protectedFiles.length,
   protected_sha256: receipts, built_preview_handler_checked: Boolean(dist),
+  dependency_review: { baseline: DEFAULT_BASE, sha256: REVIEWED_DEPENDENCY_SHA256,
+    changed_lock_packages: Object.keys(REVIEWED_LOCK_UPDATES), added_lock_packages: 0, removed_lock_packages: 0 },
   limitation: 'Structural and local-handler evidence only. Browser geometry, interaction, mobile visual parity, native devices, live auth/checkout/providers and analytics require separate verification.',
 }, null, 2));
 if (failures.length) process.exitCode = 1;

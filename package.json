@@ -28,13 +28,13 @@
     "@base44/sdk": "^0.8.52",
     "@base44/vite-plugin": "^1.0.44",
     "@capacitor-firebase/messaging": "^8.2.0",
-    "@capacitor/android": "8.3.4",
+    "@capacitor/android": "8.4.3",
     "@capacitor/app": "^8.1.0",
     "@capacitor/app-launcher": "8.0.1",
     "@capacitor/browser": "8.0.4",
     "@capacitor/cli": "^8.3.4",
-    "@capacitor/core": "^8.3.4",
-    "@capacitor/ios": "^8.3.4",
+    "@capacitor/core": "8.4.3",
+    "@capacitor/ios": "8.4.3",
     "@capacitor/live-updates": "0.5.0",
     "@hello-pangea/dnd": "^17.0.0",
     "@hookform/resolvers": "^4.1.2",
@@ -120,5 +120,9 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.2",
     "vite": "^6.1.0"
+  },
+  "overrides": {
+    "postcss-selector-parser": "7.1.6",
+    "source-map-js": "1.2.2"
   }
 }

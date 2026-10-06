@@ -21,9 +21,10 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
-test('1. Capacitor Android dependency is pinned to the active Capacitor major/minor.', () => {
-  assert.equal(packageJson.dependencies['@capacitor/android'], '8.3.4');
-  assert.equal(packageJson.dependencies['@capacitor/core'], '^8.3.4');
+test('1. Capacitor runtime dependencies use the reviewed security pins; CLI and native projects remain separately controlled.', () => {
+  assert.equal(packageJson.dependencies['@capacitor/android'], '8.4.3');
+  assert.equal(packageJson.dependencies['@capacitor/core'], '8.4.3');
+  assert.equal(packageJson.dependencies['@capacitor/ios'], '8.4.3');
   assert.equal(packageJson.dependencies['@capacitor/cli'], '^8.3.4');
 });
 
