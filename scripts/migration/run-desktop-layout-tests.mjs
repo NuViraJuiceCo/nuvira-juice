@@ -24,8 +24,8 @@ const DEFAULT_BASE = 'b0127bdca0c1de2127b41966e2203571346eeecf';
 // waiver. Only the exact npm files and two iOS build-reference receipts below may
 // differ; all other protected files, including native application code, stay frozen.
 const REVIEWED_DEPENDENCY_SHA256 = Object.freeze({
-  'package.json': '464005fa07ded3b212da3da9a49a24e9e395fb10de44c481b2190786485ca445',
-  'package-lock.json': '760a20d87988101e0fd6c904a958eb7589857d60623218792e897d36a62ffd2b',
+  'package.json': '10fac678642f7711514b7d79bd90ed4357d4392a6442e9161f562e853b3ddeef',
+  'package-lock.json': '00b238f833dbb0e102e4f31f13a375a654f8ba049dab463499a6c4cbfc0edb03',
 });
 const IOS_PACKAGE_PATH = 'ios/App/CapApp-SPM/Package.swift';
 const IOS_RESOLVED_PATH = 'ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved';
@@ -55,6 +55,11 @@ const REVIEWED_LOCK_UPDATES = Object.freeze({
     resolved: 'https://registry.npmjs.org/@capacitor/ios/-/ios-8.4.3.tgz',
     integrity: 'sha512-ziFt4WskFjUFgwCcudhxklcCFMCPNTUk1yVuwutw6xxCvUZzmiOJjVLjDrZ+3A1G02nV+oizUiGPff97htPRIg==',
     peerDependencies: { '@capacitor/core': '^8.4.0' },
+  },
+  'follow-redirects': {
+    version: '1.16.1',
+    resolved: 'https://registry.npmjs.org/follow-redirects/-/follow-redirects-1.16.1.tgz',
+    integrity: 'sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==',
   },
   'postcss-selector-parser': {
     version: '7.1.6',
@@ -196,7 +201,7 @@ check('Protected sources preserve baseline bytes except exact reviewed npm depen
     receipts[file] = currentHash;
   }
 });
-check('Dependency maintenance has only three exact Capacitor pins and two overrides; exactly five lock packages change and none are added or removed', () => {
+check('Dependency maintenance has only the original SDK exact pin, three exact Capacitor pins and two overrides; exactly six lock packages change and none are added or removed', () => {
   // Always compare dependency scope with the fixed pre-desktop source, even if a
   // caller uses --base for an additional UI comparison.
   const beforeManifest = JSON.parse(git('show', `${DEFAULT_BASE}:package.json`).toString());
@@ -205,18 +210,24 @@ check('Dependency maintenance has only three exact Capacitor pins and two overri
   const afterLock = JSON.parse(read('package-lock.json'));
   const expectedManifest = structuredClone(beforeManifest);
   const expectedLock = structuredClone(beforeLock);
+  // Preserve the previously tested SDK implementation and prevent the newer
+  // automatic attribution behavior from entering this desktop-only release.
+  assert.equal(beforeManifest.dependencies['@base44/sdk'], '^0.8.52');
+  assert.equal(beforeLock.packages['node_modules/@base44/sdk'].version, '0.8.52');
+  expectedManifest.dependencies['@base44/sdk'] = '0.8.52';
+  expectedLock.packages[''].dependencies['@base44/sdk'] = '0.8.52';
   for (const name of ['@capacitor/android', '@capacitor/core', '@capacitor/ios']) {
     expectedManifest.dependencies[name] = '8.4.3';
     expectedLock.packages[''].dependencies[name] = '8.4.3';
   }
   assert.equal(beforeManifest.overrides, undefined, 'Dependency review requires the original override-free manifest');
   expectedManifest.overrides = { 'postcss-selector-parser': '7.1.6', 'source-map-js': '1.2.2' };
-  assert.deepEqual(afterManifest, expectedManifest, 'Manifest changed beyond the three reviewed exact pins and two overrides');
+  assert.deepEqual(afterManifest, expectedManifest, 'Manifest changed beyond the original SDK exact pin, three reviewed Capacitor pins and two overrides');
   assert.deepEqual(Object.keys(afterLock.packages).sort(), Object.keys(beforeLock.packages).sort(), 'Lock packages were added or removed');
   const changedPackages = Object.keys(beforeLock.packages).filter(name => name &&
     !isDeepStrictEqual(beforeLock.packages[name], afterLock.packages[name])).sort();
   assert.deepEqual(changedPackages, Object.keys(REVIEWED_LOCK_UPDATES).map(name => `node_modules/${name}`).sort(),
-    'Exactly the five reviewed lock package entries must change');
+    'Exactly the six reviewed lock package entries must change; the original SDK package must remain byte-equivalent');
   for (const [name, update] of Object.entries(REVIEWED_LOCK_UPDATES)) {
     Object.assign(expectedLock.packages[`node_modules/${name}`], update);
   }
