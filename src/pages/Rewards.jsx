@@ -67,7 +67,7 @@ function TierHeroCard({ totalPoints, lifetimePoints, redeemedPoints, tier }) {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl relative border border-[#3DB84A]/30 bg-nuvira-gradient"
+      className="nuvira-rewards-tier mx-4 mt-5 rounded-3xl overflow-hidden shadow-2xl relative border border-[#3DB84A]/30 bg-nuvira-gradient"
     >
       {/* Fresh accent arc */}
       <div className="absolute" style={{
@@ -140,7 +140,7 @@ function StatCards({ totalPoints, lifetimePoints, redeemedPoints }) {
     { label: 'Redeemed',   value: redeemedPoints.toLocaleString(), icon: Gift,      highlight: false },
   ];
   return (
-    <div className="mx-4 mt-4 grid grid-cols-3 gap-3">
+    <div className="nuvira-rewards-stats mx-4 mt-4 grid grid-cols-3 gap-3">
       {stats.map(({ label, value, icon: Icon, highlight }, i) => (
         <motion.div
           key={label}
@@ -181,7 +181,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.07 }}
-      className="flex-shrink-0 w-[155px] rounded-2xl overflow-hidden"
+      className="nuvira-reward-card flex-shrink-0 w-[155px] rounded-2xl overflow-hidden"
       style={{ touchAction: 'pan-x',
         border: unlocked ? `1.5px solid rgba(123,220,72,0.65)` : '1.5px solid hsl(var(--border))',
         background: unlocked
@@ -209,7 +209,7 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
       </div>
 
       {/* Content */}
-      <div className="p-3 pointer-events-none">
+      <div className="nuvira-reward-card-content p-3 pointer-events-none">
         <p className="text-xs font-bold mb-1 leading-tight line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--foreground))' }}>{reward.title}</p>
         <p className="text-[10px] font-medium mb-2 line-clamp-2 pointer-events-none" style={{ color: 'hsl(var(--muted-foreground))' }}>{reward.reward_type === 'vip_box' ? 'Choose 6 included 12oz bottles. No extra merchandise required; delivery charges still apply.' : reward.description}</p>
 
@@ -248,11 +248,11 @@ function RewardCard({ reward, totalPoints, activeReward, onApply, onRemove, inde
 // ── Guest / logged-out view ─────────────────────────────────────────────────
 function GuestView() {
   return (
-    <div className="pb-28" style={{ background: 'hsl(var(--background))' }}>
+    <div className="nuvira-rewards-guest pb-28" style={{ background: 'hsl(var(--background))' }}>
       <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, free delivery, and exclusive bundles." />
 
       {/* Hero */}
-      <div className="mx-4 mt-6 rounded-3xl overflow-hidden shadow-xl"
+      <div className="nuvira-rewards-guest-hero mx-4 mt-6 rounded-3xl overflow-hidden shadow-xl"
         style={{ background: `linear-gradient(145deg, ${GREEN_DEEP} 0%, ${GREEN_DARK} 100%)` }}>
         <div className="px-6 py-8 text-center">
           <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
@@ -274,7 +274,7 @@ function GuestView() {
       </div>
 
       {/* How to Earn */}
-      <div className="mx-4 mt-6">
+      <div className="nuvira-rewards-guest-earn mx-4 mt-6">
         <p className="font-heading text-lg font-bold mb-3">How to Earn</p>
         <div className="grid grid-cols-2 gap-3">
           {HOW_TO_EARN.map(({ icon: Icon, label, pts }) => (
@@ -292,9 +292,9 @@ function GuestView() {
       </div>
 
       {/* Rewards preview */}
-      <div className="mx-4 mt-6">
+      <div className="nuvira-rewards-preview mx-4 mt-6">
         <p className="font-heading text-lg font-bold mb-3">Rewards to Unlock</p>
-        <div className="space-y-3">
+        <div className="nuvira-rewards-preview-grid space-y-3">
           {DEFAULT_REWARDS.map((reward, i) => (
             <div key={i} className="flex items-center gap-3 rounded-2xl p-4 border"
               style={{ background: 'hsl(var(--card))', borderColor: 'hsl(var(--border) / 0.4)' }}>
@@ -312,7 +312,7 @@ function GuestView() {
           ))}
         </div>
       </div>
-      <div className="h-8" />
+      <div className="nuvira-rewards-spacer h-8" />
     </div>
   );
 }
@@ -501,12 +501,12 @@ export default function Rewards() {
   }
 
   return (
-    <div className="pb-32" style={{ background: 'hsl(var(--background))' }}>
+    <div className="nuvira-rewards-page pb-32" style={{ background: 'hsl(var(--background))' }}>
       <BrowserAppPrompt pageRoute="/rewards" />
       <SEO title="Rewards" description="Earn points with every NuVira order. Redeem for free bottles, discounts, and exclusive bundles." />
 
       {/* Page title with safe-area padding */}
-      <div className="px-4 pt-6 pb-2 flex items-center justify-between" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
+      <div className="nuvira-rewards-header px-4 pt-6 pb-2 flex items-center justify-between" style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
         <h1 className="font-heading text-2xl font-bold" style={{ color: 'hsl(var(--foreground))' }}>Rewards</h1>
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
           style={{ background: `${tier.color}25`, color: '#FFFFFF', border: `1.5px solid ${tier.color}55` }}>
@@ -519,7 +519,7 @@ export default function Rewards() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mx-4 mt-3 rounded-2xl border border-primary/25 bg-primary/5 p-4"
+          className="nuvira-rewards-status mx-4 mt-3 rounded-2xl border border-primary/25 bg-primary/5 p-4"
           role="status"
         >
           <div className="flex items-start gap-3">
@@ -548,7 +548,7 @@ export default function Rewards() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.15 }}
-        className="mx-4 mt-4 rounded-2xl p-4 flex items-center gap-4"
+        className="nuvira-rewards-birthday mx-4 mt-4 rounded-2xl p-4 flex items-center gap-4"
         style={{
           background: birthdayActive ? '#FFF0F4' : 'hsl(var(--card))',
           border: birthdayActive ? '1.5px solid #F9BBCA' : '1.5px solid hsl(var(--border))',
@@ -579,15 +579,15 @@ export default function Rewards() {
       </motion.div>
 
       {/* ── Redeem Rewards ── */}
-      <div className="mt-8">
-        <div className="flex items-center justify-between px-4 mb-3">
+      <div className="nuvira-rewards-catalogue mt-8">
+        <div className="nuvira-rewards-catalogue-header flex items-center justify-between px-4 mb-3">
           <div>
             <h2 className="font-heading text-lg font-bold">Redeem Rewards</h2>
-            {canScroll && <p className="text-[11px] text-muted-foreground">Swipe for more</p>}
+            {canScroll && <p className="nuvira-rewards-swipe-hint text-[11px] text-muted-foreground">Swipe for more</p>}
           </div>
         </div>
         <MobileCarousel
-          className="no-scrollbar"
+          className="nuvira-rewards-grid no-scrollbar"
           style={{
             msOverflowStyle: 'none',
             WebkitTouchCallout: 'none',
@@ -609,9 +609,9 @@ export default function Rewards() {
       </div>
 
       {/* ── How to Earn ── */}
-      <div className="mx-4 mt-8">
+      <div className="nuvira-rewards-earn mx-4 mt-8">
         <h2 className="font-heading text-xl font-bold mb-4" style={{ color: 'hsl(var(--foreground))' }}>How to Earn</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="nuvira-rewards-earn-grid grid grid-cols-2 gap-3">
           {HOW_TO_EARN.map(({ icon: Icon, label, pts }, i) => (
             <motion.div
               key={label}
@@ -633,7 +633,7 @@ export default function Rewards() {
       </div>
 
       {/* ── Referral card ── */}
-      <div className="mx-4 mt-6">
+      <div className="nuvira-rewards-referral mx-4 mt-6">
         <Link to="/referral">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -660,7 +660,7 @@ export default function Rewards() {
       </div>
 
       {/* ── Quick actions ── */}
-      <div className="mx-4 mt-4 grid grid-cols-2 gap-3">
+      <div className="nuvira-rewards-actions mx-4 mt-4 grid grid-cols-2 gap-3">
         <Link to="/shop">
           <div className="rounded-2xl p-4 flex items-center gap-3 active:opacity-80 transition-opacity"
             style={{ background: `${GREEN_DEEP}12`, border: `1.5px solid ${GREEN_DEEP}30` }}>
@@ -691,7 +691,7 @@ export default function Rewards() {
 
       {/* ── Recent Activity ── */}
       {pointsData?.points_history?.length > 0 ? (
-        <div className="mx-4 mt-8 mb-4">
+        <div className="nuvira-rewards-activity mx-4 mt-8 mb-4">
           <h2 className="font-heading text-xl font-bold mb-4" style={{ color: 'hsl(var(--foreground))' }}>Recent Activity</h2>
           <div className="rounded-2xl overflow-hidden divide-y divide-border/50"
             style={{ background: 'hsl(var(--card))', border: '1.5px solid hsl(var(--border) / 0.5)' }}>
@@ -719,7 +719,7 @@ export default function Rewards() {
           </div>
         </div>
       ) : (
-        <div className="mx-4 mt-8 mb-4">
+        <div className="nuvira-rewards-activity mx-4 mt-8 mb-4">
           <h2 className="font-heading text-xl font-bold mb-4" style={{ color: 'hsl(var(--foreground))' }}>Recent Activity</h2>
           <div className="rounded-2xl p-8 text-center"
             style={{ background: 'hsl(var(--card))', border: `1.5px solid ${REFRESH_ACCENT}25` }}>
@@ -737,7 +737,7 @@ export default function Rewards() {
       )}
 
       {/* Extra bottom padding for safe scrolling above nav */}
-      <div className="h-12" />
+      <div className="nuvira-rewards-spacer h-12" />
 
       <RewardProductPicker
         open={pickerOpen}

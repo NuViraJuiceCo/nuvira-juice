@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import MobileNav from './MobileNav';
 import SideNav from './SideNav';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 export default function AppLayout() {
   const location = useLocation();
@@ -14,6 +15,7 @@ export default function AppLayout() {
     <div
       className="bg-background flex"
       data-admin-shell={adminShell ? 'true' : undefined}
+      data-desktop-storefront={!adminShell && !isNativeAppRuntime() ? 'true' : undefined}
       style={{ minHeight: '100dvh' }}
     >
       {/* Sidebar — tablet & desktop */}
@@ -21,7 +23,7 @@ export default function AppLayout() {
 
       {/* Main content — single natural scroll container, no overflow-hidden */}
       <div className="flex-1 min-w-0 md:ml-60 overflow-x-hidden w-full">
-        <main className={mainClassName}>
+        <main className={mainClassName} data-storefront-page={location.pathname}>
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

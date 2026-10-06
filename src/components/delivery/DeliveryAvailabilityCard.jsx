@@ -104,9 +104,9 @@ export default function DeliveryAvailabilityCard() {
   };
 
   return (
-    <div className="mx-5 my-8">
+    <div className="nv-home-delivery mx-5 my-8">
       <div
-        className="rounded-2xl border border-border/60 overflow-hidden"
+        className="nv-home-delivery-card rounded-2xl border border-border/60 overflow-hidden"
         style={{
           background: 'linear-gradient(135deg, rgba(200, 232, 106, 0.10) 0%, rgba(29, 140, 53, 0.06) 100%)',
           borderColor: 'rgba(61, 184, 74, 0.25)',
@@ -120,7 +120,7 @@ export default function DeliveryAvailabilityCard() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="p-5"
+              className="nv-home-delivery-result p-5"
             >
               <div className="flex items-start gap-3.5">
                 <div className="w-10 h-10 rounded-xl nuvira-icon-badge flex items-center justify-center shrink-0">
@@ -141,7 +141,7 @@ export default function DeliveryAvailabilityCard() {
                   {areaDetails?.routeReview && <p className="text-xs text-muted-foreground mt-2 leading-relaxed">This extended area requires sign-in and route review. Delivery is not confirmed until the route is approved.</p>}
                 </div>
               </div>
-              <div className="flex gap-2 mt-4">
+              <div className="nv-home-delivery-result-actions flex gap-2 mt-4">
                 <Link to="/shop" className="flex-1">
                   <button className="w-full h-10 rounded-xl nuvira-gradient-button text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
                     Start My Order <ArrowRight className="w-4 h-4" />
@@ -164,7 +164,7 @@ export default function DeliveryAvailabilityCard() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="p-5"
+              className="nv-home-delivery-result p-5"
             >
               <div className="flex items-start gap-3.5">
                 <div className="w-10 h-10 rounded-xl bg-accent/15 flex items-center justify-center shrink-0 border border-accent/20">
@@ -179,7 +179,7 @@ export default function DeliveryAvailabilityCard() {
                   </p>
                 </div>
               </div>
-              <div className="flex gap-2 mt-4">
+              <div className="nv-home-delivery-result-actions flex gap-2 mt-4">
                 <button
                   onClick={() => setShowWaitlist(true)}
                   className="flex-1 h-10 rounded-xl bg-nuvira-gradient text-white text-sm font-semibold active:scale-[0.98] transition-transform"
@@ -200,6 +200,7 @@ export default function DeliveryAvailabilityCard() {
           {status === 'ineligible' && showWaitlist && (
             <motion.div
               key="waitlist"
+              className="nv-home-delivery-waitlist"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
@@ -219,10 +220,10 @@ export default function DeliveryAvailabilityCard() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="p-5"
+              className="nv-home-delivery-input p-5"
             >
               {/* Header */}
-              <div className="flex items-center gap-2.5 mb-4">
+              <div className="nv-home-delivery-heading flex items-center gap-2.5 mb-4">
                 <div className="w-9 h-9 rounded-xl bg-nuvira-gradient flex items-center justify-center shadow-sm">
                   <MapPin className="w-4 h-4 text-white" />
                 </div>
@@ -237,8 +238,8 @@ export default function DeliveryAvailabilityCard() {
               </div>
 
               {/* ZIP Input */}
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
+              <div className="nv-home-delivery-controls flex gap-2">
+                <div className="nv-home-delivery-zip flex-1 relative">
                   <input
                     type="text"
                     inputMode="numeric"
@@ -269,12 +270,12 @@ export default function DeliveryAvailabilityCard() {
               </div>
 
               {zipError && (
-                <p role="alert" className="text-xs text-destructive dark:text-red-300 mt-1.5 font-medium">{zipError}</p>
+                <p role="alert" className="nv-home-delivery-error text-xs text-destructive dark:text-red-300 mt-1.5 font-medium">{zipError}</p>
               )}
             </motion.div>
           )}
         </AnimatePresence>
-        <div className="border-t border-border/50 px-5 py-2.5">
+        <div className="nv-home-delivery-footer border-t border-border/50 px-5 py-2.5">
           <Link to="/delivery.html" className="inline-flex min-h-11 items-center text-xs font-bold text-primary hover:underline">
             View delivery windows, fees, and route details
           </Link>

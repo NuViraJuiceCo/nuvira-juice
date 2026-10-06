@@ -95,13 +95,13 @@ export default function Support() {
   };
 
   return (
-    <div className="pb-4">
+    <div className="nuvira-support-page pb-4">
       <SEO
         title="Help & Support — FAQ"
         description="Frequently asked questions about NuVira Juice Co. — delivery, ingredients, programs, and customer support."
         structuredData={FAQ_SCHEMA_SUPPORT}
       />
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+      <div className="nuvira-support-header flex items-center gap-3 px-4 pt-4 pb-3">
         <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
           <ArrowLeft className="w-4 h-4" />
         </button>
@@ -109,12 +109,12 @@ export default function Support() {
       </div>
 
       {/* Contact Form */}
-      <div className="mx-4 mb-6 bg-card rounded-2xl border border-border/50 p-5">
+      <div className="nuvira-support-form mx-4 mb-6 bg-card rounded-2xl border border-border/50 p-5">
         <div className="flex items-center gap-2 mb-4">
           <MessageCircle className="w-5 h-5 text-primary" />
           <h2 className="font-heading text-base font-semibold">Get in Touch</h2>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="nuvira-utility-form space-y-3">
           <div>
             <Label className="text-xs text-muted-foreground">Your Name</Label>
             <Input
@@ -161,7 +161,7 @@ export default function Support() {
       </div>
 
       {/* FAQ */}
-      <div className="px-4">
+      <div className="nuvira-support-faq px-4">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
           Frequently Asked Questions
         </h2>
@@ -196,7 +196,7 @@ export default function Support() {
                     exit={{ height: 0, opacity: 0 }}
                     className="overflow-hidden"
                   >
-                    <p className="px-3.5 pb-3.5 text-xs text-muted-foreground leading-relaxed pl-10">
+                    <p className="nuvira-support-answer px-3.5 pb-3.5 text-xs text-muted-foreground leading-relaxed pl-10">
                       {faq.a}
                     </p>
                   </motion.div>
@@ -208,7 +208,7 @@ export default function Support() {
       </div>
 
       {/* Google Review */}
-      <div className="px-4 mt-6">
+      <div className="nuvira-support-review px-4 mt-6">
         <a
           href="https://www.google.com/maps/place/NuVira+Juice+Company/@38.7028093,-90.7162366,11z/data=!3m1!4b1!4m6!3m5!1s0x6ba31dd76fc40465:0x251d9ffa6e774456!8m2!3d38.702657!4d-90.5514294!16s%2Fg%2F11xsw1cxfz"
           target="_blank"
@@ -228,7 +228,7 @@ export default function Support() {
       </div>
 
       {/* Legal & Compliance */}
-      <div className="px-4 mt-4 mb-2">
+      <div className="nuvira-support-legal px-4 mt-4 mb-2">
         <Link to="/legal">
           <div className="flex items-center justify-between p-4 bg-card rounded-xl border border-border/50 active:bg-secondary transition-colors">
             <div className="flex items-center gap-3">

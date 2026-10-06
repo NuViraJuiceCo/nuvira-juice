@@ -1,0 +1,504 @@
+/* Customer-web desktop presentation only. The existing mobile/native classes,
+   imagery, content, and interactions remain the source below this breakpoint. */
+@media (min-width: 1024px) {
+  [data-desktop-storefront="true"] .nv-home-hero {
+    /* The original mobile minimum is inline; this is its desktop-only override. */
+    min-height: 520px !important;
+    margin-inline: 20px;
+    border-radius: 24px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-hero-inner {
+    min-height: 520px;
+    padding: 32px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-hero-copy {
+    width: 76%;
+    max-width: 620px;
+    padding-bottom: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-hero-title {
+    max-width: 16ch;
+    font-size: clamp(48px, 4.6vw, 64px);
+    line-height: 1;
+    letter-spacing: -0.025em;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-hero-subtitle {
+    max-width: 34ch;
+    margin-top: 16px;
+    font-size: 17px;
+    line-height: 1.6;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-hero-actions {
+    max-width: none;
+    margin-top: 24px;
+    gap: 12px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-hero-stats {
+    max-width: 620px;
+    margin-top: 28px;
+    gap: 10px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-hero-stats > div {
+    padding: 12px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-hero-stats > div > p:first-child {
+    font-size: 13px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-hero-stats > div > p + p {
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-reorder {
+    max-width: 760px;
+    margin-top: 24px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-reorder-card {
+    min-height: 82px;
+    padding: 18px 20px;
+    border-radius: 16px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery {
+    margin-block: 28px 44px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-card {
+    border-radius: 20px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-input {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 0.95fr);
+    align-items: center;
+    gap: 12px 24px;
+    padding: 24px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-heading {
+    margin-bottom: 0;
+    gap: 14px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-heading > div:first-child {
+    flex-shrink: 0;
+    width: 42px;
+    height: 42px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-heading p:first-child {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-heading p + p {
+    max-width: 46ch;
+    margin-top: 5px;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-controls {
+    justify-self: end;
+    width: 100%;
+    max-width: 440px;
+    gap: 10px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-zip {
+    min-width: 0;
+    max-width: 280px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-controls input {
+    min-width: 0;
+    height: 46px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-controls > button {
+    height: 46px;
+    padding-inline: 16px;
+    font-size: 12px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-error {
+    grid-column: 2;
+    justify-self: end;
+    width: 100%;
+    max-width: 440px;
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-result {
+    display: grid;
+    gap: 20px;
+    padding: 24px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-result > div:first-child {
+    max-width: 740px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-result-actions {
+    width: 100%;
+    max-width: 380px;
+    margin-top: 0;
+    margin-left: 54px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-waitlist {
+    max-width: 640px;
+    margin-inline: auto;
+    padding: 8px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-footer {
+    padding: 4px 24px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlights {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 24px;
+    margin-top: 56px;
+    padding-inline: 20px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-section-heading {
+    margin-bottom: 22px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-section-heading .font-heading {
+    font-size: 24px;
+    line-height: 1.3;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-section-heading .text-muted-foreground {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlights > .nv-home-section-heading {
+    grid-column: 1;
+    align-self: center;
+    margin: 0;
+    padding: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlights-grid,
+  [data-desktop-storefront="true"] .nv-home-products-grid {
+    display: grid;
+    overflow: visible;
+    gap: 18px;
+    padding-bottom: 0;
+    transform: none;
+    will-change: auto;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlights-grid {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-inline: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlight {
+    width: auto;
+    min-width: 0;
+    min-height: 166px;
+    padding: 24px;
+    border-radius: 20px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlight > p:first-of-type {
+    margin-bottom: 8px;
+    font-size: 15px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlight > p + p {
+    max-width: 32ch;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlights-rewards {
+    grid-column: 2;
+    grid-row: 1;
+    width: 250px;
+    align-self: center;
+    margin: 0;
+    padding: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-rewards-card {
+    gap: 20px;
+    padding: 14px 18px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-rewards-card p + p {
+    margin-top: 3px;
+    font-size: 11px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-product-row {
+    margin-top: 48px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-products-grid {
+    grid-template-columns: repeat(var(--desktop-product-columns, 4), minmax(0, 1fr));
+    align-items: start;
+    /* Cap each product at 320px, including the existing 20px carousel gutters. */
+    max-width: calc(var(--desktop-product-columns, 4) * 338px + 22px);
+  }
+
+  [data-desktop-storefront="true"] .nv-home-product-item {
+    width: 100%;
+    max-width: 320px;
+    min-width: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-product-item .storefront-product-card-compact-copy {
+    min-height: 80px;
+    padding: 14px 16px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-product-item .storefront-product-card-compact-copy > p:first-child {
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-product-item .storefront-product-card-compact-copy > p + p {
+    margin-top: 3px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-sustainability {
+    margin-top: 48px;
+    margin-bottom: 24px;
+    gap: 20px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-sustainability-card {
+    min-height: 164px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 20px;
+    padding: 24px;
+    border-radius: 20px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-sustainability-card > div:first-child {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    margin-bottom: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-sustainability-card h3 {
+    margin-top: 4px;
+    font-size: 23px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-sustainability-card > div > p {
+    font-size: 10px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-sustainability-card > div > div {
+    margin-top: 12px;
+    font-size: 12px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    align-items: stretch;
+    gap: 20px;
+    margin: 24px 20px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand > .nv-home-brand-values,
+  [data-desktop-storefront="true"] .nv-home-brand > .nv-home-brand-links {
+    margin: 0;
+    min-width: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-values-card {
+    height: 100%;
+    padding: 24px;
+    border-radius: 20px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-values-card > p:first-child {
+    font-size: 22px;
+    line-height: 1.35;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-values-card > p + p {
+    margin-top: 5px;
+    margin-bottom: 28px;
+    font-size: 12px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-values-grid {
+    gap: 14px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-values-grid > div > div {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 12px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-values-grid p:first-of-type {
+    font-size: 12px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-values-grid p + p {
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-links {
+    display: grid;
+    grid-template-rows: repeat(3, 1fr);
+    border-radius: 20px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-links a,
+  [data-desktop-storefront="true"] .nv-home-brand-links a > div {
+    height: 100%;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-links a {
+    display: block;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-links a > div {
+    gap: 16px;
+    min-height: 82px;
+    padding: 18px 22px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-brand-links a > div > div:last-child {
+    flex-shrink: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch {
+    margin-top: 24px;
+    margin-bottom: 36px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch-card {
+    min-height: 248px;
+    align-items: center;
+    border-radius: 24px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch-image {
+    width: 46%;
+    object-position: center 48%;
+    opacity: 0.95;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch-copy {
+    max-width: 65%;
+    padding: 32px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch-copy > div {
+    padding: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch-copy > div + div {
+    margin-top: 14px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch-copy .font-heading {
+    font-size: 28px;
+    line-height: 1.25;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch-copy p + p {
+    max-width: 30ch;
+    margin-top: 8px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch-action {
+    align-self: flex-end;
+    padding: 28px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-merch-action span {
+    font-size: 14px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-notifications {
+    max-width: 900px;
+    margin-inline: auto;
+    padding: 22px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-notifications-copy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 24px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-notifications-copy > p {
+    grid-column: 1;
+    max-width: 54ch;
+    line-height: 1.6;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-notifications-actions {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: center;
+    margin-top: 0;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-notifications-actions button {
+    min-height: 42px;
+    padding-inline: 18px;
+  }
+}
+
+@media (min-width: 1280px) {
+  [data-desktop-storefront="true"] .nv-home-hero-inner {
+    padding: 36px 40px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlights-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  [data-desktop-storefront="true"] .nv-home-highlight {
+    min-height: 194px;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-result {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    align-items: center;
+  }
+
+  [data-desktop-storefront="true"] .nv-home-delivery-result-actions {
+    margin-left: 0;
+  }
+}

@@ -103,13 +103,13 @@ export default function NotificationPrompt() {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
         transition={{ duration: 0.3 }}
-        className="nuvira-premium-card mx-4 mb-4 rounded-2xl p-4"
+        className="nv-home-notifications nuvira-premium-card mx-4 mb-4 rounded-2xl p-4"
       >
         <div className="flex items-start gap-3">
           <div className="nuvira-icon-badge w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
             <Bell className="w-4 h-4" />
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="nv-home-notifications-copy flex-1 min-w-0">
             <p className="text-sm font-semibold mb-0.5">Stay In The Loop</p>
             <p className="text-xs text-muted-foreground leading-snug">
               Enable notifications to be the first to know about new drops, deliveries, and community events.
@@ -117,7 +117,7 @@ export default function NotificationPrompt() {
             {enableError && (
               <p className="mt-2 text-xs text-destructive" role="alert">{enableError}</p>
             )}
-            <div className="flex gap-2 mt-3">
+            <div className="nv-home-notifications-actions flex gap-2 mt-3">
               <button
                 onClick={handleEnable}
                 disabled={isEnabling}

@@ -40,14 +40,14 @@ export default function Contact() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="nuvira-contact-page min-h-screen bg-background pb-10">
       <SEO
         title="Contact Us"
         description="Get in touch with NuVira Juice Co. in Wentzville, MO. Questions about orders, delivery, or wholesale? We'd love to hear from you."
       />
 
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
+      <div className="nuvira-utility-header sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <Link to="/">
           <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
             <ArrowLeft className="w-4 h-4" />
@@ -56,9 +56,9 @@ export default function Contact() {
         <span className="font-heading text-base font-semibold">Contact Us</span>
       </div>
 
-      <div className="px-4 pt-6 space-y-6">
+      <div className="nuvira-contact-layout px-4 pt-6 space-y-6">
         {/* Hero */}
-        <div>
+        <div className="nuvira-contact-intro">
           <h1 className="font-heading text-2xl font-bold mb-1">We'd Love to Hear from You</h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
             Questions about an order, delivery, wholesale, or just want to say hi? Reach out and we'll get back to you quickly.
@@ -66,7 +66,7 @@ export default function Contact() {
         </div>
 
         {/* Contact Info */}
-        <div className="grid grid-cols-1 gap-3">
+        <div className="nuvira-contact-details grid grid-cols-1 gap-3">
           <div className="nuvira-premium-card flex items-center gap-3 p-4 rounded-2xl">
             <div className="nuvira-icon-badge w-9 h-9 rounded-full flex items-center justify-center shrink-0">
               <Mail className="w-4 h-4" />
@@ -101,9 +101,9 @@ export default function Contact() {
         </div>
 
         {/* Contact Form */}
-        <div className="nuvira-premium-card rounded-2xl p-5">
+        <div className="nuvira-contact-form nuvira-premium-card rounded-2xl p-5">
           <h2 className="font-heading text-base font-semibold mb-4">Send a Message</h2>
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={handleSubmit} className="nuvira-utility-form space-y-3">
             <div>
               <Label className="text-xs text-muted-foreground">Your Name</Label>
               <Input
@@ -150,7 +150,7 @@ export default function Contact() {
         </div>
 
         {/* Social Links */}
-        <div className="text-center pb-4">
+        <div className="nuvira-contact-social text-center pb-4">
           <p className="text-xs text-muted-foreground mb-2">Follow us for daily drops & wellness tips</p>
           <div className="flex justify-center gap-4">
             <a href="https://www.instagram.com/nuvirajuiceco/" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary">Instagram</a>

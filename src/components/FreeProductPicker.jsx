@@ -65,7 +65,7 @@ export default function FreeProductPicker({ open, onClose, onSelect, title = 'Ch
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-40 bg-card rounded-t-3xl shadow-2xl max-h-[80vh] flex flex-col"
+            className="storefront-customer-sheet fixed bottom-0 left-0 right-0 z-40 bg-card rounded-t-3xl shadow-2xl max-h-[80vh] flex flex-col"
           >
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">

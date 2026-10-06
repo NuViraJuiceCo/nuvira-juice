@@ -228,7 +228,7 @@ export default function Shop({ seoActive = true }) {
 
   return (
     <PullToRefresh onRefresh={refetch}>
-    <div className="pb-4">
+    <div className="storefront-shop pb-4">
       {seoActive && (
         <SEO
           title="Shop Cold-Pressed Juices"
@@ -238,7 +238,7 @@ export default function Shop({ seoActive = true }) {
         />
       )}
       {/* Header */}
-      <div className="px-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+      <div className="storefront-shop-heading px-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
         {seoActive ? (
           <h1 className="font-heading text-xl font-bold">Shop</h1>
         ) : (
@@ -248,7 +248,7 @@ export default function Shop({ seoActive = true }) {
       </div>
 
       {/* Search */}
-      <div className="px-4 mb-3">
+      <div className="storefront-shop-search px-4 mb-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -261,7 +261,7 @@ export default function Shop({ seoActive = true }) {
       </div>
 
       {/* Categories — only show tabs that have products (except "all") */}
-      <div className="flex gap-2 px-4 overflow-x-auto pb-3 no-scrollbar">
+      <div className="storefront-shop-filters flex gap-2 px-4 overflow-x-auto pb-3 no-scrollbar">
         {ALL_CATEGORIES.filter(cat => {
           if (cat.key === 'all') return true;
           if (cat.key === 'seasonal') return products.some(p => p.is_seasonal || p.category === 'seasonal');
@@ -283,7 +283,7 @@ export default function Shop({ seoActive = true }) {
 
       {/* Programs — show when not searching/filtering */}
       {!search.trim() && category === 'all' && !filterParam && (
-        <div className="mb-6">
+        <div className="storefront-shop-programs mb-6">
           <div className="px-5 mb-3">
             <h2 className="font-heading text-base font-bold">3-Day Programs</h2>
             <p className="text-[11px] text-muted-foreground">Structured for results — 12 bottles delivered</p>
@@ -297,9 +297,9 @@ export default function Shop({ seoActive = true }) {
       )}
 
       {/* Product Grid */}
-      <div className="px-5">
+      <div className="storefront-shop-results px-5">
         {isLoading ? (
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
+          <div className="storefront-product-grid grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
             {[1,2,3,4].map(i => (
               <div key={i} className="bg-secondary/50 rounded-xl aspect-[3/4] animate-pulse" />
             ))}
@@ -316,7 +316,7 @@ export default function Shop({ seoActive = true }) {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
+          <div className="storefront-product-grid grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-4">
             <AnimatePresence>
               {filtered.map(product => (
                 <motion.div

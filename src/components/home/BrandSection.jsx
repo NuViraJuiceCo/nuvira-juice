@@ -22,14 +22,14 @@ export default function BrandSection() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.5 }}
-      className="mt-8 mb-4 space-y-5"
+      className="nv-home-brand mt-8 mb-4 space-y-5"
     >
       {/* NuVira Difference — values only, no photo bg */}
-      <div className="mx-5">
-        <div className="nuvira-premium-card rounded-2xl p-4">
+      <div className="nv-home-brand-values mx-5">
+        <div className="nv-home-brand-values-card nuvira-premium-card rounded-2xl p-4">
           <p className="font-heading font-bold text-base mb-0.5">The NuVira Difference</p>
           <p className="text-[10px] text-muted-foreground mb-4">No fillers. No compromises.</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="nv-home-brand-values-grid grid grid-cols-3 gap-3">
             {values.map(({ icon: Icon, title, desc }, i) => (
               <motion.div
                 key={title}
@@ -51,7 +51,7 @@ export default function BrandSection() {
       </div>
 
       {/* Brand Nav Links */}
-      <div className="mx-5 nuvira-premium-card rounded-2xl overflow-hidden divide-y divide-border/50">
+      <div className="nv-home-brand-links mx-5 nuvira-premium-card rounded-2xl overflow-hidden divide-y divide-border/50">
         {brandLinks.map(({ label, to, desc }, i) => (
           <motion.div
             key={to}

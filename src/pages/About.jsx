@@ -168,7 +168,7 @@ function GalleryImage({ src, alt, caption, className = '' }) {
 
 export default function About() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="nuvira-about-page min-h-screen bg-background text-foreground">
       <SEO
         title={aboutContent.seo.title}
         description={aboutContent.seo.description}
@@ -180,7 +180,7 @@ export default function About() {
       </header>
 
       <section className="nuvira-vivid-hero text-white">
-        <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-7 md:px-8 md:py-14 lg:px-12">
+        <div className="nuvira-about-container mx-auto grid w-full max-w-7xl gap-8 px-5 py-7 md:px-8 md:py-14 lg:px-12">
           <div className="flex flex-col justify-between gap-8">
             <div>
               <div className="hidden md:block">
@@ -188,7 +188,7 @@ export default function About() {
               </div>
               <img src={LOGO_URL} alt="NuVira Juice Co." className="mt-5 h-10 w-auto md:mt-10 md:h-12" />
               <p className="mt-7 text-sm font-bold text-[#C8E86A] md:mt-10">{aboutContent.hero.eyebrow}</p>
-              <h1 className="mt-3 min-w-0 max-w-5xl break-words font-heading text-[2rem] font-bold leading-[1.05] sm:text-5xl lg:text-6xl">
+              <h1 className="nuvira-about-title mt-3 min-w-0 max-w-5xl break-words font-heading text-[2rem] font-bold leading-[1.05] sm:text-5xl lg:text-6xl">
                 {aboutContent.hero.title}
               </h1>
               <p className="mt-5 min-w-0 max-w-2xl break-words text-base leading-7 text-white/72 md:text-lg md:leading-8">
@@ -230,14 +230,14 @@ export default function About() {
       </section>
 
       <section className="border-b border-nuvira bg-nuvira-gradient-soft">
-        <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] md:px-8 md:py-16 lg:px-12">
+        <div className="nuvira-about-container mx-auto grid max-w-7xl gap-8 px-5 py-10 md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)] md:px-8 md:py-16 lg:px-12">
           <div>
             <p className="text-sm font-bold text-primary">Our story</p>
             <h2 className="mt-3 font-heading text-3xl font-bold leading-tight md:text-5xl">
               A local juice company with a higher freshness standard.
             </h2>
           </div>
-          <div className="max-w-3xl">
+          <div className="nuvira-about-reading max-w-3xl">
             <p className="text-base leading-8 text-muted-foreground md:text-lg md:leading-9">
               {aboutContent.intro}
             </p>
@@ -253,7 +253,7 @@ export default function About() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 py-10 md:px-8 md:py-16 lg:px-12">
+      <section className="nuvira-about-container mx-auto max-w-7xl px-5 py-10 md:px-8 md:py-16 lg:px-12">
         <div className="mb-7 flex flex-col justify-between gap-3 md:flex-row md:items-end">
           <div>
             <p className="text-sm font-bold text-primary">The NuVira way</p>
@@ -271,14 +271,14 @@ export default function About() {
       </section>
 
       <section className="nuvira-vivid-hero">
-        <div className="mx-auto grid max-w-7xl gap-4 px-5 py-10 md:grid-cols-12 md:px-8 md:py-16 lg:px-12">
+        <div className="nuvira-about-container mx-auto grid max-w-7xl gap-4 px-5 py-10 md:grid-cols-12 md:px-8 md:py-16 lg:px-12">
           {gallery.map((image) => (
             <GalleryImage key={image.src} {...image} />
           ))}
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-10 px-5 py-10 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:px-8 md:py-16 lg:px-12">
+      <section className="nuvira-about-container mx-auto grid max-w-7xl gap-10 px-5 py-10 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] md:px-8 md:py-16 lg:px-12">
         <div>
           <p className="text-sm font-bold text-primary">Built for real routines</p>
           <h2 className="mt-2 font-heading text-3xl font-bold leading-tight md:text-5xl">
@@ -304,7 +304,7 @@ export default function About() {
       </section>
 
       <section className="border-t border-nuvira bg-nuvira-gradient-soft">
-        <div className="mx-auto grid max-w-7xl gap-6 px-5 py-10 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-8 md:py-14 lg:px-12">
+        <div className="nuvira-about-container mx-auto grid max-w-7xl gap-6 px-5 py-10 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:px-8 md:py-14 lg:px-12">
           <div>
             <div className="nuvira-icon-badge mb-4 flex h-11 w-11 items-center justify-center rounded-lg">
               <CalendarHeart className="h-5 w-5" />

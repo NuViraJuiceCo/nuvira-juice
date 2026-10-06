@@ -120,7 +120,7 @@ export default function SubscriptionUpsellModal({ open, onClose, onOneTime, onSu
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-background rounded-t-3xl px-4 pt-6 pb-10 max-h-[90vh] overflow-y-auto"
+            className="storefront-customer-sheet fixed bottom-0 left-0 right-0 z-50 bg-background rounded-t-3xl px-4 pt-6 pb-10 max-h-[90vh] overflow-y-auto"
           >
             {/* Handle */}
             <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5" />
