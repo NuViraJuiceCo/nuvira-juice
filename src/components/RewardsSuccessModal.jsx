@@ -19,7 +19,7 @@ export default function RewardsSuccessModal({ open, onClose, email, name }) {
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[9999] bg-card rounded-3xl p-8 max-w-sm shadow-2xl"
+            className="nv-customer-modal fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[9999] bg-card rounded-3xl p-8 max-w-sm shadow-2xl"
           >
             {/* Success Icon */}
             <motion.div

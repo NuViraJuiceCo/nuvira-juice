@@ -48,10 +48,11 @@ export default function OutOfAreaModal({ address, zip, onClose }) {
         initial={{ scale: 0.92, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.92, opacity: 0 }}
-        className="relative bg-card rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+        className="nv-customer-modal relative bg-card rounded-2xl p-6 w-full max-w-sm shadow-2xl"
       >
         <button
           onClick={onClose}
+          aria-label="Close delivery area request"
           className="absolute top-4 right-4 w-8 h-8 bg-secondary rounded-full flex items-center justify-center"
         >
           <X className="w-4 h-4" />

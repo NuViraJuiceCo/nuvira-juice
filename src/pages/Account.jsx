@@ -4,7 +4,9 @@ import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { customerDashboardQueryOptions } from '@/lib/customerDashboardQueries';
+import { customerDashboardQueryOptions, customerDashboardOrders } from '@/lib/customerDashboardQueries';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopAccount from '@/components/desktop/DesktopAccount';
 import { customerWebsiteMotionOverrides } from '@/lib/customerWebsiteMotion';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
@@ -16,6 +18,7 @@ import MemberProgramCard from '@/components/account/MemberProgramCard';
 import BrowserAppPrompt from '@/components/BrowserAppPrompt';
 import ProfileAvatar from '@/components/account/ProfileAvatar';
 import { PROGRAM_BY_KEY } from '@/lib/program-catalog';
+import { REFERRAL_OFFER } from '@/lib/referralOffer';
 import { useActiveProgramJourney } from '@/lib/program-journey-state';
 import { motion } from 'framer-motion';
 
@@ -67,12 +70,13 @@ function AdminToolRow({ item, index, isLast }) {
 }
 
 export default function Account() {
+  const desktop = useDesktopStorefront();
   const { user, logout, navigateToLogin } = useAuth();
   const immediateMotion = customerWebsiteMotionOverrides(isNativeAppRuntime());
-  const { data: dashData, isLoading: isDashLoading } = useQuery(customerDashboardQueryOptions(base44, user));
+  const { data: dashData, isLoading: isDashLoading, isError: isDashError, refetch: refetchDashboard } = useQuery(customerDashboardQueryOptions(base44, user));
 
   const userProfile = dashData?.customer_profile || null;
-  const orders = dashData?.orders || [];
+  const orders = customerDashboardOrders(dashData);
   const {
     journey: activeJourney,
     journeys: programJourneys,
@@ -92,6 +96,8 @@ export default function Account() {
       navigateToLogin();
     }
   };
+
+  if (desktop) return <DesktopAccount user={user} dashData={dashData} orders={orders} isLoading={isDashLoading} isError={isDashError} onRetry={refetchDashboard} journey={activeJourney} journeys={programJourneys} isProgramLoading={isProgramLoading} isProgramError={isProgramError} onRetryPrograms={refetchPrograms} onLogout={handleLogout} />;
 
   return (
     <div className="nuvira-account-page pb-6">
@@ -246,7 +252,7 @@ export default function Account() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-foreground dark:text-white">Refer & Earn</p>
-                  <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">Give $5 and earn a reward when a friend orders.</p>
+                  <p className="text-[10px] text-foreground/55 dark:text-muted-foreground/80 leading-snug">{REFERRAL_OFFER.summary}</p>
                 </div>
                 <ChevronRight className="h-4 w-4 text-foreground/40" />
               </div>

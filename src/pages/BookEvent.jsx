@@ -9,6 +9,8 @@ import { submitCustomerInquiry } from '@/lib/customerCommunications';
 import { trackGoogleGenerateLead } from '@/lib/googleAnalytics';
 import { trackMetaLead } from '@/lib/metaPixel';
 import { trackSnapLead } from '@/lib/snapPixel';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import { BRAND_IMAGES, websiteBrandImageProps } from '@/lib/brandImages';
 
 const HERO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/99e225ed4_DSC02438-Edit-2.jpg";
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
@@ -48,6 +50,7 @@ const includes = [
 ];
 
 export default function BookEvent() {
+  const desktop = useDesktopStorefront();
   const navigate = useNavigate();
   const [form, setForm] = useState({
     name: '', email: '', phone: '', eventType: '', date: '', guests: '', juiceType: '', serviceModel: '', venue: '', notes: '',
@@ -95,23 +98,23 @@ export default function BookEvent() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="nv-book-event-page min-h-screen bg-background pb-10">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
-        <button onClick={() => navigate(-1)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
+        <button type="button" aria-label="Go back" onClick={() => navigate(-1)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <span className="font-heading text-base font-semibold">Book Us for Your Event</span>
       </div>
 
       {/* Hero */}
-      <div className="relative h-56 overflow-hidden">
-        <img src={HERO_URL} alt="NuVira Event" className="w-full h-full object-cover" />
+      <div className="nv-book-event-hero relative h-56 overflow-hidden">
+        <img {...(desktop ? websiteBrandImageProps(BRAND_IMAGES.aboutHeroEvent, { website: true }) : { src: HERO_URL })} alt="NuVira Event" className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-primary/40 via-primary/60 to-primary/90" />
         <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-          <img src={LOGO_URL} alt="NuVira" className="h-9 mb-3 drop-shadow-lg" />
+          <img src={desktop ? BRAND_IMAGES.wordmark : LOGO_URL} alt="NuVira" className="h-9 mb-3 drop-shadow-lg" />
           <h1 className="font-heading text-2xl font-bold text-white leading-tight">
-            Make Your Event<br />Unforgettable
+            {desktop ? 'NuVira Event Catering' : <>Make Your Event<br />Unforgettable</>}
           </h1>
           <p className="text-white/80 text-xs mt-2 leading-relaxed">
             Fresh cold-pressed juice experiences for life's most special moments
@@ -120,7 +123,7 @@ export default function BookEvent() {
       </div>
 
       {/* Event Type Selector */}
-      <div className="px-4 mt-6">
+      <div className="nv-book-event-types px-4 mt-6">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">What's the Occasion?</p>
         <div className="grid grid-cols-3 gap-2">
           {eventTypes.map(({ icon: Icon, label }, i) => (
@@ -130,6 +133,7 @@ export default function BookEvent() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
               onClick={() => set('eventType', label)}
+              aria-pressed={form.eventType === label}
               className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all ${
                 form.eventType === label
                   ? 'border-primary bg-nuvira-gradient-soft'
@@ -148,7 +152,7 @@ export default function BookEvent() {
       </div>
 
       {/* What's Included */}
-      <div className="px-4 mt-6">
+      <div className="nv-book-event-includes px-4 mt-6">
         <div className="nuvira-premium-card rounded-2xl p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">What's Included</p>
           <div className="space-y-2">
@@ -163,7 +167,7 @@ export default function BookEvent() {
       </div>
 
       {/* Form */}
-      <div className="px-4 mt-6 space-y-3">
+      <div className="nv-book-event-form px-4 mt-6 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Event Details</p>
 
         <div className="grid grid-cols-2 gap-3">
@@ -188,6 +192,7 @@ export default function BookEvent() {
               <button
                 key={value}
                 onClick={() => set('juiceType', value)}
+                aria-pressed={form.juiceType === value}
                 className={`p-3 rounded-xl border-2 transition-all text-left ${
                   form.juiceType === value
                     ? 'border-primary bg-nuvira-gradient-soft'
@@ -208,6 +213,7 @@ export default function BookEvent() {
               <button
                 key={value}
                 onClick={() => set('serviceModel', value)}
+                aria-pressed={form.serviceModel === value}
                 className={`p-3 rounded-xl border-2 transition-all text-left ${
                   form.serviceModel === value
                     ? 'border-primary bg-nuvira-gradient-soft'

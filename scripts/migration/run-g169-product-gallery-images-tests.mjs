@@ -46,9 +46,10 @@ for (const product of consumables) {
 
   const existingSecondaryCount = product.secondary_images?.length || 0;
   const expectedAdditional = expectedGalleryPathsByTitle[product.title] || [];
+  const expectedUniqueCount = 1 + existingSecondaryCount + expectedAdditional.filter(src => src !== approved?.primary).length;
   assert.equal(
     gallery.length,
-    1 + existingSecondaryCount + expectedAdditional.length,
+    expectedUniqueCount,
     `${product.title} should render only its verified catalog and authentic supplemental photos`,
   );
   assert.equal(gallery[0].src, approved?.primary || product.image_url, `${product.title} must use its approved primary or existing catalog image`);
@@ -62,7 +63,7 @@ for (const product of consumables) {
   assert.equal(absoluteAdditional.length, expectedAdditional.length, `${product.title} absolute supplemental count must match`);
   assert.equal(
     structuredData.image.length,
-    1 + existingSecondaryCount + expectedAdditional.length,
+    expectedUniqueCount,
     `${product.title} structured data should include the complete gallery`,
   );
   assert.equal(structuredData.image[0], approved ? `https://nuvirajuice.com${approved.primary}` : product.image_url, `${product.title} structured data must match the visible primary`);

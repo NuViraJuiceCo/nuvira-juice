@@ -16,7 +16,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const shop = read('src/pages/Shop.jsx');
 const inputSource = read('src/components/ui/input.jsx');
 const viewport = read('index.html').match(/<meta\s+name="viewport"\s+content="([^"]+)"\s*\/>/)?.[1];
-const inputJsx = shop.match(/<Input\s+placeholder="Search juices, bundles, merch\.\.\."[\s\S]*?\/>/)?.[0];
+const inputJsx = shop.match(/<Input\b[^>]*placeholder="Search juices, bundles, merch\.\.\."[\s\S]*?\/>/)?.[0];
 assert.ok(inputJsx, 'Inspect the actual Shop search Input, not a duplicate fixture');
 let checks = 0;
 const check = (name, run) => { run(); checks += 1; console.log(`PASS ${name}`); };
@@ -91,6 +91,7 @@ check('generated CSS keeps 1rem search text below and above the md breakpoint', 
 
 check('search value, change handler, placeholder and tap-target styling remain intact', () => {
   assert.match(rendered, /value="Oasis"/);
+  assert.match(rendered, /aria-label="Search products"/);
   assert.match(rendered, /placeholder="Search juices, bundles, merch\.\.\."/);
   for (const token of ['pl-9', 'h-11', 'rounded-xl', 'bg-secondary/50', 'border-0']) assert.ok(classes.includes(token));
   let nextSearch;

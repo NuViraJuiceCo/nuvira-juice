@@ -12,8 +12,11 @@ import { toast } from 'sonner';
 import NotificationPreferencesPanel from '@/components/NotificationPreferencesPanel';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateCustomerDashboard } from '@/lib/customerDashboardQueries';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopMemberLayout from '@/components/desktop/DesktopMemberLayout';
 
 export default function AccountSettings() {
+  const desktop = useDesktopStorefront();
   const navigate = useNavigate();
   const { user, logout, refreshUser } = useAuth();
   const queryClient = useQueryClient();
@@ -23,14 +26,21 @@ export default function AccountSettings() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState(false);
+  const [profileLoadVersion, setProfileLoadVersion] = useState(0);
 
   const setField = (field, val) => setForm(prev => ({ ...prev, [field]: val }));
 
 
   useEffect(() => {
     if (!user?.email) return;
+    let cancelled = false;
+    setProfileLoading(true);
+    setProfileError(false);
     // Always load from DB as source of truth
     base44.entities.UserProfile.filter({ customer_email: user.email }).then(profiles => {
+      if (cancelled) return;
       const profile = profiles[0];
       const rawAddr = profile?.address || user?.address || '';
       const parts = rawAddr.split(',').map(s => s.trim());
@@ -41,10 +51,16 @@ export default function AccountSettings() {
         address: { street: parts[0] || '', city: parts[1] || '', state: parts[2] || '', zip: parts[3] || '' },
         birthday: profile?.birthday || user?.birthday || '',
       });
+    }).catch(() => {
+      if (!cancelled) setProfileError(true);
+    }).finally(() => {
+      if (!cancelled) setProfileLoading(false);
     });
-  }, [user?.email]);
+    return () => { cancelled = true; };
+  }, [user?.email, profileLoadVersion]);
 
   const handleSave = async () => {
+    if (profileLoading || profileError) return;
     const { firstName, lastName, phone, address, birthday } = form;
     const normalizedFirstName = firstName.trim();
     const normalizedLastName = lastName.trim();
@@ -118,58 +134,63 @@ export default function AccountSettings() {
     }
   };
 
-  return (
-    <div className="pb-4" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40">
+  const content = (
+    <>
+      {!desktop && <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40">
         <button onClick={() => navigate(-1)} aria-label="Go back" className="w-11 h-11 flex items-center justify-center -ml-2 active:bg-secondary rounded-lg transition-colors">
           <ArrowLeft className="w-5 h-5 text-foreground" />
         </button>
         <h1 className="font-heading text-lg font-bold">Settings</h1>
-      </div>
+      </div>}
 
-      <div className="px-4 space-y-5">
+      <div className={desktop ? 'nv-member-settings' : 'px-4 space-y-5'}>
+        {profileError && <div className="nv-settings-load-status" role="status"><p>We couldn't load your saved details. Please try again before making changes.</p><Button variant="outline" onClick={() => setProfileLoadVersion(value => value + 1)}>Try Again</Button></div>}
+        {profileLoading && <p className="nv-settings-load-status" role="status">Loading your saved details...</p>}
         {/* Profile */}
-        <div>
+        <section className="nv-settings-section" id="profile">
+          {desktop && <p className="nv-member-kicker">01 / Personal Details</p>}
           <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-3">Profile</h2>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-foreground/65 font-medium">First Name</Label>
-                <Input value={form.firstName} onChange={e => setField('firstName', e.target.value)} className="rounded-xl h-11" />
+                <Label htmlFor="settings-first-name" className="text-xs text-foreground/65 font-medium">First Name</Label>
+                <Input id="settings-first-name" autoComplete="given-name" value={form.firstName} onChange={e => setField('firstName', e.target.value)} className="rounded-xl h-11" />
               </div>
               <div>
-                <Label className="text-xs text-foreground/65 font-medium">Last Name</Label>
-                <Input value={form.lastName} onChange={e => setField('lastName', e.target.value)} className="rounded-xl h-11" />
+                <Label htmlFor="settings-last-name" className="text-xs text-foreground/65 font-medium">Last Name</Label>
+                <Input id="settings-last-name" autoComplete="family-name" value={form.lastName} onChange={e => setField('lastName', e.target.value)} className="rounded-xl h-11" />
               </div>
             </div>
             <div>
-              <Label className="text-xs text-foreground/65 font-medium">Email</Label>
-              <Input value={user?.email || ''} disabled className="rounded-xl h-11 bg-secondary/30 opacity-70" />
+              <Label htmlFor="settings-email" className="text-xs text-foreground/65 font-medium">Email</Label>
+              <Input id="settings-email" value={user?.email || ''} disabled className="rounded-xl h-11 bg-secondary/30 opacity-70" />
             </div>
             <p className="text-[10px] text-muted-foreground">Email is managed by your account and cannot be changed here.</p>
+            {desktop && <div><Label htmlFor="settings-birthday" className="text-xs text-foreground/65 font-medium">Birthday</Label><Input id="settings-birthday" type="date" value={form.birthday} onChange={e => setField('birthday', e.target.value)} className="rounded-xl h-11" /><p className="text-[10px] text-muted-foreground mt-2">For your free annual birthday bottle.</p></div>}
           </div>
-        </div>
+        </section>
 
         {/* Contact */}
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-3">Contact</h2>
+        <section className="nv-settings-section" id="delivery-details">
+          {desktop && <p className="nv-member-kicker">02 / Your Doorstep</p>}
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/55 mb-3">{desktop ? 'Contact & Delivery' : 'Contact'}</h2>
           <div className="space-y-3">
             <div>
-              <Label className="text-xs text-foreground/65 font-medium">Phone Number</Label>
-              <Input value={form.phone} onChange={e => setField('phone', e.target.value)} placeholder="(555) 123-4567" className="rounded-xl h-11" />
+              <Label htmlFor="settings-phone" className="text-xs text-foreground/65 font-medium">Phone Number</Label>
+              <Input id="settings-phone" type="tel" autoComplete="tel" value={form.phone} onChange={e => setField('phone', e.target.value)} placeholder="(555) 123-4567" className="rounded-xl h-11" />
             </div>
             <div>
               <Label className="text-xs text-foreground/65 font-medium">Default Delivery Address</Label>
               <AddressAutocomplete value={form.address} onChange={val => setField('address', val)} placeholder="123 Main St, City, State" className="rounded-xl h-11" />
             </div>
-            <div>
-              <Label className="text-xs text-foreground/65 font-medium">Birthday (for your free annual bottle 🎂)</Label>
-              <Input type="date" value={form.birthday} onChange={e => setField('birthday', e.target.value)} className="rounded-xl h-11" />
-            </div>
+            {!desktop && <div>
+              <Label htmlFor="settings-birthday" className="text-xs text-foreground/65 font-medium">Birthday (for your free annual bottle)</Label>
+              <Input id="settings-birthday" type="date" value={form.birthday} onChange={e => setField('birthday', e.target.value)} className="rounded-xl h-11" />
+            </div>}
           </div>
-        </div>
+        </section>
 
-        <Button onClick={handleSave} disabled={isSaving} className="w-full h-11 rounded-xl font-semibold">
+        <div className="nv-settings-save"><Button onClick={handleSave} disabled={isSaving || profileLoading || profileError} className="w-full h-11 rounded-xl font-semibold">
           {saveSuccess ? (
             <>
               <Check className="w-4 h-4 mr-2" />
@@ -183,16 +204,16 @@ export default function AccountSettings() {
               Save Changes
             </>
           )}
-        </Button>
+        </Button></div>
 
         {/* Notification Preferences */}
-        <div className="pt-2 border-t border-border/50">
+        <div className="nv-settings-preferences pt-2 border-t border-border/50">
           <NotificationPreferencesPanel />
         </div>
 
         {/* Account Deletion */}
-        <div className="pt-4 border-t border-border">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-destructive mb-2">Danger Zone</h2>
+        <div className="nv-settings-delete pt-4 border-t border-border">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-destructive mb-2">{desktop ? 'Close Your Account' : 'Danger Zone'}</h2>
           <p className="text-xs text-muted-foreground mb-3">Deleting your account is permanent and cannot be undone.</p>
           <Button
             variant="destructive"
@@ -234,6 +255,7 @@ export default function AccountSettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
+  return desktop ? <DesktopMemberLayout title="Account Settings" description="Your details, delivery address, and preferences.">{content}</DesktopMemberLayout> : <div className="pb-4" style={{ paddingTop: 'env(safe-area-inset-top)' }}>{content}</div>;
 }

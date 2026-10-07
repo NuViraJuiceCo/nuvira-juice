@@ -87,10 +87,12 @@ export default function DeliveryAvailabilityCard() {
           ? eligibility.zone_type
           : 'unavailable',
       });
-    } catch {
+    } catch (error) {
       // Network/unexpected error — do NOT mark ineligible; let customer try again
       setStatus('idle');
-      setZipError('Something went wrong. Please try again.');
+      setZipError((error?.code || error?.data?.code || error?.response?.data?.code) === 'LOCAL_PREVIEW_READ_ONLY'
+        ? 'ZIP checks are unavailable in this local design preview. Live delivery areas are unchanged.'
+        : 'We could not confirm this ZIP right now. Please try again. Your full address is checked at checkout.');
     }
   };
 
@@ -252,6 +254,8 @@ export default function DeliveryAvailabilityCard() {
                     }}
                     onKeyDown={e => e.key === 'Enter' && handleCheck()}
                     placeholder="Enter ZIP code"
+                    aria-label="Delivery ZIP code"
+                    aria-invalid={Boolean(zipError)}
                     className="w-full h-11 px-4 rounded-xl border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all"
                   />
                 </div>

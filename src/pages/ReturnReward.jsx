@@ -8,6 +8,8 @@ import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { redirectToLogin } from '@/lib/nativeAuthRedirect';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopReturnReward from '@/components/desktop/DesktopReturnReward';
 
 const steps = [
   {
@@ -76,10 +78,11 @@ const faqs = [
 ];
 
 export default function ReturnReward() {
+  const desktop = useDesktopStorefront();
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const { data: creditData } = useQuery({
+  const { data: creditData, isLoading: creditLoading, isError: creditError } = useQuery({
     queryKey: ['nuvira-credits-rr', user?.email],
     queryFn: async () => {
       const res = await base44.entities.NuViraCredit.filter({ customer_email: user?.email });
@@ -90,6 +93,8 @@ export default function ReturnReward() {
 
   const balance = availableCreditBalance(creditData);
   const lifetimeEarned = creditData?.lifetime_issued || 0;
+
+  if (desktop) return <DesktopReturnReward steps={steps} credits={credits} eligibility={eligibility} faqs={faqs} user={user} balance={balance} lifetimeEarned={lifetimeEarned} creditLoading={creditLoading} creditError={creditError} />;
 
   return (
     <div className="pb-12">
@@ -108,6 +113,7 @@ export default function ReturnReward() {
 
         <div className="relative px-5 pb-10">
           <button
+            aria-label="Go back"
             onClick={() => navigate(-1)}
             className="w-9 h-9 bg-white/15 backdrop-blur-sm rounded-full flex items-center justify-center mb-6"
           >

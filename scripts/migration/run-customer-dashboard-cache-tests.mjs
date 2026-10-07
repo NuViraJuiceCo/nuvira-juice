@@ -58,9 +58,10 @@ function subscriptionText({ rows = [], loading = false, error = false } = {}) {
     createElement: (type, props, ...children) => {
       elements.push(children); return { type, props, children };
     },
-    useState: value => [value, noop], useEffect: noop,
+    useState: value => [value, noop], useEffect: noop, useRef: value => ({ current: value }),
   };
   const imports = {
+    '@/components/CustomerDialog': { default: noop },
     react: { ...react, default: react },
     '@/api/base44Client': { base44: {} },
     '@/lib/AuthContext': { useAuth: () => ({ user }) },

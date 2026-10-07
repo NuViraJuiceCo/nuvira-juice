@@ -537,7 +537,7 @@ export default function LocalSeoLanding({ pageKey }) {
   const isDeliveryShopping = page.path === '/cold-pressed-juice-delivery';
 
   return (
-    <div className="min-h-screen bg-background pb-24 text-foreground md:pb-12">
+    <div className="nv-local-page min-h-screen bg-background pb-24 text-foreground md:pb-12">
       <SEO
         title={page.title}
         description={page.metaDescription}
@@ -569,7 +569,7 @@ export default function LocalSeoLanding({ pageKey }) {
         </div>
       </header>
 
-      {isDeliveryShopping ? <LocalDeliveryShopping page={page} /> : <section className="relative isolate overflow-hidden border-b border-border/50">
+      {isDeliveryShopping ? <LocalDeliveryShopping page={page} /> : <section className="nv-local-hero relative isolate overflow-hidden border-b border-border/50">
         <img {...websiteBrandImageProps(page.image, { website })} alt="" className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,22,15,0.92),rgba(7,22,15,0.72)_48%,rgba(7,22,15,0.38))]" />
         <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-background/90 to-transparent" />

@@ -10,10 +10,13 @@ import { submitCustomerInquiry } from '@/lib/customerCommunications';
 import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { useCart } from '@/lib/cartContext';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import SEO from '@/components/SEO';
 import { BRAND_IMAGES, brandImageUrl } from '@/lib/brandImages';
 import { productPath } from '@/lib/seo-slugs';
 import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopMerch from '@/components/desktop/DesktopMerch';
 
 const TOTE_URL = BRAND_IMAGES.toteBag;
 
@@ -64,6 +67,7 @@ function normalizeLegacyMerch(item) {
 }
 
 export default function Merch() {
+  const desktopWebsite = useDesktopStorefront();
   const { user } = useAuth();
   const { addItem } = useCart();
   const [email, setEmail] = useState(user?.email || '');
@@ -116,11 +120,13 @@ export default function Merch() {
     }
   };
 
-  const handleAddMerch = (item) => {
+  const handleAddMerch = (item, triggerElement) => {
     if (!item?.is_available) return;
-    addItem(item.product, 1);
-    toast.success(`${item.name} added to cart`);
+    addItem(item.product, 1, {}, { preview: !isNativeAppRuntime(), triggerElement });
+    if (isNativeAppRuntime()) toast.success(`${item.name} added to cart`);
   };
+
+  if (desktopWebsite) return <><SEO title="NuVira Goods" description="Shop NuVira Juice Co. goods, including reusable totes." image={brandImageUrl(TOTE_URL)} /><DesktopMerch items={merchItems} loadingItems={isLoadingMerch} onAdd={handleAddMerch} email={email} onEmail={setEmail} submitted={submitted} submitting={loading} onNotify={handleNotify} /></>;
 
   return (
     <div className="min-h-screen bg-background pb-8">
@@ -241,7 +247,7 @@ export default function Merch() {
                       </span>
                     </div>
                     <Button
-                      onClick={() => handleAddMerch(item)}
+                      onClick={event => handleAddMerch(item, event.currentTarget)}
                       disabled={!item.is_available}
                       className="nuvira-gradient-button mt-3 h-9 w-full rounded-xl text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >

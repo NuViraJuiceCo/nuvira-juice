@@ -1,0 +1,13 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Check, Leaf } from 'lucide-react';
+import DesktopMemberLayout from './DesktopMemberLayout';
+
+export default function DesktopReturnReward({ steps, credits, eligibility, faqs, user, balance, lifetimeEarned, creditLoading, creditError }) {
+  return <DesktopMemberLayout title="Return + Reward" description="Keep the bag in circulation. Put a little credit toward your next delivery.">
+    <section className="nv-return-intro"><img src="/images/authentic-products/trio/trio-outdoor-bag.jpg" width="1200" height="900" alt="Reusable NuVira bag with AURA, OASIS, and RE-NU juices" /><div><p className="nv-member-kicker">Return. Refresh. Reuse.</p><h2>A fresh reason to return.</h2><p>Save your NuVira bag and request its return with your next order. Our driver collects it, verifies its condition, and your account receives the credit.</p><dl>{credits.map(({ type, amount, sub }) => <div key={type}><dt>{type}<small>{sub}</small></dt><dd>{amount}<small>per accepted bag</small></dd></div>)}</dl><small>Credit applied after driver verification. Not redeemable as cash.</small></div></section>
+    <section className="nv-return-section"><h2>From Your Door to Your Next Order</h2><ol className="nv-return-steps">{steps.map(({ icon: Icon, step, title, desc }) => <li key={step}><div><span>{step}</span><Icon size={22} aria-hidden="true" /></div><h3>{title}</h3><p>{desc}</p></li>)}</ol></section>
+    <div className="nv-return-details"><section><h2>Ready for Another Delivery</h2><p>A returnable bag should be:</p><ul>{eligibility.map(item => <li key={item}><Check size={18} />{item}</li>)}</ul><Link to="/shop" className="nv-brand-button nv-brand-button-primary">Shop Your Next Order <ArrowRight size={18} /></Link></section><section className="nv-return-credit"><Leaf size={24} /><h2>Your NuVira Credits</h2>{user ? <><strong>{creditLoading ? 'Loading...' : creditError ? 'Unavailable' : `$${balance.toFixed(2)}`}</strong><p>{creditError ? 'Your balance could not be loaded. Check your account or try again later.' : 'Available for your next order.'}</p>{!creditError && !creditLoading && <p>${lifetimeEarned.toFixed(2)} lifetime earned</p>}<Link to="/account">View Your Account <ArrowRight size={18} /></Link></> : <><p>Sign in to view your balance and past returns.</p><Link to="/native-login?return_to=%2Freturn-reward">Sign In <ArrowRight size={18} /></Link></>}</section></div>
+    <section className="nv-return-section nv-return-faq"><h2>A Few Good Questions</h2>{faqs.map(({ q, a }) => <details key={q}><summary>{q}</summary><p>{a}</p></details>)}</section>
+  </DesktopMemberLayout>;
+}

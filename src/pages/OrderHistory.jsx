@@ -1,4 +1,5 @@
 import React from 'react';
+import SEO from '@/components/SEO';
 import { Link, useNavigate } from 'react-router-dom';
 import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
@@ -45,6 +46,10 @@ const statusLabels = {
 };
 
 export default function OrderHistory() {
+  return <><SEO title="Your Orders" noindex /><OrderHistoryContent /></>;
+}
+
+function OrderHistoryContent() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -95,7 +100,7 @@ export default function OrderHistory() {
     <PullToRefresh onRefresh={refetch}>
     <div className="pb-4">
       <div className="flex items-center gap-3 px-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
-        <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
+        <button type="button" aria-label="Go back" onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <h1 className="font-heading text-xl font-bold">Orders</h1>

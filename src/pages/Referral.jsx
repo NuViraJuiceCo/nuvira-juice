@@ -8,6 +8,9 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/AuthContext';
 import { trackGoogleShare } from '@/lib/googleAnalytics';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopReferral from '@/components/desktop/DesktopReferral';
+import { REFERRAL_OFFER } from '@/lib/referralOffer';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -18,17 +21,18 @@ function generateCode(user) {
 const steps = [
   { step: '1', title: 'Share your code', desc: 'Send code NuVira26 to friends and family.' },
   { step: '2', title: 'They order', desc: 'Your friend gets $5 off their first NuVira order at checkout.' },
-  { step: '3', title: 'You earn', desc: 'You earn rewards after their first purchase is confirmed.' },
+  { step: '3', title: 'Reach a milestone', desc: 'Earn rewards at 5, 10, and 20 completed referrals, after manual verification.' },
 ];
 
 export default function Referral() {
+  const desktop = useDesktopStorefront();
   const { user } = useAuth();
   const [email, setEmail] = useState('');
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
 
   const code = generateCode(user);
-  const shareMessage = `Hey! I've been loving NuVira cold-pressed juice — it's fresh, produce-forward, and easy to keep in my routine. Use my code ${code} for $5 off your first order. Order at nuvirajuice.com 🌿`;
+  const shareMessage = `Hey! I've been loving NuVira cold-pressed juice — it's fresh, produce-forward, and easy to keep in my routine. Use my code ${code} for $${REFERRAL_OFFER.friendDiscount} off your first order. Order at nuvirajuice.com 🌿`;
 
   const handleCopy = async () => {
     try {
@@ -71,13 +75,15 @@ export default function Referral() {
     toast.success('Your email app is ready with the invitation.');
   };
 
+  if (desktop) return <DesktopReferral code={code} copied={copied} email={email} setEmail={setEmail} sending={sending} onCopy={handleCopy} onShare={handleShare} onInvite={handleInvite} />;
+
   return (
     <div className="min-h-screen bg-background pb-10">
-      <SEO title="Refer & Earn" description="Share NuVira with friends. They get $5 off their first order. You earn a free bottle. Real. Living. Nutrition." />
+      <SEO title="Refer & Earn" description={REFERRAL_OFFER.summary} />
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <Link to="/account">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
+          <button aria-label="Back to account" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </button>
         </Link>
@@ -90,9 +96,9 @@ export default function Referral() {
         <div className="nuvira-icon-badge w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3">
           <Gift className="w-6 h-6" />
         </div>
-        <h1 className="font-heading text-2xl font-bold mb-1">Give $5, Get a Bottle</h1>
+        <h1 className="font-heading text-2xl font-bold mb-1">Give $5. Grow Your Rewards.</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Share NuVira with someone you care about. They save $5. You earn a free bottle.
+          {REFERRAL_OFFER.summary}
         </p>
       </div>
 
@@ -109,6 +115,7 @@ export default function Referral() {
             <p className="font-heading text-2xl font-bold tracking-widest text-primary">{code}</p>
           </div>
           <button
+            aria-label={copied ? 'Code copied' : 'Copy referral code'}
             onClick={handleCopy}
             className="nuvira-icon-badge w-12 h-12 rounded-xl flex items-center justify-center transition-colors active:scale-95"
           >
@@ -136,6 +143,7 @@ export default function Referral() {
         <p className="text-xs text-muted-foreground mb-3">Open your email app with a personal invitation ready to send.</p>
         <div className="flex gap-2">
           <Input
+            aria-label="Friend's email address"
             value={email}
             onChange={e => setEmail(e.target.value)}
             placeholder="friend@email.com"
@@ -188,20 +196,15 @@ export default function Referral() {
           <p className="font-semibold text-sm">Referral Rewards</p>
         </div>
         <div className="space-y-2">
-          {[
-            { referrals: '1 referral', reward: '$5 off their first order' },
-            { referrals: '5 referrals', reward: '1 free bottle — Aura, Re-Nu, or Oasis' },
-            { referrals: '10 referrals', reward: 'Free NuVira Trio bundle' },
-            { referrals: '20 referrals', reward: 'VIP Wellness status for a month' },
-          ].map(({ referrals, reward }) => (
-            <div key={referrals} className="flex items-center justify-between">
-              <span className="text-xs font-medium text-primary">{referrals}</span>
-              <span className="text-xs text-muted-foreground">{reward}</span>
+          {REFERRAL_OFFER.milestones.map(({ count, title }) => (
+            <div key={count} className="flex items-center justify-between">
+              <span className="text-xs font-medium text-primary">{count} referrals</span>
+              <span className="text-xs text-muted-foreground">{title}</span>
             </div>
           ))}
         </div>
         <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed">
-          A referral counts when the person you referred completes a purchase. Rewards are applied manually after verification — our team will reach out when you hit each milestone.
+          {REFERRAL_OFFER.terms}
         </p>
       </motion.div>
     </div>

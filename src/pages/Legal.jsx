@@ -140,7 +140,7 @@ export default function Legal() {
       <SEO title="Legal & Privacy" description="NuVira Juice Company privacy policy, terms of service, refund policy, licenses, disclaimers, and allergen information." />
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
-        <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
+        <button type="button" aria-label="Go back" onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <div>

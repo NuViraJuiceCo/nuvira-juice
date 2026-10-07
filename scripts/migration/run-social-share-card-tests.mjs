@@ -89,10 +89,17 @@ test('route selection is exact, same-origin and tracking-query independent', () 
     assert.equal(socialShareImageForUrl(value), null, `unknown input must preserve its existing behavior: ${value}`);
   }
 });
-test('all 11 catalog, Product schema, product-image and value contracts are unchanged from canonical base', () => {
+test('all 11 catalog, schema and value contracts are unchanged except the owner-selected Trio photo', () => {
   const snapshot = PUBLIC_PRODUCT_FALLBACKS.map(product => ({ product, metadata: buildProductSeoMetadata(product), schema: buildProductStructuredData(product) }));
-  assert.equal(hash(JSON.stringify(snapshot)), 'a1675b6c5e3169b74477973a4128ea0ed5fc45912a35d86d792e3c0f4c23fa1b');
   assert.doesNotMatch(JSON.stringify(snapshot), /images\/social-share/);
+  const trio = snapshot.find(entry => entry.product.slug === 'the-nuvira-trio');
+  assert.equal(trio.metadata.image, 'https://nuvirajuice.com/images/authentic-products/trio/trio-outdoor-bag.jpg');
+  assert.equal(trio.schema.image[0], trio.metadata.image);
+  assert.equal(trio.schema.image.length, 3);
+  // Normalize only the approved image replacement before comparing the original full contract.
+  trio.metadata.image = trio.product.image_url;
+  trio.schema.image.unshift(trio.product.image_url);
+  assert.equal(hash(JSON.stringify(snapshot)), 'a1675b6c5e3169b74477973a4128ea0ed5fc45912a35d86d792e3c0f4c23fa1b');
 });
 test('every static product has one managed social set and untouched schema/noscript photos', () => {
   for (const product of PUBLIC_PRODUCT_FALLBACKS) {

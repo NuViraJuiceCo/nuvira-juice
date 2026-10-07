@@ -14,6 +14,7 @@ import {
 import SEO from '@/components/SEO';
 import { BRAND_IMAGES, brandImageUrl, websiteBrandImageProps } from '@/lib/brandImages';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
 
@@ -168,10 +169,11 @@ function GalleryImage({ src, alt, caption, className = '' }) {
 }
 
 export default function About() {
+  const desktop = useDesktopStorefront();
   const website = !isNativeAppRuntime();
   const desktopHero = websiteBrandImageProps(BRAND_IMAGES.aboutHeroEvent, {
     website,
-    sizes: '(min-width: 1152px) 624px, (min-width: 1024px) calc(60vw - 68px), calc(100vw - 64px)',
+    sizes: desktop ? '100vw' : '(min-width: 1152px) 624px, (min-width: 1024px) calc(60vw - 68px), calc(100vw - 64px)',
   });
   const mobileHero = websiteBrandImageProps(BRAND_IMAGES.aboutHeroMobile, { website, sizes: 'calc(100vw - 40px)' });
   return (
@@ -193,7 +195,7 @@ export default function About() {
               <div className="hidden md:block">
                 <BackLink tone="dark" />
               </div>
-              <img src={LOGO_URL} alt="NuVira Juice Co." className="mt-5 h-10 w-auto md:mt-10 md:h-12" />
+              <img src={desktop ? BRAND_IMAGES.wordmark : LOGO_URL} alt="NuVira Juice Co." className="mt-5 h-10 w-auto md:mt-10 md:h-12" />
               <p className="mt-7 text-sm font-bold text-[#C8E86A] md:mt-10">{aboutContent.hero.eyebrow}</p>
               <h1 className="nuvira-about-title mt-3 min-w-0 max-w-5xl break-words font-heading text-[2rem] font-bold leading-[1.05] sm:text-5xl lg:text-6xl">
                 {aboutContent.hero.title}

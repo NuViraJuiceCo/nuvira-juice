@@ -112,7 +112,7 @@ test('every generated product document is unique, crawler-readable, and catalog-
     assert.equal(schema.image.includes(new URL(product.image_url, 'https://nuvirajuice.com').href), !approved, `${product.slug} must match the visible gallery retirement policy`);
     assert.equal(
       schema.image.length,
-      1 + (product.secondary_images?.length || 0) + productAdditionalImageUrls(product).length,
+      1 + (product.secondary_images?.length || 0) + productAdditionalImageUrls(product).filter(src => src !== approved?.primary).length,
       `${product.slug} should expose its complete crawler-readable image gallery`,
     );
     assert.equal(schema.sku, String(product.catalog_id));

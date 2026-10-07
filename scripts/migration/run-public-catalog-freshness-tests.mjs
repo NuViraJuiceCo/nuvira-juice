@@ -62,6 +62,7 @@ function pageQueries(page, isNative, reads) {
     useRef: current => ({ current }),
   };
   const imports = {
+    '@/lib/program-catalog': { programCollectionSummary: () => '2 or 3 days' },
     react: { ...react, default: react },
     'framer-motion': { motion: new Proxy({}, { get: () => noop }), AnimatePresence: noop },
     'lucide-react': { Bell: noop, Search: noop },
@@ -73,6 +74,7 @@ function pageQueries(page, isNative, reads) {
     '@/api/base44Client': { base44: reads.base44 },
     '@/lib/AuthContext': { useAuth: () => ({ user: null }) },
     '@/lib/nativeRuntime': { isNativeAppRuntime: () => isNative },
+    '@/hooks/useDesktopStorefront': { default: () => !isNative },
     '@/lib/publicCatalogQueries': catalog,
     '@/lib/public-products': { PUBLIC_PRODUCT_FALLBACKS: fallback },
     '@/lib/brandImages': { BRAND_IMAGES: { wordmark: '/synthetic-wordmark.webp' } },

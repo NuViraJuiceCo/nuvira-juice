@@ -6,7 +6,7 @@ import { normalizeProductIdentifier, slugifyProductTitle } from './seo-slugs.js'
 const BASE = '/images/approved-lifestyle/20260911-contact-v3';
 const RENU_BASE = '/images/approved-lifestyle/20260911-re-nu-v4';
 const RETIRED_BASES = Object.freeze(['/images/approved-lifestyle/20260910', '/images/approved-lifestyle/20260911-v5']);
-const MEDIA = Object.freeze([
+const JUICE_MEDIA = [
   { key: 'aura', id: '69d490ce699b5f1ac4dde495', variant: '43220774813786', title: 'AURA', alt: 'AURA cold-pressed juice bottle beside orange slices in soft natural daylight' },
   { key: 'oasis', id: '69d490ce699b5f1ac4dde497', variant: '43220774944858', title: 'OASIS', alt: 'OASIS cold-pressed juice bottle beside watermelon in soft natural daylight' },
   { key: 're-nu', id: '69d490ce699b5f1ac4dde496', variant: '43220774846554', title: 'RE-NU', alt: 'RE-NU cold-pressed juice bottle beside apple and cucumber in soft natural daylight' },
@@ -16,7 +16,16 @@ const MEDIA = Object.freeze([
   return Object.freeze({ ...record, primary: `${base}/${record.key}-primary.webp`, card: `${base}/${record.key}-card.webp`,
     retiredImages: Object.freeze(retiredBases.flatMap(retired => [`${retired}/${record.key}-primary.webp`, `${retired}/${record.key}-card.webp`])),
   });
-}));
+});
+// Owner-selected authentic Trio photo, shared by storefront and saved-item views.
+const MEDIA = Object.freeze([...JUICE_MEDIA, Object.freeze({
+  key: 'the-nuvira-trio', id: '69d490ce699b5f1ac4dde498', variant: '43222070198362',
+  title: 'The NuVira Trio', category: 'bundle', aliases: ['nuvira-trio'], fit: 'cover',
+  primary: '/images/authentic-products/trio/trio-outdoor-bag.jpg',
+  card: '/images/website-performance-20261006/gallery/trio-outdoor-bag-384.webp',
+  alt: 'The NuVira Trio: RE-NU, OASIS, and AURA bottles with a green NuVira bag outdoors',
+  retiredImages: Object.freeze(['/images/products/nuvira-trio-main.jpg', '/images/products/cards/the-nuvira-trio.webp']),
+})]);
 
 export function approvedProductMedia(product = {}) {
   if (!product || typeof product !== 'object') return null;
@@ -26,10 +35,9 @@ export function approvedProductMedia(product = {}) {
   const exactMatches = MEDIA.filter(record => ids.includes(record.id) || ids.includes(record.variant));
   if (exactMatches.length > 1) return null; // Conflicting concrete identities: do not guess a flavor.
   if (exactMatches.length === 1) return exactMatches[0];
-  if (product.category && product.category !== 'juice') return null;
   const names = [product.slug, product.handle, product.shopify_handle, product.product_id, product.title, product.name]
     .map(value => slugifyProductTitle(normalizeProductIdentifier(value || '')));
-  const nameMatches = MEDIA.filter(record => [record.key, `${record.key}-cold-pressed-juice`, `nuvira-${record.key}-cold-pressed-juice-12-oz`, ...(record.key === 're-nu' ? ['renu'] : [])]
+  const nameMatches = MEDIA.filter(record => (!product.category || product.category === (record.category || 'juice')) && [record.key, ...(record.aliases || []), `${record.key}-cold-pressed-juice`, `nuvira-${record.key}-cold-pressed-juice-12-oz`, ...(record.key === 're-nu' ? ['renu'] : [])]
     .some(name => names.includes(name)));
   return nameMatches.length === 1 ? nameMatches[0] : null;
 }

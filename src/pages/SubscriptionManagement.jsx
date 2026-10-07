@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Calendar, Pause, SkipForward, Plus, CreditCard, XCircle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { motion, AnimatePresence } from 'framer-motion';
+import CustomerDialog from '@/components/CustomerDialog';
+import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
@@ -47,6 +48,7 @@ export default function SubscriptionManagement() {
   const [loading, setLoading] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [showPauseModal, setShowPauseModal] = useState(false);
+  const dialogTriggerRef = useRef(null);
   const [selectedSubId, setSelectedSubId] = useState(null);
   const [pauseDuration, setPauseDuration] = useState('1week');
   const [customDate, setCustomDate] = useState('');
@@ -255,7 +257,7 @@ export default function SubscriptionManagement() {
       {/* Header with safe-area top padding */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <Link to="/account">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
+          <button type="button" aria-label="Go back" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </button>
         </Link>
@@ -311,7 +313,8 @@ export default function SubscriptionManagement() {
                     {!isPendingCancel && (
                       <div className="flex gap-2 mb-2">
                         <Button
-                          onClick={() => {
+                          onClick={event => {
+                            dialogTriggerRef.current = event.currentTarget;
                             setSelectedSubId(sub.id);
                             setShowPauseModal(true);
                           }}
@@ -357,7 +360,7 @@ export default function SubscriptionManagement() {
                       </Button>
                     ) : (
                       <Button
-                        onClick={() => setShowCancelConfirm(sub.id)}
+                        onClick={event => { dialogTriggerRef.current = event.currentTarget; setShowCancelConfirm(sub.id); }}
                         disabled={loading}
                         variant="ghost"
                         size="sm"
@@ -496,24 +499,7 @@ export default function SubscriptionManagement() {
 
 
       {/* Cancel Renewal Confirmation Modal */}
-      <AnimatePresence>
-        {showCancelConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50 flex items-end"
-            onClick={() => setShowCancelConfirm(null)}
-          >
-            <motion.div
-              initial={{ y: 100 }}
-              animate={{ y: 0 }}
-              exit={{ y: 100 }}
-              onClick={e => e.stopPropagation()}
-              className="bg-card w-full rounded-t-2xl p-5 overflow-y-auto max-h-[85vh]"
-              style={{ touchAction: 'pan-y' }}
-            >
-              <h3 className="font-semibold text-base mb-2">Cancel Future Renewal</h3>
+      <CustomerDialog open={Boolean(showCancelConfirm)} onClose={() => setShowCancelConfirm(null)} title="Cancel Future Renewal" busy={loading} triggerRef={dialogTriggerRef}>
               <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
                 This will stop your subscription after your current paid month. <strong>You will still receive all of this month's scheduled deliveries.</strong>
               </p>
@@ -535,22 +521,10 @@ export default function SubscriptionManagement() {
                   {loading ? 'Cancelling...' : 'Cancel Renewal'}
                 </Button>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </CustomerDialog>
 
       {/* Pause Next Month Modal */}
-      {showPauseModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end" onClick={() => setShowPauseModal(false)}>
-          <motion.div
-            initial={{ y: 100 }}
-            animate={{ y: 0 }}
-            onClick={e => e.stopPropagation()}
-            className="bg-card w-full rounded-t-2xl p-5 overflow-y-auto max-h-[85vh]"
-            style={{ touchAction: 'pan-y' }}
-          >
-            <h3 className="font-semibold text-base mb-1">Pause Next Month</h3>
+      <CustomerDialog open={showPauseModal} onClose={() => setShowPauseModal(false)} title="Pause Next Month" busy={loading} triggerRef={dialogTriggerRef}>
             <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
               Your current month remains active. Your next billing cycle will be paused.
             </p>
@@ -563,6 +537,8 @@ export default function SubscriptionManagement() {
                 { value: 'custom', label: 'Custom resume date' },
               ].map(opt => (
                 <button
+                  type="button"
+                  aria-pressed={pauseDuration === opt.value}
                   key={opt.value}
                   onClick={() => setPauseDuration(opt.value)}
                   className={`w-full text-left px-3 py-2.5 rounded-lg border-2 transition-all ${
@@ -578,8 +554,9 @@ export default function SubscriptionManagement() {
 
             {pauseDuration === 'custom' && (
               <div className="mb-5">
-                <label className="text-xs font-semibold text-muted-foreground block mb-2">Resume Date</label>
+                <label htmlFor="subscription-resume-date" className="text-xs font-semibold text-muted-foreground block mb-2">Resume Date</label>
                 <input
+                  id="subscription-resume-date"
                   type="date"
                   value={customDate}
                   onChange={e => setCustomDate(e.target.value)}
@@ -600,9 +577,7 @@ export default function SubscriptionManagement() {
                 {loading ? 'Pausing...' : 'Confirm Pause'}
               </Button>
             </div>
-          </motion.div>
-        </div>
-      )}
+      </CustomerDialog>
     </div>
   );
 }

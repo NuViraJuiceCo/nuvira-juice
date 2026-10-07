@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductCard from '@/components/shop/ProductCard';
 import ProgramCards from '@/components/home/ProgramCards';
+import { programCollectionSummary } from '@/lib/program-catalog';
 import { absoluteUrl, productPath } from '@/lib/seo-slugs';
 import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
@@ -256,6 +257,7 @@ export default function Shop({ seoActive = true }) {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
+            aria-label="Search products"
             placeholder="Search juices, bundles, merch..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -289,13 +291,13 @@ export default function Shop({ seoActive = true }) {
       {!search.trim() && category === 'all' && !filterParam && (
         <div className="storefront-shop-programs mb-6">
           <div className="px-5 mb-3">
-            <h2 className="font-heading text-base font-bold">3-Day Programs</h2>
-            <p className="text-[11px] text-muted-foreground">Structured for results — 12 bottles delivered</p>
+            <h2 className="font-heading text-base font-bold">Juice Programs</h2>
+            <p className="text-[11px] text-muted-foreground">{programCollectionSummary()}</p>
           </div>
           <ProgramCards />
           <div className="px-4 mt-5 mb-1">
             <h2 className="font-heading text-base font-bold">Quick Options</h2>
-            <p className="text-[11px] text-muted-foreground">Single bottles & small orders</p>
+            <p className="text-[11px] text-muted-foreground">Build your own mix. Order minimums apply.</p>
           </div>
         </div>
       )}
@@ -310,10 +312,10 @@ export default function Shop({ seoActive = true }) {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-lg font-heading font-semibold mb-1">Coming Soon</p>
-            <p className="text-muted-foreground text-sm mb-5">New Drops Are On The Way</p>
+            <p role="status" className="text-lg font-heading font-semibold mb-1">{search.trim() ? 'No Matching Products' : 'Nothing Here Yet'}</p>
+            <p className="text-muted-foreground text-sm mb-5">{search.trim() ? 'Try another search or browse all juices.' : 'Explore the rest of the collection.'}</p>
             <button
-              onClick={() => { setCategory('all'); setSearchParams({}); }}
+              onClick={() => { setSearch(''); setCategory('all'); setSearchParams({}); }}
               className="min-h-11 px-6 bg-primary text-primary-foreground rounded-full text-sm font-semibold"
             >
               Shop All Juices
@@ -349,7 +351,7 @@ export default function Shop({ seoActive = true }) {
                 Cold-Pressed Delivery
               </Link>
               <Link to="/juice-cleanse-wentzville" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
-                3-Day Juice Programs
+                Juice Programs
               </Link>
               <Link to="/all-natural-juice-wentzville" className="flex min-h-11 items-center rounded-lg border border-border/45 px-3 text-xs font-semibold text-foreground/80">
                 All-Natural Juice

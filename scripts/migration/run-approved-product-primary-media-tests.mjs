@@ -126,10 +126,10 @@ check('approved-image recognition is an exact local or canonical-host allowlist'
   assert.equal(isApprovedProductImage(`${base}/hydration-shot-primary.webp`), false);
 });
 
-const nonTargets = PUBLIC_PRODUCT_FALLBACKS.filter(product => !targets.some(target => target.id === product.id));
+const nonTargets = PUBLIC_PRODUCT_FALLBACKS.filter(product => !targets.some(target => target.id === product.id) && product.slug !== 'the-nuvira-trio');
 const catalogSnapshot = JSON.stringify(PUBLIC_PRODUCT_FALLBACKS);
-check('all eight non-target catalog products keep their existing primary and card treatment', () => {
-  assert.equal(nonTargets.length, 8);
+check('all seven non-target catalog products keep their existing primary and card treatment', () => {
+  assert.equal(nonTargets.length, 7);
   for (const product of nonTargets) {
     assert.equal(approvedProductMedia(product), null, product.title);
     assert.equal(productPrimaryImage(product), product.image_url);
@@ -140,6 +140,28 @@ check('all eight non-target catalog products keep their existing primary and car
     assert.equal(productCardImage(product), expectedCard, product.title);
     assert.equal(resolveOrderItemImageCandidates(product)[0], product.image_url);
   }
+});
+check('owner-selected Trio photo replaces old main across cards, cart, history, gallery and SEO without changing catalog data', () => {
+  const trio = PUBLIC_PRODUCT_FALLBACKS.find(product => product.slug === 'the-nuvira-trio');
+  const media = approvedProductMedia(trio);
+  assert.equal(media.primary, '/images/authentic-products/trio/trio-outdoor-bag.jpg');
+  assert.equal(media.card, '/images/website-performance-20261006/gallery/trio-outdoor-bag-384.webp');
+  for (const identity of [{ id: trio.id }, { product_id: trio.id }, { catalog_id: trio.catalog_id }, { title: trio.title, category: 'bundle' }, { slug: 'nuvira-trio' }]) assert.equal(approvedProductMedia(identity), media);
+  assert.equal(approvedProductMedia({ title: trio.title, category: 'shot' }), null);
+  assert.equal(approvedProductMedia({ id: trio.id, product_id: targets[0].id }), null);
+  assert.equal(productCardImage(trio), media.card);
+  assert.equal(productThumbnailImage(trio), media.card);
+  assert.equal(productPrimaryImage(trio), media.primary);
+  assert.equal(resolveOrderItemImageCandidates({ product_id: trio.id, image_url: trio.image_url })[0], media.card);
+  const gallery = buildProductGallery({ ...trio, secondary_images: [trio.image_url, ...media.retiredImages, media.primary] });
+  assert.equal(gallery.length, 3);
+  assert.equal(gallery[0].src, media.primary);
+  assert.equal(gallery[0].fit, 'cover');
+  assert.equal(gallery.some(image => [trio.image_url, ...media.retiredImages].includes(image.src)), false);
+  assert.equal(buildProductStructuredData(trio).image[0], origin + media.primary);
+  assert.equal(buildProductSeoMetadata(trio).image, origin + media.primary);
+  assert.equal(ProductPhoto({ product: trio, thumbnail: true }).props.style.objectFit, 'cover');
+  assert.equal(JSON.stringify(PUBLIC_PRODUCT_FALLBACKS), catalogSnapshot);
 });
 check('cards, galleries, history and SEO resolve each target to the same flavor', () => {
   for (const target of targets) {
