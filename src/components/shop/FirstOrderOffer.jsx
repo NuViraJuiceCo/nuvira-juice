@@ -2,7 +2,10 @@ import React from 'react';
 import { TicketPercent } from 'lucide-react';
 
 // Informational only: eligibility and application remain owned by checkout.
-export default function FirstOrderOffer({ className = '' }) {
+export default function FirstOrderOffer({ className = '', collapsible = false }) {
+  const terms = <p className="mt-2 text-xs leading-5 text-muted-foreground">
+    Enter WELCOME10 at app or website checkout. First online orders only, once per customer. Prior event or POS purchases do not disqualify you. Cannot be combined with other discounts or reward redemptions. Order minimums, delivery fees and applicable taxes apply. Eligibility is verified at checkout.
+  </p>;
   return (
     <aside aria-label="First-online-order offer" className={`rounded-2xl border border-primary/20 bg-primary/5 p-3.5 ${className}`}>
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
@@ -10,9 +13,7 @@ export default function FirstOrderOffer({ className = '' }) {
         <p className="min-w-0 flex-1 text-sm font-bold text-foreground">First online order? Enjoy 10% off.</p>
         <span className="rounded-lg border border-primary/20 bg-background/70 px-2.5 py-1 text-xs font-bold tracking-wider text-primary">WELCOME10</span>
       </div>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">
-        Enter WELCOME10 at app or website checkout. First online orders only, once per customer. Prior event or POS purchases do not disqualify you. Cannot be combined with other discounts or reward redemptions. Order minimums, delivery fees and applicable taxes apply. Eligibility is verified at checkout.
-      </p>
+      {collapsible ? <details className="nv-product-offer-terms"><summary>Offer details</summary>{terms}</details> : terms}
     </aside>
   );
 }

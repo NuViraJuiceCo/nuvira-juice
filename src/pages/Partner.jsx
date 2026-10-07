@@ -9,6 +9,9 @@ import { toast } from 'sonner';
 import { submitCustomerInquiry } from '@/lib/customerCommunications';
 import { trackGoogleGenerateLead } from '@/lib/googleAnalytics';
 import { trackMetaLead } from '@/lib/metaPixel';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import { BRAND_IMAGES } from '@/lib/brandImages';
+import DesktopPartner from '@/components/desktop/DesktopPartner';
 
 const LOGO_URL = "https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png";
 
@@ -29,6 +32,7 @@ const perks = [
 ];
 
 export default function Partner() {
+  const desktop = useDesktopStorefront();
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: '', business: '', email: '', phone: '', type: '', notes: '' });
   const [loading, setLoading] = useState(false);
@@ -60,8 +64,10 @@ export default function Partner() {
     }
   };
 
+  if (desktop) return <DesktopPartner form={form} setForm={setForm} loading={loading} onSubmit={handleSubmit} />;
+
   return (
-    <div className="min-h-screen bg-background pb-10">
+    <div className="nv-partner-page min-h-screen bg-background pb-10">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <button onClick={() => navigate(-1)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
@@ -71,8 +77,8 @@ export default function Partner() {
       </div>
 
       {/* Hero */}
-      <div className="bg-nuvira-gradient-soft px-5 pt-6 pb-4 text-center">
-        <img src={LOGO_URL} alt="NuVira" className="h-10 mx-auto mb-3" />
+      <div className="nv-partner-intro bg-nuvira-gradient-soft px-5 pt-6 pb-4 text-center">
+        <img src={desktop ? BRAND_IMAGES.wordmark : LOGO_URL} alt="NuVira" className="h-10 mx-auto mb-3" />
         <h1 className="font-heading text-2xl font-bold mb-2">Bring NuVira to Your Space</h1>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
           We partner with gyms, wellness studios, offices, and local businesses to deliver fresh cold-pressed juice directly to your community.
@@ -80,7 +86,7 @@ export default function Partner() {
       </div>
 
       {/* Partner Types */}
-      <div className="px-4 mt-4">
+      <div className="nv-partner-types px-4 mt-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Who We Work With</p>
         <div className="grid grid-cols-2 gap-3">
           {partnerTypes.map(({ icon: Icon, label, example }, i) => (
@@ -102,7 +108,7 @@ export default function Partner() {
       </div>
 
       {/* Perks */}
-      <div className="px-4 mt-6">
+      <div className="nv-partner-perks px-4 mt-6">
         <div className="nuvira-premium-card rounded-2xl p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">What You Get</p>
           <div className="space-y-2">
@@ -117,7 +123,7 @@ export default function Partner() {
       </div>
 
       {/* Form */}
-      <div className="px-4 mt-6 space-y-3">
+      <div className="nv-partner-form px-4 mt-6 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Get in Touch</p>
 
         <Input placeholder="Your Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="rounded-xl h-11" />

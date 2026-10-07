@@ -9,6 +9,7 @@ import AppErrorBoundary from '@/components/AppErrorBoundary';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import { CartProvider } from '@/lib/cartContext';
 import AppLayout from '@/components/layout/AppLayout';
+import CustomerFlowLayout from '@/components/layout/CustomerFlowLayout';
 import StartupStatus from '@/components/StartupStatus';
 import ScrollToTop from '@/components/ScrollToTop';
 import LowercaseRedirect from '@/components/LowercaseRedirect';
@@ -511,11 +512,15 @@ const AuthenticatedApp = () => {
           <Route path="/return-reward" element={<ProtectedRoute element={<ReturnReward />} user={user} />} />
         </Route>
         <Route path="/checkout" element={<Checkout />} />
+        <Route element={<CustomerFlowLayout />}>
         <Route path="/order-confirmation" element={<OrderConfirmation />} />
         <Route path="/order-confirmation/:id" element={<OrderConfirmation />} />
         <Route path="/order-incomplete" element={<OrderIncomplete />} />
         <Route path="/order-tracker/:id" element={<OrderTracker />} />
         <Route path="/order-options" element={<OrderOptions />} />
+        <Route path="/account-setup" element={<AccountSetup />} />
+        <Route path="/zone3-review-submitted" element={<Zone3ReviewSubmitted />} />
+        </Route>
         <Route path="/native-login" element={<NativeLogin />} />
         <Route path="/native-auth-bridge" element={<NativeLogin />} />
         <Route path="/login" element={<Login />} />
@@ -523,9 +528,7 @@ const AuthenticatedApp = () => {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/oauth-consent" element={<OAuthConsent />} />
-        <Route path="/account-setup" element={<AccountSetup />} />
         <Route path="/_preview/program-journey" element={import.meta.env.DEV ? <ProgramJourney previewMode /> : <Navigate to="/" replace />} />
-        <Route path="/zone3-review-submitted" element={<Zone3ReviewSubmitted />} />
         {/* Redirect old/invalid routes to correct pages */}
         <Route path="/event" element={<Navigate to="/events" replace />} />
         <Route path="/event/*" element={<Navigate to="/events" replace />} />

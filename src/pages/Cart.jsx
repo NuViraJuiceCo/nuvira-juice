@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import SEO from '@/components/SEO';
+import CartSummarySurface from '@/components/cart/CartSummarySurface';
 import { Link, useNavigate } from 'react-router-dom';
 import { PROGRAMS } from '@/components/home/ProgramCards';
 
@@ -17,7 +18,7 @@ import OrderMinimumBuilder from '@/components/cart/OrderMinimumBuilder';
 import { useAuth } from '@/lib/AuthContext';
 import { useBirthdayReward } from '@/lib/birthdayReward';
 import { useBirthdayCheckoutEligibility } from '@/lib/useBirthdayCheckoutEligibility';
-import { birthdayEligibilityMessage } from '@/lib/birthdayCheckoutEligibility';
+import { birthdayEligibilityMessage, birthdayProductEligible } from '@/lib/birthdayCheckoutEligibility';
 import FreeProductPicker from '@/components/FreeProductPicker';
 import { validateActiveReward, getStoredActiveReward } from '@/lib/rewardManager';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewCart } from '@/lib/googleAnalytics';
@@ -29,6 +30,10 @@ import FirstOrderOffer from '@/components/shop/FirstOrderOffer';
 import { productThumbnailImage } from '@/lib/approved-product-media';
 
 export default function Cart() {
+  return <><SEO title="Your Cart" noindex /><CartContent /></>;
+}
+
+function CartContent() {
   const { items, updateQuantity, removeItem, updateBundleComposition, subtotal, itemCount, addItem, clearEarnedRewardItems } = useCart();
   const navigate = useNavigate();
   const { user, isLoadingAuth } = useAuth();
@@ -74,6 +79,7 @@ export default function Cart() {
   const birthdayActive = birthdayEligibility.eligible;
 
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
+  const birthdayPickerTriggerRef = React.useRef(null);
   const [activeReward, setActiveReward] = useState(null);
   const [isValidatingReward, setIsValidatingReward] = useState(false);
   const rewardMutationRef = React.useRef(0);
@@ -130,7 +136,8 @@ export default function Cart() {
   };
 
   const handleBirthdayProductSelect = (product) => {
-    if (!birthdayActive || activeReward) return;
+    if (!birthdayActive || activeReward) return false;
+    if (!birthdayProductEligible(product)) return false;
     addItem({ ...product, id: '__birthday_reward__', price: 0, title: `🎂 ${product.title} (Free)` }, 1,
       { isBirthdayReward: true, birthday_product_id: product.id });
     setShowBirthdayPicker(false);
@@ -167,7 +174,7 @@ export default function Cart() {
 
   if (items.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-5 pt-safe pb-safe">
+      <div className="nv-cart-empty min-h-screen flex flex-col items-center justify-center px-5 pt-safe pb-safe">
         <div className="w-16 h-16 bg-secondary rounded-full flex items-center justify-center mb-4">
           <ShoppingBag className="w-7 h-7 text-muted-foreground" />
         </div>
@@ -182,17 +189,17 @@ export default function Cart() {
 
   return (
     <div
-      className="mx-auto w-full max-w-3xl pb-[calc(22rem+env(safe-area-inset-bottom))] md:pb-[calc(14rem+env(safe-area-inset-bottom))]"
+      className="nv-cart-page mx-auto w-full max-w-3xl pb-[calc(22rem+env(safe-area-inset-bottom))] md:pb-[calc(14rem+env(safe-area-inset-bottom))]"
       style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}
     >
       {/* Header */}
-      <div className="px-5 pb-4 border-b border-border/30">
+      <div className="nv-cart-header px-5 pb-4 border-b border-border/30">
         <h1 className="font-heading text-2xl font-bold mb-1">Your Cart</h1>
         <p className="text-xs text-muted-foreground">{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
       </div>
 
       {/* Content Scrollable Area */}
-      <div className="space-y-3 px-5 pt-4">
+      <div className="nv-cart-content space-y-3 px-5 pt-4">
         {/* Subscriber Perks Banner */}
         {activeSubscription?.plan && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="border border-primary/30 rounded-2xl p-3.5 shadow-sm" style={{ background: `linear-gradient(135deg, rgba(11,61,46,0.12) 0%, rgba(14,90,67,0.08) 100%)` }}>
@@ -239,7 +246,7 @@ export default function Cart() {
               {rewardInCart ? (
                 <button onClick={removeBirthdayReward} className="text-[10px] font-semibold text-pink-500 shrink-0">Remove</button>
               ) : (
-                <button disabled={!birthdayActive || Boolean(activeReward)} onClick={() => setShowBirthdayPicker(true)} className="text-[10px] font-semibold bg-pink-500 text-white px-2.5 py-1 rounded-lg shrink-0 disabled:opacity-50">Choose</button>
+                <button ref={birthdayPickerTriggerRef} disabled={!birthdayActive || Boolean(activeReward)} onClick={() => setShowBirthdayPicker(true)} className="text-[10px] font-semibold bg-pink-500 text-white px-2.5 py-1 rounded-lg shrink-0 disabled:opacity-50">Choose</button>
               )}
             </div>
           </motion.div>
@@ -278,14 +285,14 @@ export default function Cart() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
-                  className="bg-card rounded-2xl p-3.5"
+                  className="nv-cart-item bg-card rounded-2xl p-3.5"
                   style={{
                     border: '1px solid hsl(var(--border) / 0.6)',
                     boxShadow: '0 4px 16px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04)',
                   }}
                 >
                   <div className="flex gap-3">
-                    <div className="w-16 h-16 bg-secondary/50 rounded-xl overflow-hidden shrink-0">
+                    <div className="nv-cart-item-photo w-16 h-16 bg-secondary/50 rounded-xl overflow-hidden shrink-0">
                       {productThumbnailImage(item) ? (
                         <ProductPhoto product={item} thumbnail alt={item.title} className="w-full h-full object-cover" />
                       ) : (
@@ -307,7 +314,7 @@ export default function Cart() {
                         <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-1.5 rounded-lg">1 birthday juice</span>
                       ) : isEarnedRewardItem(item) ? (
                         <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-1.5 rounded-lg">{item.quantity} earned {item.quantity === 1 ? 'item' : 'items'}{item.reward_type === 'bundle_upgrade' ? ' · half price' : ''}</span>
-                      ) : <div className="flex items-center gap-1.5 bg-secondary rounded-lg px-2 py-1.5">
+                      ) : <div className="nv-cart-quantity flex items-center gap-1.5 bg-secondary rounded-lg px-2 py-1.5">
                         <button type="button" onClick={() => updateQuantity(item.cart_line_key || item.product_id, item.quantity - 1)} aria-label={`Decrease ${item.title} quantity`} className="hover:opacity-60">
                           <Minus className="w-3 h-3" />
                         </button>
@@ -378,9 +385,9 @@ export default function Cart() {
 
         {/* AOV Upsell */}
         {subtotal > 0 && subtotal < 144 && (
-          <div>
+          <div className="nv-cart-recommendations">
             <p className="text-xs font-semibold uppercase tracking-widest text-foreground/50 mb-3 px-0.5">Complete Your Routine</p>
-            <div className="space-y-3">
+            <div className="nv-cart-recommendation-grid space-y-3">
               {PROGRAMS.slice(0, 2).map((program, idx) => (
                 <Link key={program.key} to={`/program/${program.key}`}>
                   <motion.div
@@ -437,10 +444,7 @@ export default function Cart() {
         )}
       </div>
 
-      {/* Fixed Checkout Footer */}
-      {typeof document !== 'undefined' && createPortal(
-      <div className="fixed bottom-16 md:bottom-0 left-0 md:left-60 right-0 z-40 bg-background border-t border-border/30 pt-3" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
-        <div className="max-w-lg mx-auto px-5 space-y-3">
+      <CartSummarySurface>
           <div className="space-y-2">
             <div className="flex justify-between text-xs text-foreground/60">
               <span>Subtotal</span>
@@ -482,16 +486,16 @@ export default function Cart() {
               </button>
             </div>
           )}
-        </div>
-      </div>
-      , document.body)}
+      </CartSummarySurface>
 
       <FreeProductPicker
+        triggerRef={birthdayPickerTriggerRef}
         open={showBirthdayPicker}
         onClose={() => setShowBirthdayPicker(false)}
         onSelect={handleBirthdayProductSelect}
         title="Choose Your Free Birthday Juice"
         category="juice"
+        isEligible={birthdayProductEligible}
       />
     </div>
   );

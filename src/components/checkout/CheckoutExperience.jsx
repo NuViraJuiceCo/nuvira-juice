@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, ChevronDown, Gift, LockKeyhole, MapPin } from 'lucide-react';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import { BRAND_IMAGES } from '@/lib/brandImages';
 import './checkout-experience.css';
 
 const CheckoutDockContext = createContext(null);
@@ -41,6 +43,7 @@ export default function CheckoutExperience({
   contactSummary, deliverySummary, deliveryReady, deliveryMessage,
   onBack, summary, benefits, benefitsLabel, guest, contact, delivery, payment,
 }) {
+  const desktop = useDesktopStorefront();
   const [step, setStep] = useState(0);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [contactError, setContactError] = useState(false);
@@ -100,12 +103,12 @@ export default function CheckoutExperience({
 
   return (
     <CheckoutDockContext.Provider value={{ total, confirmed: paymentReady, keyboardOpen }}>
-      <div className="nv-checkout-page">
+      <div className="nv-checkout-page" data-desktop-checkout={desktop ? 'true' : undefined}>
         {children}
         <main className="nv-checkout-content">
           <header className="nv-checkout-header">
             <button type="button" onClick={onBack} disabled={locked} aria-label="Back to cart"><ArrowLeft size={19} /></button>
-            <span>NUVIRA JUICE CO.</span><LockKeyhole size={17} aria-label="Secure checkout" />
+            {desktop ? <img className="nv-checkout-wordmark" src={BRAND_IMAGES.wordmark} alt="NuVira Juice Company" /> : <span>NUVIRA JUICE CO.</span>}<LockKeyhole size={17} aria-label="Secure checkout" />
           </header>
           <div className="nv-checkout-intro"><h1>Checkout</h1><p>A little goodness, delivered.</p></div>
           <div className="nv-checkout-layout">

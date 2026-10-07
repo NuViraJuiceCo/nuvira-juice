@@ -1,4 +1,5 @@
 import React from 'react';
+import SEO from '@/components/SEO';
 import { useNavigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { redirectToLogin } from '@/lib/nativeAuthRedirect';
@@ -134,6 +135,10 @@ function LiveDeliveryPanel({ etaData }) {
 }
 
 export default function OrderTracker() {
+  return <><SEO title="Order Tracking" noindex /><OrderTrackerContent /></>;
+}
+
+function OrderTrackerContent() {
   const rawParam = window.location.pathname.split('/').pop();
   const urlParams = new URLSearchParams(window.location.search);
 
@@ -278,7 +283,7 @@ export default function OrderTracker() {
     return (
       <div className="min-h-screen bg-background">
         <div className="bg-nuvira-gradient px-4 pb-6" style={{ paddingTop: SAFE_TOP_PADDING }}>
-          <button onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4 mt-3">
+          <button type="button" aria-label="Go back" onClick={() => navigate(-1)} className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center mb-4 mt-3">
             <ArrowLeft className="w-4 h-4 text-white" />
           </button>
           <div className="h-4 w-32 bg-white/20 rounded animate-pulse mb-2" />
@@ -361,7 +366,7 @@ export default function OrderTracker() {
     return (
       <div className="min-h-screen bg-background pb-8">
         <div className="bg-muted px-4 pb-6" style={{ paddingTop: SAFE_TOP_PADDING }}>
-          <button onClick={() => navigate(-1)} className="w-9 h-9 bg-background/50 rounded-full flex items-center justify-center mb-4 mt-3">
+          <button type="button" aria-label="Go back" onClick={() => navigate(-1)} className="w-9 h-9 bg-background/50 rounded-full flex items-center justify-center mb-4 mt-3">
             <ArrowLeft className="w-4 h-4" />
           </button>
           <p className="text-muted-foreground text-xs font-medium uppercase tracking-wider">Order #{displayNum} • {resolveCustomerName()}</p>
@@ -470,9 +475,9 @@ export default function OrderTracker() {
   const hasDeliveredProgram = journey.normalizedStatus === 'delivered' && orderContainsProgram(displayOrder);
 
   return (
-    <div className="min-h-screen bg-[#07130f] pb-10 text-[#f3f7f2]">
+    <div className="nv-order-tracker min-h-screen bg-[#07130f] pb-10 text-[#f3f7f2]">
       <BrowserAppPrompt pageRoute={`/order-tracker/${displayNum || ''}`} />
-      <div className="border-b border-emerald-300/10 bg-[#063b2a] px-4 pb-12" style={{ paddingTop: SAFE_TOP_PADDING }}>
+      <div className="nv-order-tracker-hero border-b border-emerald-300/10 bg-[#063b2a] px-4 pb-12" style={{ paddingTop: SAFE_TOP_PADDING }}>
         <div className="mx-auto max-w-5xl">
         <div className="mb-8 mt-3 flex items-center justify-between">
           <button onClick={() => navigate(-1)} className="w-10 h-10 bg-white/15 border border-white/15 rounded-full flex items-center justify-center active:scale-95 transition-transform" aria-label="Back">
@@ -511,6 +516,7 @@ export default function OrderTracker() {
         </div>
       </div>
 
+      <div className="nv-order-tracker-content">
       {isOnRoute && <LiveDeliveryPanel etaData={etaData} />}
 
       <section className={`mx-auto w-[calc(100%-2rem)] max-w-5xl rounded-2xl border border-[#1d4635] bg-[#0b1d16] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.24)] sm:p-6 ${isOnRoute ? 'mt-4' : '-mt-6'}`}>
@@ -677,6 +683,7 @@ export default function OrderTracker() {
       <p className="mx-4 mt-6 text-center text-[11px] text-emerald-50/40">
         Need help? <a href="mailto:support@nuvirajuice.com" className="font-semibold text-emerald-200">Contact NuVira Support</a>
       </p>
+      </div>
     </div>
   );
 }

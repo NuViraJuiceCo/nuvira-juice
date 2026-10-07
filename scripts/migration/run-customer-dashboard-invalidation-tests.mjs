@@ -67,7 +67,7 @@ try {
 
   await test('settings invalidation covers successful profile/auth writes and ambiguous write failures, never a failed preliminary read', async () => {
     const source = read('src/pages/AccountSettings.jsx');
-    for (const outcome of ['success', 'create', 'profile-error', 'auth-error', 'read-error', 'retired-after-write']) {
+    for (const outcome of ['success', 'create', 'profile-error', 'auth-error', 'read-error', 'retired-after-write', 'initial-loading', 'initial-read-error']) {
       const effects = [];
       const current = session(effects);
       const profileWrite = async () => {
@@ -77,6 +77,7 @@ try {
       };
       const save = callback(source, '  const handleSave =', '  const handleDeleteAccount =', 'handleSave', {
         form: { firstName: 'Buyer', lastName: 'Example', phone: '', birthday: '', address: {} },
+        profileLoading: outcome === 'initial-loading', profileError: outcome === 'initial-read-error',
         user: { email: 'buyer@example.test' }, queryClient: current.client, invalidateCustomerDashboard,
         setIsSaving: noop, setSaveSuccess: noop, setTimeout: noop,
         base44: { entities: { UserProfile: {
@@ -94,7 +95,8 @@ try {
       await save();
       await flush();
       const invalidations = effects.filter(effect => effect[0] === 'invalidate');
-      assert.equal(invalidations.length, ['read-error', 'retired-after-write'].includes(outcome) ? 0 : 1, outcome);
+      assert.equal(invalidations.length, ['read-error', 'retired-after-write', 'initial-loading', 'initial-read-error'].includes(outcome) ? 0 : 1, outcome);
+      if (['initial-loading', 'initial-read-error'].includes(outcome)) assert.deepEqual(effects, [], outcome);
       assert.equal(effects.some(effect => effect[0] === 'new-principal-invalidated'), false);
       if (['success', 'create'].includes(outcome)) assert.ok(effects.some(effect => effect[0] === 'refresh-user'));
     }
@@ -116,6 +118,7 @@ try {
           return invalidateCustomerDashboard(client);
         },
         rewardSelectionRef: { current: false }, setIsSelectingReward: noop,
+        pickerTriggerRef: { current: null }, document: { activeElement: {} },
         selectActiveReward: async () => {
           if (outcome === 'failed') throw new Error('selection rejected');
           if (outcome === 'retired') current.retire();

@@ -19,6 +19,9 @@ import MobileCarousel from '@/components/carousel/MobileCarousel';
 import { useCart } from '@/lib/cartContext';
 import { toast } from 'sonner';
 import { trackGoogleRetentionEvent } from '@/lib/googleAnalytics';
+import { REFERRAL_OFFER } from '@/lib/referralOffer';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopRewards from '@/components/desktop/DesktopRewards';
 
 // ── Brand color tokens (fresh lime + deep green) ──────────────────────────
 const REFRESH_ACCENT = '#7BDC48';
@@ -51,7 +54,7 @@ const DEFAULT_REWARDS = [
 
 const HOW_TO_EARN = [
   { icon: ShoppingBag, label: 'Place an Order',     pts: '10 pts / $1' },
-  { icon: Users,       label: 'Refer a Friend',     pts: '50 pts' },
+  { icon: Users,       label: 'Refer a Friend',     pts: 'Rewards at 5, 10 & 20 referrals' },
   { icon: Flame,       label: 'Join NuVira Rewards', pts: '250 pts' },
   { icon: Cake,        label: 'Birthday Bonus',     pts: '200 pts' },
 ];
@@ -320,12 +323,14 @@ function GuestView() {
 
 // ── Main authenticated view ─────────────────────────────────────────────────
 export default function Rewards() {
+  const desktop = useDesktopStorefront();
   const { user, isLoadingAuth } = useAuth();
   const queryClient = useQueryClient();
   const { setEarnedRewardSelection, clearEarnedRewardItems } = useCart();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerTriggerRef = useRef(null);
   const [pendingReward, setPendingReward] = useState(null);
   const rewardSelectionRef = useRef(false);
   const [isSelectingReward, setIsSelectingReward] = useState(false);
@@ -413,8 +418,9 @@ export default function Rewards() {
   }, [rewards]);
 
   // ── Reward apply/remove logic ──
-  const handleApplyReward = async (reward) => {
+  const handleApplyReward = async (reward, triggerElement) => {
     if (rewardSelectionRef.current) return;
+    pickerTriggerRef.current = triggerElement || document.activeElement;
     rewardSelectionRef.current = true;
     setIsSelectingReward(true);
     let selectionAttempted = false;
@@ -500,6 +506,10 @@ export default function Rewards() {
       </div>
     );
   }
+
+  if (desktop) return <DesktopRewards totalPoints={totalPoints} lifetimePoints={lifetimePoints} redeemedPoints={redeemedPoints} tier={tier} rewards={rewards} activeReward={activeReward} busy={isSelectingReward || isValidatingReward} onApply={handleApplyReward} onRemove={handleRemoveReward} birthdayActive={birthdayActive} hasBirthday={Boolean(birthday)} birthdayMessage={birthdayEligibilityMessage(birthdayEligibility)} activationConfirmed={activationConfirmed} activity={pointsData?.points_history || []} earningOptions={HOW_TO_EARN}>
+    <RewardProductPicker open={pickerOpen} onClose={() => { setPickerOpen(false); setPendingReward(null); }} onSelect={handleFreeProductSelect} reward={pendingReward} triggerRef={pickerTriggerRef} />
+  </DesktopRewards>;
 
   return (
     <div className="nuvira-rewards-page pb-32" style={{ background: 'hsl(var(--background))' }}>
@@ -600,7 +610,7 @@ export default function Rewards() {
               reward={reward}
               totalPoints={totalPoints}
               activeReward={activeReward}
-              onApply={() => handleApplyReward(reward)}
+              onApply={event => handleApplyReward(reward, event?.currentTarget)}
               busy={isSelectingReward || isValidatingReward}
               onRemove={handleRemoveReward}
               index={i}
@@ -650,7 +660,7 @@ export default function Rewards() {
                 <Users className="w-5 h-5" style={{ color: '#FFFFFF' }} />
               </div>
               <p className="font-heading text-lg font-bold text-white">Invite Friends</p>
-              <p className="text-sm" style={{ color: '#E8F5E9' }}>Give $10 · Get 250 Points</p>
+              <p className="text-sm" style={{ color: '#E8F5E9' }}>{REFERRAL_OFFER.summary}</p>
             </div>
             <div className="relative z-10 flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm"
               style={{ background: `linear-gradient(90deg, ${REFRESH_ACCENT} 0%, ${REFRESH_ACCENT_LIGHT} 100%)`, color: '#062A20' }}>
@@ -741,6 +751,7 @@ export default function Rewards() {
       <div className="nuvira-rewards-spacer h-12" />
 
       <RewardProductPicker
+        triggerRef={pickerTriggerRef}
         open={pickerOpen}
         onClose={() => { setPickerOpen(false); setPendingReward(null); }}
         onSelect={handleFreeProductSelect}

@@ -132,8 +132,8 @@ export function buildProductGallery(product = {}, { absolute = false } = {}) {
   const existingSecondaryImages = Array.isArray(product.secondary_images)
     ? product.secondary_images.map(image => String(image || '').trim()).filter(Boolean)
     : [];
-  const items = approved ? [{ src: absolute ? absoluteImageUrl(approved.primary) : approved.primary, thumbnail: absolute ? absoluteImageUrl(approved.card) : approved.card, alt: approved.alt, scene: 'approved-primary', fit: 'contain' }] : [];
-  // The owner retired these three old hero photos from the visible gallery.
+  const items = approved ? [{ src: absolute ? absoluteImageUrl(approved.primary) : approved.primary, thumbnail: absolute ? absoluteImageUrl(approved.card) : approved.card, alt: approved.alt, scene: 'approved-primary', fit: approved.fit || 'contain' }] : [];
+  // The owner retired these old hero photos from the visible gallery.
   // Stored catalog/cart media stays unchanged and remains an error fallback.
   if (!approved && primary) {
     items.push({ src: absolute ? absoluteImageUrl(primary) : primary, alt: title, scene: 'primary' });

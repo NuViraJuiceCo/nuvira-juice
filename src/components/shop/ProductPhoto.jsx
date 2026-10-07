@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { isApprovedProductImage, productPrimaryImage, productThumbnailImage } from '@/lib/approved-product-media';
+import { approvedProductMedia, isApprovedProductImage, productPrimaryImage, productThumbnailImage } from '@/lib/approved-product-media';
 
 // Render-time media only: existing carts/rewards retain their original payloads.
 export default function ProductPhoto({ product, thumbnail = false, src, alt, className = '', fallback = null, style, ...props }) {
@@ -14,7 +14,7 @@ export default function ProductPhoto({ product, thumbnail = false, src, alt, cla
     src={image}
     alt={alt ?? product?.title ?? product?.name ?? 'NuVira product'}
     className={className}
-    style={{ ...style, ...(approved ? { objectFit: 'contain' } : {}) }}
+    style={{ ...style, ...(approved ? { objectFit: approvedProductMedia(product)?.fit || 'contain' } : {}) }}
     data-approved-product-photo={approved || undefined}
     onError={() => setFailed(previous => previous.includes(image) ? previous : [...previous, image])}
   />;

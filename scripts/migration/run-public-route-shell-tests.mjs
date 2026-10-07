@@ -36,6 +36,7 @@ const Outlet = () => {
   return React.createElement('div', { 'data-page-ready': 'true' }, 'Page content');
 };
 const Layout = load('src/components/layout/AppLayout.jsx', {
+  '@/styles/browser-audit.css': {},
   react: React,
   'react-router-dom': { Outlet, useLocation: () => location },
   'framer-motion': {
@@ -45,6 +46,10 @@ const Layout = load('src/components/layout/AppLayout.jsx', {
   './SideNav': { default: () => React.createElement('nav', { 'data-test-navigation': 'desktop' }, 'Home Shop Contact') },
   './MobileNav': { default: () => React.createElement('nav', { 'data-test-navigation': 'mobile' }, 'Home Shop') },
   './PublicRouteLoading': { default: Loading },
+  '@/hooks/useDesktopStorefront': { default: () => false },
+  '@/components/desktop/DesktopHeader': { default: () => null },
+  '@/components/desktop/DesktopFooter': { default: () => null },
+  '@/components/cart/CartPreviewHost': { default: () => null },
   '@/lib/nativeRuntime': { isNativeAppRuntime: () => native },
   '@/lib/customerWebsiteMotion': motionPolicy,
   '@/lib/app-params': { get startedWithAuthReturn() { return initialAuthReturn; } },

@@ -27,6 +27,8 @@ import { isAdminUser } from '@/lib/admin-access';
 import { unwrapBase44Result } from '@/lib/base44-result';
 import { usePageVisibility } from '@/lib/usePageVisibility';
 import { useIsMobile } from '@/hooks/use-mobile';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import '@/styles/desktop-operations.css';
 
 const MAX_RANGE_DAYS = 31;
 const presetOptions = [
@@ -1152,7 +1154,7 @@ function OperationsSnapshot({ user }) {
             <div key={index} className="h-20 rounded-xl border border-border/50 bg-muted/40 animate-pulse" />
           ))}
         </div>
-      ) : (
+      ) : data ? (
         <div className="space-y-4">
           {allZero && !showError && (
             <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 text-xs font-medium text-slate-300">
@@ -1188,7 +1190,7 @@ function OperationsSnapshot({ user }) {
 
           <DetailedSnapshotMetrics summary={summary} isFetching={isFetching} />
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -1282,6 +1284,8 @@ function OperationsToolMap() {
 
 export default function Operations() {
   const { user } = useAuth();
+  const desktop = useDesktopStorefront();
+  const memberPreview = typeof document !== 'undefined' && Boolean(document.querySelector('[data-member-preview="true"]'));
 
   if (!isAdminUser(user)) {
     return (
@@ -1290,6 +1294,13 @@ export default function Operations() {
       </div>
     );
   }
+
+  if (desktop) return <div className="nv-operations-desktop">
+    <header className="nv-operations-heading"><div><p>NuVira / Administration</p><h1>Operations</h1></div><Link to="/account"><ArrowRight size={16} />Customer Account</Link></header>
+    {memberPreview ? <section className="nv-operations-restricted" role="status"><ShieldCheck size={25} /><div><h2>Operational data is protected in this preview.</h2><p>This member-design preview does not load production, order-management, or inventory records. Live counts and readiness statuses are intentionally not shown.</p></div><span>Read-Only Preview</span></section> : <div className="nv-operations-live"><OperationsSnapshot user={user} /></div>}
+    <section className="nv-operations-priority" aria-labelledby="operations-priority-heading"><div><p>Daily Workspace</p><h2 id="operations-priority-heading">Run Today</h2></div><div>{sections.slice(0,3).map(section => { const card = section.cards[0]; const Icon = card.icon; return <Link key={card.route} to={card.route}><Icon size={24} /><span>{section.title}<small>{card.title}</small></span><ArrowRight size={18} /></Link>; })}</div></section>
+    <div className="nv-operations-directory">{sections.map(section => <section key={section.title}><header><h2>{section.title}</h2><p>{section.description}</p></header><div>{section.cards.map(card => { const Icon = card.icon; return <Link key={card.route} to={card.route}><Icon size={20} /><span><strong>{card.title}</strong><small>{card.description}</small></span><ArrowRight size={16} /></Link>; })}</div></section>)}</div>
+  </div>;
 
   return (
     <div className="min-h-screen bg-background pb-6 md:pb-10">

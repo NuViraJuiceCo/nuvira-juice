@@ -110,6 +110,11 @@ export default function NotificationPreferencesPanel() {
                 </div>
               </div>
               <button
+                type="button"
+                role="switch"
+                aria-label={label}
+                aria-checked={enabled}
+                disabled={isOperational || saving}
                 onClick={() => !isOperational && toggle(key)}
                 className={`w-12 h-6 rounded-full transition-all relative shrink-0 ${
                   isOperational ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'

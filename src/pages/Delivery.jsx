@@ -2,6 +2,8 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CalendarDays, CircleDollarSign, MapPin, Route, ShieldCheck } from 'lucide-react';
 import SEO from '@/components/SEO';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopDelivery from '@/components/desktop/DesktopDelivery';
 import {
   DELIVERY_POLICY_CONTENT,
   DELIVERY_POLICY_SCHEMA,
@@ -12,6 +14,9 @@ import {
 
 export default function Delivery() {
   const navigate = useNavigate();
+  const desktopWebsite = useDesktopStorefront();
+
+  if (desktopWebsite) return <><SEO title="Local Delivery Information" description="Review NuVira local delivery windows, address eligibility, delivery fees, order minimums, route review, and waitlist information." canonicalUrl={DELIVERY_POLICY_URL} structuredData={DELIVERY_POLICY_SCHEMA} /><DesktopDelivery /></>;
 
   return (
     <div className="min-h-screen bg-background pb-16">

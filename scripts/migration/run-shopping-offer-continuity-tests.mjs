@@ -54,7 +54,7 @@ const compiled = await build({
     export { FirstOrderOffer, ProductOrderDetails };
     ${emailHelpers}
     ${normalizedCategory}
-    export function productOfferSlot(product) { const quantity = 1; const setQuantity = () => {}; const desktopPurchaseControls = null; return (<>${offerSlot}</>); }
+    export function productOfferSlot(product, desktopWebsite = false) { const quantity = 1; const setQuantity = () => {}; const desktopPurchaseControls = null; return (<>${offerSlot}</>); }
     export function couponInput(env) { const { ${vars.join(', ')} } = env; return (${couponInput}); }
     export function couponButton(env) { const { ${vars.join(', ')} } = env; return (${couponButton}); }
     export { isValidCheckoutEmail, normalizeCheckoutEmail };
@@ -124,6 +124,16 @@ try {
     assert.equal(renderDetails(null), '');
     assert.ok(detail.indexOf('<FirstOrderOffer') > detail.indexOf('product.price?.toFixed(2)'));
     assert.ok(detail.indexOf('<ProductOrderDetails') < detail.indexOf('{productBadges.map'));
+  });
+
+  await check('desktop product offer uses native disclosure while keeping all terms and mobile defaults', () => {
+    const product = { category: 'juice', title: 'Synthetic product' };
+    const desktop = render(components.productOfferSlot(product, true));
+    const mobile = render(components.productOfferSlot(product, false));
+    assert.match(desktop, /<details[^>]*><summary>Offer details<\/summary>/);
+    assert.doesNotMatch(mobile, /<details/);
+    assert.equal(text(desktop).replace('Offer details ', ''), text(mobile));
+    assert.match(detail, /const desktopWebsite = useDesktopStorefront\(\)/);
   });
 
   await check('all three core juices show the canonical Trio shortcut and exact minimum explanation', () => {

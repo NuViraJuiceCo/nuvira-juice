@@ -1,8 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { X } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import CustomerDialog from '@/components/CustomerDialog';
 import ProductPhoto from '@/components/shop/ProductPhoto';
 import { productThumbnailImage } from '@/lib/approved-product-media';
 
@@ -14,7 +13,7 @@ import { productThumbnailImage } from '@/lib/approved-product-media';
  *  title: string
  *  category: string (optional filter, e.g. 'juice')
  */
-export default function FreeProductPicker({ open, onClose, onSelect, title = 'Choose Your Free Item', category, isEligible }) {
+export default function FreeProductPicker({ open, onClose, onSelect, title = 'Choose Your Free Item', category, isEligible, triggerRef }) {
   const selectingRef = useRef(false);
   const [selecting, setSelecting] = useState(false);
   const [selectionError, setSelectionError] = useState('');
@@ -47,38 +46,7 @@ export default function FreeProductPicker({ open, onClose, onSelect, title = 'Ch
   const eligibleProducts = isEligible ? products.filter(isEligible) : products;
 
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={closePicker}
-            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
-          />
-
-          {/* Sheet */}
-          <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="storefront-customer-sheet fixed bottom-0 left-0 right-0 z-40 bg-card rounded-t-3xl shadow-2xl max-h-[80vh] flex flex-col"
-          >
-            {/* Handle */}
-            <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 bg-border rounded-full" />
-            </div>
-
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-              <h2 className="font-heading text-lg font-bold">{title}</h2>
-              <button type="button" aria-label="Close product picker" disabled={selecting} onClick={closePicker} className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+    <CustomerDialog open={open} onClose={closePicker} title={title} description="Select an eligible item for your reward." busy={selecting} triggerRef={triggerRef}>
 
             {/* Product List */}
             <div className="overflow-y-auto flex-1 px-4 py-4 space-y-2">
@@ -115,9 +83,6 @@ export default function FreeProductPicker({ open, onClose, onSelect, title = 'Ch
                 </button>
               ))}
             </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+    </CustomerDialog>
   );
 }

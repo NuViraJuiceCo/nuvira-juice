@@ -6,7 +6,7 @@ import { useSessionMutation as useMutation } from '@/lib/useSessionMutation';
 import { isCurrentAuthQueryClient } from '@/lib/authQuerySession';
 import { invalidateCustomerDashboard } from '@/lib/customerDashboardQueries';
 import { Camera, X, Loader2, Crown } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import CustomerDialog from '@/components/CustomerDialog';
 import { toast } from 'sonner';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -58,8 +58,10 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
+  const menuTriggerRef = useRef(null);
   const [showMenu, setShowMenu] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [failedPhotoUrl, setFailedPhotoUrl] = useState(null);
   
   const sizeClasses = {
     small: 'w-10 h-10',
@@ -174,14 +176,19 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
       <div className="relative shrink-0">
         {/* Avatar Circle */}
         <button
+          type="button"
+          aria-label="Edit profile photo"
+          ref={menuTriggerRef}
+          title="Edit profile photo"
           onClick={handleOpenMenu}
           disabled={isUploading}
           className={`${sizeClasses[size]} rounded-full bg-nuvira-gradient-soft border-2 border-primary/30 dark:border-primary/40 shadow-lg overflow-hidden relative group hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center`}
         >
-          {hasPhoto && !isUploading ? (
+          {hasPhoto && failedPhotoUrl !== userProfile.profile_photo_url && !isUploading ? (
             <img
               src={userProfile.profile_photo_url}
               alt="Profile"
+              onError={() => setFailedPhotoUrl(userProfile.profile_photo_url)}
               className="w-full h-full object-cover"
             />
           ) : (
@@ -213,36 +220,8 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
         )}
       </div>
 
-      {/* Centered Modal Menu */}
-      <AnimatePresence>
-        {showMenu && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-50 backdrop-blur-sm flex items-center justify-center p-4"
-              onClick={handleCloseMenu}
-            />
-            
-            {/* Centered Modal */}
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-                className="bg-background rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Header */}
-                <div className="px-5 py-4 border-b border-border/40">
-                  <p className="font-heading text-lg font-bold text-center">Profile Photo</p>
-                </div>
-
-                {/* Actions */}
-                <div className="px-5 py-4 space-y-2">
+      <CustomerDialog open={showMenu} onClose={handleCloseMenu} title="Profile Photo" description="Choose or update your profile photo." busy={isUploading || removePhotoMutation.isPending} className="max-w-sm" triggerRef={menuTriggerRef}>
+                <div className="space-y-2">
                   {/* Upload Photo */}
                   <button
                     onClick={() => fileInputRef.current?.click()}
@@ -257,7 +236,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
                         {hasPhoto ? 'Change Photo' : 'Upload Photo'}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        JPG or PNG, max 5MB
+                        JPG, PNG or WebP, max 5MB
                       </p>
                     </div>
                   </button>
@@ -304,11 +283,7 @@ export default function ProfileAvatar({ userProfile, size = 'large' }) {
                   onChange={handleFileSelect}
                   className="hidden"
                 />
-              </motion.div>
-            </div>
-          </>
-        )}
-      </AnimatePresence>
+      </CustomerDialog>
     </>
   );
 }

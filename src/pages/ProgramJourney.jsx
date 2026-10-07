@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionMutation as useMutation } from '@/lib/useSessionMutation';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import CustomerDialog from '@/components/CustomerDialog';
 import {
   ArrowLeft,
   BellRing,
@@ -474,15 +475,6 @@ function JourneyCelebration({ celebration, program, onDismiss }) {
     return () => window.clearTimeout(timer);
   }, [celebration, onDismiss, programComplete]);
 
-  React.useEffect(() => {
-    if (!programComplete) return undefined;
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') onDismiss();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onDismiss, programComplete]);
-
   return (
     <AnimatePresence>
       {celebration && !programComplete && (
@@ -526,17 +518,8 @@ function JourneyCelebration({ celebration, program, onDismiss }) {
       )}
 
       {celebration && programComplete && (
-        <motion.div
-          key={celebration.id}
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-5 py-10 backdrop-blur-md"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
+        <CustomerDialog open={programComplete} onClose={onDismiss} title={celebration.title} description={celebration.message} className="nv-program-completion">
           <motion.section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="program-celebration-title"
             className="relative w-full max-w-md overflow-hidden rounded-[2.25rem] border border-white/15 p-7 text-center text-white shadow-[0_30px_100px_rgba(0,0,0,.55)]"
             style={{ background: `linear-gradient(155deg, ${program.palette.ink}, ${program.palette.primary})` }}
             initial={reducedMotion ? { opacity: 1 } : { opacity: 0, scale: 0.88, y: 24 }}
@@ -564,8 +547,6 @@ function JourneyCelebration({ celebration, program, onDismiss }) {
               <CircleCheckBig className="h-9 w-9" />
             </motion.div>
             <p className="relative mt-6 text-[10px] font-black uppercase tracking-[0.22em] text-white/65">{celebration.eyebrow}</p>
-            <h2 id="program-celebration-title" className="relative mt-2 font-heading text-4xl font-bold">{celebration.title}</h2>
-            <p className="relative mx-auto mt-3 max-w-xs text-sm leading-relaxed text-white/75">{celebration.message}</p>
             <button
               type="button"
               onClick={onDismiss}
@@ -575,7 +556,7 @@ function JourneyCelebration({ celebration, program, onDismiss }) {
               Return to my journey
             </button>
           </motion.section>
-        </motion.div>
+        </CustomerDialog>
       )}
     </AnimatePresence>
   );
@@ -593,7 +574,7 @@ function JourneyDetail({ journey, onBack, onStart, onToggle, onSetReminders, pen
   return (
     <PageShell>
       <SEO title={`${journey.program_name} Program Journey`} description="Your private NuVira program guide and progress." noindex />
-      <header className="fixed inset-x-0 top-0 z-40 flex min-w-0 items-center justify-between gap-3 px-4 pb-3 md:left-60" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
+      <header className="nv-journey-header fixed inset-x-0 top-0 z-40 flex min-w-0 items-center justify-between gap-3 px-4 pb-3 md:left-60" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <button type="button" onClick={onBack} aria-label="Back" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/25 text-white backdrop-blur-xl">
           <ArrowLeft className="h-4 w-4" />
         </button>

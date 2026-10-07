@@ -265,7 +265,7 @@ try {
     }
     const source = fs.readFileSync('src/pages/ProductDetail.jsx', 'utf8');
     assert.match(source, /navigate\(canonicalPath, \{ replace: true \}\)/);
-    assert.match(source, /addItem\(product, quantity, extra\)/);
+    assert.match(source, /addItem\(product, quantity, extra, \{ preview: !isNativeAppRuntime\(\), triggerElement: event\?\.currentTarget \}\)/);
   });
 } finally {
   clients.forEach(cache => cache.clear());

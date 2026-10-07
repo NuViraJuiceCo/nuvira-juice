@@ -104,7 +104,7 @@ export default function Support() {
         structuredData={FAQ_SCHEMA_SUPPORT}
       />
       <div className="nuvira-support-header flex items-center gap-3 px-4 pt-4 pb-3">
-        <button onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
+        <button type="button" aria-label="Go back" onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <h1 className="font-heading text-xl font-bold">Help & Support</h1>

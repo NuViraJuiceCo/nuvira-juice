@@ -51,7 +51,7 @@ export default function Contact() {
       {/* Header */}
       <div className="nuvira-utility-header sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border/40 flex items-center gap-3 px-4 py-3">
         <Link to="/">
-          <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
+          <button type="button" aria-label="Go back" className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted transition-colors">
             <ArrowLeft className="w-4 h-4" />
           </button>
         </Link>

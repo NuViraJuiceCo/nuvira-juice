@@ -28,6 +28,7 @@ import { normalizeProductIdentifier, productPath } from '@/lib/seo-slugs';
 import { findPublicProductFallback } from '@/lib/public-products';
 import { productDetailQueryOptions } from '@/lib/productDetailQueries';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
 import {
   buildProductSeoMetadata,
   buildProductStructuredData,
@@ -35,6 +36,7 @@ import {
 } from '@/lib/product-seo';
 import { buildProductGallery, productGalleryThumbnail } from '@/lib/product-gallery-images';
 import { approvedProductMedia } from '@/lib/approved-product-media';
+import { productBadges as getProductBadges } from '@/lib/productBadges';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import ProductCard from '@/components/shop/ProductCard';
@@ -152,6 +154,7 @@ function inferBlendDetail(product, isMerchProduct) {
 }
 
 export default function ProductDetail() {
+  const desktopWebsite = useDesktopStorefront();
   const { id, slug, handle } = useParams();
   const identifier = normalizeProductIdentifier(slug || handle || id || '');
   const navigate = useNavigate();
@@ -245,7 +248,7 @@ export default function ProductDetail() {
     });
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (event) => {
     if (!product) return;
     const extra = {};
     if (product.category === 'bundle') {
@@ -260,8 +263,8 @@ export default function ProductDetail() {
         extra.bundle_composition = [];
       }
     }
-    addItem(product, quantity, extra);
-    toast.success(`${product.title} added to cart`, {
+    addItem(product, quantity, extra, { preview: !isNativeAppRuntime(), triggerElement: event?.currentTarget });
+    if (isNativeAppRuntime()) toast.success(`${product.title} added to cart`, {
       action: { label: 'View cart', onClick: () => navigate('/cart') },
     });
   };
@@ -287,9 +290,7 @@ export default function ProductDetail() {
   const isMerchProduct = isMerch;
   const hasApprovedMedia = Boolean(approvedProductMedia(product));
   const productDescriptor = getCategoryLabel(product, isMerchProduct);
-  const productBadges = isMerch
-    ? ['Reusable', 'Insulated', 'Large Capacity']
-    : ['Vegan', 'Cold-Pressed', 'Non-GMO', 'Gluten-Free'];
+  const productBadges = getProductBadges(product, isMerch);
   const productHighlights = buildProductHighlights(product, isMerchProduct);
   const blendDetail = inferBlendDetail(product, isMerchProduct);
   const productSeo = buildProductSeoMetadata(product);
@@ -367,7 +368,7 @@ export default function ProductDetail() {
   );
 
   return (
-    <div className="min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+15rem)] landscape:pb-12 md:pb-12">
+    <div data-product-flavor={product.title} className="nv-product-page min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+15rem)] landscape:pb-12 md:pb-12">
       <SEO
         title={productSeo.title}
         description={productSeo.description}
@@ -388,8 +389,8 @@ export default function ProductDetail() {
       <div className="px-4 py-3 md:hidden" style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}>
         <h1 className="break-words font-heading text-2xl font-bold leading-tight">{product.title}</h1>
       </div>
-      <div className="lg:grid lg:grid-cols-[minmax(0,0.92fr)_minmax(320px,0.68fr)] lg:gap-6 lg:items-start">
-        <div className="md:px-4 xl:min-h-[460px] xl:px-0">
+      <div className="nv-product-overview lg:grid lg:grid-cols-[minmax(0,0.92fr)_minmax(320px,0.68fr)] lg:gap-6 lg:items-start">
+        <div className="nv-product-gallery md:px-4 xl:min-h-[460px] xl:px-0">
           <div
             className={`relative w-full overflow-hidden bg-secondary/50 shadow-[0_24px_80px_rgba(4,29,21,0.22)] md:rounded-[28px] ${
               selectedProductImage?.scene === 'approved-primary'
@@ -486,12 +487,13 @@ export default function ProductDetail() {
           )}
         </div>
 
-        <div>
+        <div className="nv-product-summary">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="px-4 pt-5 md:px-8 lg:px-0 lg:pt-2"
+            className="nv-product-copy px-4 pt-5 md:px-8 lg:px-0 lg:pt-2"
           >
+            <div className="nv-product-buying">
             {product.is_seasonal && (
               <span className="inline-block bg-accent/20 text-accent text-[10px] font-semibold px-2.5 py-1 rounded-full mb-3">
                 Seasonal Drop
@@ -520,12 +522,14 @@ export default function ProductDetail() {
                 <ProductOrderDetails product={product} onChooseQuantity={setQuantity} quantity={quantity}>
                   <div className="hidden py-4 landscape:block md:block">{desktopPurchaseControls}</div>
                 </ProductOrderDetails>
-                <FirstOrderOffer className="mt-4" />
+                <FirstOrderOffer className="mt-4" collapsible={desktopWebsite} />
               </>
             )}
             {!showMinimum && <div className="mt-5 hidden border-y border-border/60 py-4 landscape:block md:block">{desktopPurchaseControls}</div>}
+            </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="nv-product-support">
+            <div className="nv-product-badges mt-4 flex flex-wrap gap-2">
               {productBadges.map(cert => (
                 <span key={cert} className="inline-flex items-center gap-1.5 rounded-full border border-nuvira bg-nuvira-gradient-soft px-3 py-1.5 text-[11px] font-black text-primary">
                   <CheckCircle2 className="h-3.5 w-3.5" />
@@ -534,7 +538,7 @@ export default function ProductDetail() {
               ))}
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
+            <div className="nv-product-promises mt-6 grid gap-3 sm:grid-cols-3 xl:grid-cols-3">
               {productHighlights.map(({ label, value, icon: Icon }) => (
                 <div key={label} className="rounded-2xl border border-border/60 bg-card/70 p-3.5 shadow-sm">
                   <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-nuvira-gradient text-white shadow-sm">
@@ -546,7 +550,7 @@ export default function ProductDetail() {
               ))}
             </div>
 
-            <div className="mt-6 rounded-2xl border border-primary/20 bg-primary/10 p-4">
+            <div className="nv-product-assurance mt-6 rounded-2xl border border-primary/20 bg-primary/10 p-4">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
                   {isMerchProduct ? <ShoppingBag className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
@@ -571,11 +575,12 @@ export default function ProductDetail() {
                 </div>
               </div>
             </div>
+            </div>
           </motion.div>
         </div>
       </div>
 
-      <div className="mt-8 grid gap-4 px-4 pb-4 md:px-8 md:pb-0 xl:grid-cols-[minmax(0,0.68fr)_minmax(280px,0.32fr)] xl:px-0">
+      <div className="nv-product-details mt-8 grid gap-4 px-4 pb-4 md:px-8 md:pb-0 xl:grid-cols-[minmax(0,0.68fr)_minmax(280px,0.32fr)] xl:px-0">
         {product.description && (
           <div className="rounded-3xl border border-border/60 bg-card/70 p-5 md:p-6">
             <p className="mb-2 text-[11px] font-black uppercase tracking-[0.18em] text-primary">About</p>

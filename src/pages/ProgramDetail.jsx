@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, CalendarDays, Check, Minus, Package, Plus, Sparkles, Truck, Zap } from 'lucide-react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { ArrowLeft, ArrowRight, BookOpen, CalendarCheck, CalendarDays, Check, Minus, Package, Plus, Refrigerator, Sparkles, Truck, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { useCart } from '@/lib/cartContext';
@@ -17,6 +17,8 @@ import {
   programProductId,
 } from '@/lib/program-catalog';
 import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
+import ProgramBottleMix from '@/components/program/ProgramBottleMix';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
 import { absoluteUrl } from '@/lib/seo-slugs';
 import { ANALYTICS_CONSENT_EVENT, trackGoogleViewItem } from '@/lib/googleAnalytics';
 import { MARKETING_CONSENT_EVENT, trackMetaViewContent } from '@/lib/metaPixel';
@@ -87,20 +89,23 @@ function getProgramTheme(program) {
 
 export default function ProgramDetail() {
   const { key } = useParams();
+  const { search } = useLocation();
   const navigate = useNavigate();
   const { addItem } = useCart();
+  const desktop = useDesktopStorefront();
 
   const program = PROGRAMS.find(p => p.key === key);
-  const [selectedDays, setSelectedDays] = useState(3);
+  const requestedDays = programOptionForDays(program, new URLSearchParams(search).get('days') || 3)?.days || 3;
+  const [selectedDays, setSelectedDays] = useState(requestedDays);
   const [selectedShotCounts, setSelectedShotCounts] = useState({});
   const trackedProgramOptionRef = useRef('');
   const trackedMetaProgramOptionRef = useRef('');
   const trackedSnapProgramOptionRef = useRef('');
 
   useEffect(() => {
-    setSelectedDays(3);
+    setSelectedDays(requestedDays);
     setSelectedShotCounts({});
-  }, [key]);
+  }, [key, requestedDays]);
 
   useEffect(() => {
     if (!program) return undefined;
@@ -304,7 +309,7 @@ export default function ProgramDetail() {
   );
 
   return (
-    <div className="min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+12rem)] landscape:pb-12 md:pb-12">
+    <div data-program={program.key} className="nv-program-page min-h-screen bg-background pb-[calc(env(safe-area-inset-bottom)+12rem)] landscape:pb-12 md:pb-12">
       <SEO
         title={`${programTitle} | Cold-Pressed Juice Program`}
         description={programDescription}
@@ -326,27 +331,27 @@ export default function ProgramDetail() {
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
-        <span className="font-heading text-base font-semibold">{program.name} Program</span>
+        <span className="font-heading text-base font-semibold">{desktop ? 'Back' : `${program.name} Program`}</span>
       </div>
 
       <main className="mx-auto w-full max-w-[1360px] px-4 pt-5 md:px-8 xl:px-6">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`relative mb-5 overflow-hidden rounded-3xl border ${theme.borderClass} min-h-[420px] shadow-[0_24px_80px_rgba(4,29,21,0.24)] md:min-h-[470px] xl:min-h-[560px]`}
+          className={`nv-program-hero relative mb-5 overflow-hidden rounded-3xl border ${theme.borderClass} min-h-[420px] shadow-[0_24px_80px_rgba(4,29,21,0.24)] md:min-h-[470px] xl:min-h-[560px]`}
         >
-          {program.image && (
+          {!desktop && program.image && (
             <img
               src={program.image}
               alt={`${program.name} program`}
               className={`absolute inset-0 h-full w-full object-cover ${program.imagePosition || 'object-center'}`}
             />
           )}
-          <div className={`absolute inset-0 bg-gradient-to-t ${theme.overlay}`} />
+          {!desktop && <div className={`absolute inset-0 bg-gradient-to-t ${theme.overlay}`} />}
           <div className="absolute inset-x-0 bottom-0 p-5 md:p-8 xl:p-10">
             <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] ${theme.chipClass}`}>
               <Sparkles className="h-3.5 w-3.5" />
-              {theme.eyebrow}
+              {desktop ? 'NuVira Juice Programs' : theme.eyebrow}
             </span>
             <h1 className="mt-4 max-w-3xl font-heading text-5xl font-bold leading-[0.9] text-white drop-shadow-[0_2px_18px_rgba(0,0,0,0.42)] md:text-6xl xl:text-7xl">
               {program.name}
@@ -354,21 +359,25 @@ export default function ProgramDetail() {
             <p className="mt-3 max-w-2xl text-lg font-semibold text-white/90 drop-shadow-[0_1px_12px_rgba(0,0,0,0.5)] md:text-xl">
               {program.tagline}
             </p>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/75 drop-shadow-[0_1px_10px_rgba(0,0,0,0.5)] md:text-base">
-              {program.description}
-            </p>
+            {!desktop && (
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/75 drop-shadow-[0_1px_10px_rgba(0,0,0,0.5)] md:text-base">
+                {program.description}
+              </p>
+            )}
           </div>
         </motion.div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.64fr)_minmax(320px,0.36fr)]">
+        <div className="nv-program-content">
+        <div className="nv-program-overview grid gap-4 xl:grid-cols-[minmax(0,0.64fr)_minmax(320px,0.36fr)]">
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.07 }}
-            className="rounded-3xl border border-border/60 bg-card/70 p-5 md:p-6"
+            className="nv-program-included rounded-3xl border border-border/60 bg-card/70 p-5 md:p-6"
           >
             <p className="mb-4 text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">What's Included</p>
 
+            <div className="nv-program-selections">
             {program.durationOptions.length > 1 && (
               <div className="mb-4" role="group" aria-label="Choose program length">
                 <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Choose your program length</p>
@@ -403,7 +412,7 @@ export default function ProgramDetail() {
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-3">
+            {!desktop && <div className="nv-program-stats grid grid-cols-3 gap-3">
               {[
                 { label: 'Days', value: selectedOption.days, icon: CalendarDays },
                 { label: 'Bottles', value: selectedOption.bottles, icon: Package },
@@ -415,14 +424,24 @@ export default function ProgramDetail() {
                   <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
                 </div>
               ))}
+            </div>}
             </div>
 
-            <div className={`mt-4 rounded-2xl border p-4 ${theme.panelClass}`}>
-              <p className={`text-xs font-black uppercase tracking-[0.16em] ${theme.accentClass}`}>{program.name} Formula</p>
-              <p className="mt-1 font-heading text-2xl font-bold text-foreground">{selectedOption.composition}</p>
+            <div className={`nv-program-formula mt-4 rounded-2xl border p-4 ${theme.panelClass}`}>
+              {desktop ? (
+                <>
+                  <div className="nv-program-mix-summary"><span>{selectedOption.bottles} bottles, paired for {selectedOption.days} days</span><span>${(basePrice / selectedOption.bottles).toFixed(0)} per bottle</span></div>
+                  <ProgramBottleMix components={selectedOption.bundleComposition} days={selectedOption.days} label={`${program.name} formula: ${selectedOption.composition}`} />
+                </>
+              ) : (
+                <>
+                  <p className={`text-xs font-black uppercase tracking-[0.16em] ${theme.accentClass}`}>{program.name} Formula</p>
+                  <p className="mt-1 font-heading text-2xl font-bold text-foreground">{selectedOption.composition}</p>
+                </>
+              )}
             </div>
 
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <div className="nv-program-perks mt-4 grid gap-2 sm:grid-cols-2">
               {[...BASE_PERKS, `Portioned for a ${selectedOption.days}-day routine`].map(perk => (
                 <div key={perk} className="flex items-center gap-2.5 rounded-xl bg-secondary/35 px-3 py-2.5">
                   <Check className="w-3.5 h-3.5 text-primary shrink-0" />
@@ -436,31 +455,38 @@ export default function ProgramDetail() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.09 }}
-            className={`rounded-3xl border p-5 md:p-6 ${theme.panelClass}`}
+            className={`nv-program-how rounded-3xl border p-5 md:p-6 ${theme.panelClass}`}
           >
             <p className={`text-xs font-black uppercase tracking-[0.18em] ${theme.accentClass}`}>How it works</p>
             <h2 className="mt-2 font-heading text-2xl font-bold text-foreground">{selectedOption.days} days, planned for you.</h2>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            {!desktop && <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
               Each program keeps the bottle mix fixed so production, delivery, and your daily rhythm stay clear.
-            </p>
-            <div className="mt-5 space-y-3">
-              {['Follow the flexible daily guide', 'Keep bottles at 40°F or below', 'Follow every bottle’s printed date'].map((item, index) => (
-                <div key={item} className="flex items-center gap-3">
+            </p>}
+            <div className="nv-program-steps mt-5 space-y-3">
+              {[
+                { title: 'Your daily rhythm', detail: 'Follow the flexible daily guide', icon: BookOpen },
+                { title: 'Keep it chilled', detail: 'Keep bottles at 40°F or below', icon: Refrigerator },
+                { title: 'Freshness first', detail: 'Follow every bottle’s printed date', icon: CalendarCheck },
+              ].map(({ title, detail, icon: Icon }, index) => (
+                <div key={title} className="nv-program-step flex items-center gap-3">
+                  {desktop ? <Icon className="nv-program-step-icon" aria-hidden="true" /> : (
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-black text-primary-foreground">
                     {index + 1}
                   </span>
-                  <p className="text-sm font-semibold text-foreground/80">{item}</p>
+                  )}
+                  <div>{desktop && <h3>{title}</h3>}<p className="text-sm font-semibold text-foreground/80">{detail}</p></div>
                 </div>
               ))}
             </div>
           </motion.div>
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.55fr)_minmax(340px,0.45fr)]">
+        <div className="nv-program-options mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.55fr)_minmax(340px,0.45fr)]">
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
+            className="nv-program-schedule"
           >
             <ConsumptionSchedule
               programKey={program.key}
@@ -473,9 +499,9 @@ export default function ProgramDetail() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.12 }}
-            className="mb-6"
+            className="nv-program-pairing mb-6"
           >
-            <div className="nuvira-premium-card rounded-3xl p-4 md:p-5">
+            <div className="nv-program-shot-options nuvira-premium-card rounded-3xl p-4 md:p-5">
               <div className="flex items-center gap-2 mb-1">
                 <Zap className="w-4 h-4 text-primary" />
                 <p className="text-sm font-semibold">Build Your Daily Shot Pairing</p>
@@ -485,7 +511,7 @@ export default function ProgramDetail() {
                 Optional. Add up to one 2 oz wellness shot for each program day; always follow the product label.
               </p>
               {recommendedShot && (
-                <div className={`mb-3 rounded-2xl border p-3 ${theme.statClass}`}>
+                <div className={`nv-program-recommended-shot mb-3 rounded-2xl border p-3 ${theme.statClass}`}>
                   <div className="flex items-start gap-3">
                     {recommendedShot.image_url ? (
                       <img src={recommendedShot.image_url} alt={recommendedShot.title} className="h-12 w-12 rounded-xl object-cover shadow-sm" />
@@ -512,7 +538,7 @@ export default function ProgramDetail() {
                   </Button>
                 </div>
               )}
-              <div className="space-y-2">
+              <div className="nv-program-shot-list space-y-2">
                 {orderedShots.map(shot => {
                   const count = Number(selectedShotCounts[shot.id] || 0);
                   const atMax = selectedShotTotal >= selectedOption.days;
@@ -576,7 +602,7 @@ export default function ProgramDetail() {
                 </p>
               )}
             </div>
-            <div data-purchase-placement="inline" className="mt-5 hidden border-y border-border/60 py-5 landscape:block md:block">
+            <div data-purchase-placement="inline" className="nv-program-purchase mt-5 hidden border-y border-border/60 py-5 landscape:block md:block">
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <p className="font-heading text-xl font-bold">Your {program.name} program</p>
@@ -593,6 +619,7 @@ export default function ProgramDetail() {
               </Button>
             </div>
           </motion.div>
+        </div>
         </div>
       </main>
 

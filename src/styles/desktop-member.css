@@ -1,0 +1,169 @@
+@media all {
+  [data-desktop-brand="true"] main:is([data-storefront-page="/account"], [data-storefront-page="/account/settings"], [data-storefront-page="/referral"]) { max-width: 1536px; }
+  [data-desktop-brand="true"] .nv-member-layout { display: grid; grid-template-columns: 192px minmax(0,1fr); gap: 48px; color: #284d3e; }
+  .nv-member-layout * { min-width: 0; letter-spacing: 0; }
+  .nv-member-kicker { color: #4c7664; font-size: 12px; font-weight: 600; line-height: 1.5; }
+  .nv-member-rail { align-self: start; position: sticky; top: 28px; }
+  .nv-member-rail > p { padding: 0 14px 18px; }
+  .nv-member-rail nav { display: grid; gap: 4px; }
+  .nv-member-rail nav a { display: flex; gap: 12px; align-items: center; padding: 13px 14px; border-radius: 8px; font-size: 14px; font-weight: 500; color: #52665c; }
+  .nv-member-rail nav a:is(:hover,[aria-current="page"]) { background: #e6f0e9; color: #1c6248; }
+  .nv-member-rail nav a[aria-current="page"] { font-weight: 700; box-shadow: inset 3px 0 #287554; }
+  .nv-member-help { display: flex; gap: 10px; align-items: center; border-top: 1px solid #dbe5df; margin-top: 24px; padding: 24px 8px; font-size: 13px; }
+  .nv-member-help small { display: block; margin-top: 4px; font-size: 11px; color: #5d7166; }
+  .nv-member-help > svg:last-child { margin-left: auto; }
+  .nv-member-heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 32px; padding-bottom: 28px; border-bottom: 1px solid #dbe5df; }
+  .nv-member-heading h1 { font-family: var(--font-heading); font-size: 38px; line-height: 1.2; color: #285741; }
+  .nv-member-heading p { margin-top: 10px; color: #5a6c61; font-size: 14px; line-height: 1.6; }
+  .nv-member-identity { display: flex; align-items: center; gap: 16px; }
+  .nv-member-text-link { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; font-size: 13px; font-weight: 600; color: #2b7252; }
+  .nv-member-text-link:hover { text-decoration: underline; text-underline-offset: 4px; }
+  .nv-member-overview { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); border-bottom: 1px solid #dbe5df; padding-bottom: 32px; gap: 32px; }
+  .nv-member-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+  .nv-member-main h2 { font-family: var(--font-heading); font-size: 27px; line-height: 1.25; color: #2e6049; }
+  .nv-member-section-heading h2 { margin-top: 8px; }
+  .nv-member-orders > p { color: #5c6f63; font-size: 14px; line-height: 1.6; max-width: 40ch; margin: 12px 0 22px; }
+  .nv-member-order-count { display: flex; align-items: baseline; gap: 12px; margin-top: 22px; }
+  .nv-member-order-count strong { font-family: var(--font-heading); font-weight: 650; font-size: 52px; line-height: 1; }
+  .nv-member-order-count span { font-size: 13px; color: #5c6f63; }
+  .nv-member-status { padding-block: 36px; font-size: 14px; color: #576d60; }
+  .nv-member-credits > div { padding: 0; margin: 0; }
+  .nv-member-credits button > .bg-nuvira-gradient, .nv-member-credit-pending { background: linear-gradient(125deg,#174b3c,#297359 65%,#306d64); min-height: 258px; padding: 28px; border-radius: 8px; box-shadow: none; }
+  .nv-member-credits button p { color: #fff; }
+  .nv-member-credits button p.text-5xl { font-size: 44px; line-height: 1.1; }
+  .nv-member-credits button :is(.text-xs,[class~="text-[10px]"]) { font-size: 12px; line-height: 1.5; }
+  .nv-member-credits button span { color: #e4f1e8; }
+  .nv-member-credit-pending :is(h2,p) { color: #fff; margin-bottom: 18px; }
+  .nv-member-lower-grid { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap: 32px; padding-block: 32px; }
+  .nv-member-program > div { border-radius: 8px; box-shadow: none; padding: 24px; min-height: 100%; }
+  .nv-member-program .nuvira-icon-badge { background: #e0ece3; color: #27583e; box-shadow: none; }
+  .nv-member-program .nuvira-icon-badge svg { color: #27583e; }
+  .nv-member-program h2 { font-size: 27px; }
+  .nv-member-program [class~="text-[11px]"] { font-size: 13px; line-height: 1.65; }
+  .nv-member-program .bg-nuvira-gradient { background: #286b4d; }
+  .nv-member-benefits h2 { margin: 8px 0 18px; }
+  .nv-member-benefits > a { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid #dbe5df; padding: 16px 0; }
+  .nv-member-benefits strong { display: block; font-size: 14px; font-weight: 600; }
+  .nv-member-benefits small { display: block; color: #5c6f63; font-size: 12px; line-height: 1.5; margin-top: 5px; }
+  .nv-member-benefits > a:hover strong { text-decoration: underline; text-underline-offset: 4px; }
+  .nv-member-account-footer { display: flex; flex-wrap: wrap; gap: 24px; padding-top: 22px; border-top: 1px solid #dbe5df; }
+  .nv-member-account-footer :is(a,button) { display: inline-flex; gap: 8px; align-items: center; min-height: 44px; font-size: 12px; color: #536b5c; }
+  .nv-member-account-footer > button { margin-left: auto; }
+  .nv-member-settings { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 32px; }
+  .nv-member-settings .nv-settings-load-status { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px; background: #f3eee4; border-radius: 8px; font-size: 13px; }
+  .nv-member-settings .nv-settings-section { padding: 0; }
+  .nv-member-settings .nv-settings-section > h2 { font-size: 26px; line-height: 1.3; text-transform: none; margin: 8px 0 24px; color: #2e6049; }
+  .nv-member-settings label { display: block; color: #415b4c; font-size: 13px; margin-bottom: 7px; }
+  .nv-member-settings input { height: 46px; font-size: 14px; border-radius: 8px; box-shadow: none; }
+  .nv-member-settings p[class*="text-"] { font-size: 12px; line-height: 1.6; color: #647468; }
+  .nv-member-settings .nv-settings-save { grid-column: 1 / -1; display: flex; justify-content: flex-end; border-bottom: 1px solid #dbe5df; padding-bottom: 28px; }
+  .nv-member-settings .nv-settings-save > button { width: auto; min-width: 200px; background: #216847; border-radius: 999px; }
+  .nv-member-settings .nv-settings-preferences { grid-column: 1 / -1; border: 0; padding: 0; }
+  .nv-member-settings .nv-settings-delete { grid-column: 1 / -1; position: relative; padding: 24px 200px 0 0; }
+  .nv-member-settings .nv-settings-delete h2 { font-family: inherit; font-size: 15px; color: #844944; text-transform: none; }
+  .nv-member-settings .nv-settings-delete > button { position: absolute; right: 0; top: 26px; width: auto; border: 1px solid #d8b9b6; background: #fff; color: #844944; border-radius: 999px; }
+  .nv-referral-offer { display: grid; grid-template-columns: minmax(0,.85fr) minmax(0,1fr); background: linear-gradient(110deg,#ecddd8,#f8f0ea 55%,#e8f1e9); margin-bottom: 32px; }
+  .nv-referral-offer > img { width: 100%; height: 320px; object-fit: cover; object-position: center 65%; }
+  .nv-referral-offer > div { padding: 32px; align-self: center; }
+  .nv-referral-offer h2 { font-size: 38px; color: #8b4944; margin: 12px 0 16px; }
+  .nv-referral-offer > div > p:last-child { color: #635953; font-size: 14px; line-height: 1.7; max-width: 38ch; }
+  .nv-referral-tools { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 40px; }
+  .nv-referral-tools h2 { font-size: 25px; margin: 8px 0 24px; }
+  .nv-referral-tools label { display: block; font-size: 13px; color: #536b5c; margin-bottom: 8px; }
+  .nv-referral-code { display: flex; align-items: center; justify-content: space-between; border: 1px dashed #9db9a9; border-radius: 8px; background: #f3f8f4; padding: 12px 16px; margin-bottom: 14px; }
+  .nv-referral-code output { font-size: 27px; font-weight: 650; font-family: var(--font-heading); }
+  .nv-referral-code button, .nv-referral-email button { width: 44px; height: 44px; flex: 0 0 44px; display: grid; place-items: center; border-radius: 50%; color: #28654a; background: #e2eee5; }
+  .nv-referral-tools .nv-brand-button { width: 100%; justify-content: center; }
+  .nv-referral-email { margin-top: 24px; }
+  .nv-referral-email > div { display: flex; gap: 10px; }
+  .nv-referral-email input { border: 1px solid #cad9cf; border-radius: 8px; height: 46px; padding: 10px 12px; width: 100%; font-size: 14px; }
+  .nv-referral-email p { margin-top: 8px; font-size: 12px; color: #67756b; }
+  .nv-referral-email button:disabled { opacity: .45; }
+  .nv-referral-milestones { border-left: 1px solid #dbe5df; padding-left: 40px; }
+  .nv-referral-milestones li { display: flex; align-items: center; gap: 18px; border-bottom: 1px solid #dbe5df; padding: 16px 0; }
+  .nv-referral-milestones li > span { display: grid; width: 60px; flex: 0 0 60px; font-size: 10px; color: #87664c; }
+  .nv-referral-milestones li strong { font-family: var(--font-heading); font-size: 34px; line-height: 1.1; }
+  .nv-referral-milestones li h3 { font-size: 15px; line-height: 1.4; }
+  .nv-referral-milestones li p { font-size: 12px; color: #647468; line-height: 1.6; margin-top: 5px; }
+  .nv-referral-milestones li svg { margin-left: auto; flex-shrink: 0; }
+  .nv-referral-terms { font-size: 12px; line-height: 1.7; color: #647468; margin-top: 18px; }
+  [data-desktop-brand="true"] main[data-storefront-page="/partner"] { padding: 0 0 64px; max-width: none; }
+  .nv-partnership-hero { isolation: isolate; position: relative; height: 440px; color: #fff; }
+  .nv-partnership-hero > img { position: absolute; inset: 0; height: 100%; width: 100%; object-fit: cover; object-position: center 60%; z-index: -2; }
+  .nv-partnership-hero::after { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg,#102e25ed,#102e25ad 36%,#102e2520 74%); }
+  .nv-partnership-hero > div { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; height: 100%; padding-block: 30px; }
+  .nv-partnership-hero .nv-member-kicker { color: #c7e4d2; }
+  .nv-partnership-hero h1 { font-family: var(--font-heading); font-size: 58px; line-height: 1.08; margin-top: 14px; }
+  .nv-partnership-hero h1 + p { max-width: 44ch; font-size: 15px; line-height: 1.7; margin: 16px 0 22px; }
+  .nv-partnership-audiences { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 32px; padding-block: 32px; border-bottom: 1px solid #dbe5df; }
+  .nv-partnership-audiences svg { color: #347154; margin-bottom: 14px; }
+  .nv-partnership-audiences h2 { font-size: 15px; color: #2a5440; }
+  .nv-partnership-audiences p { font-size: 13px; color: #637468; line-height: 1.7; margin-top: 6px; max-width: 28ch; }
+  .nv-partnership-contact { display: grid; grid-template-columns: minmax(0,.85fr) minmax(0,1.15fr); gap: 64px; padding-top: 48px; align-items: start; }
+  .nv-partnership-contact h2 { font-family: var(--font-heading); font-size: 40px; line-height: 1.15; color: #2b5b42; margin: 12px 0 20px; }
+  .nv-partnership-contact section > p:not(.nv-member-kicker) { max-width: 44ch; font-size: 15px; line-height: 1.8; color: #627164; }
+  .nv-partnership-contact ul { margin-block: 24px; }
+  .nv-partnership-contact li { display: flex; gap: 12px; align-items: center; padding-block: 12px; font-size: 14px; color: #42624c; }
+  .nv-partnership-contact li svg { flex-shrink: 0; }
+  .nv-partnership-form { border-top: 3px solid #3e7659; background: #f1f6f2; padding: 30px; scroll-margin-top: 24px; }
+  .nv-partnership-form h2 { font-size: 28px; margin-bottom: 24px; }
+  .nv-partnership-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px; }
+  .nv-partnership-form label { display: block; color: #425e4c; font-size: 13px; line-height: 1.5; font-weight: 500; }
+  .nv-partnership-form > label { margin-top: 18px; }
+  .nv-partnership-form label span { font-size: 11px; color: #667568; font-weight: 400; }
+  .nv-partnership-form :is(input,textarea,select) { width: 100%; min-width: 0; border: 1px solid #ccd9ce; border-radius: 8px; padding: 11px 12px; font-size: 14px; line-height: 1.5; color: #315340; background: #fff; margin-top: 7px; }
+  .nv-partnership-form textarea { resize: vertical; }
+  .nv-partnership-submit { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 22px; }
+  .nv-partnership-submit p { font-size: 12px; line-height: 1.6; color: #647468; }
+  .nv-partnership-submit button:disabled { opacity: .55; }
+}
+@media (max-width: 1279px) {
+  [data-desktop-brand="true"] .nv-member-layout { grid-template-columns: 156px minmax(0,1fr); gap: 28px; }
+  .nv-member-heading { flex-wrap: wrap; gap: 12px; }
+  .nv-member-heading h1 { font-size: 34px; }
+  .nv-member-overview, .nv-member-lower-grid, .nv-member-settings { gap: 24px; }
+  .nv-member-credits button > .bg-nuvira-gradient { padding: 22px; }
+  .nv-referral-offer > div { padding: 24px; }
+  .nv-referral-offer h2 { font-size: 32px; }
+  .nv-referral-tools { gap: 24px; }
+  .nv-referral-milestones { padding-left: 24px; }
+  .nv-referral-milestones li { gap: 12px; }
+  .nv-partnership-contact { gap: 40px; }
+  .nv-partnership-form { padding: 24px; }
+  .nv-partnership-submit { flex-wrap: wrap; gap: 16px; }
+}
+
+@media (max-width: 1023px) {
+  [data-desktop-brand="true"] .nv-member-layout { grid-template-columns: 1fr; gap: 28px; }
+  .nv-member-rail { position: static; }
+  .nv-member-rail > p { padding: 0 0 12px; }
+  .nv-member-rail nav { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #dbe5df; padding-bottom: 12px; }
+  .nv-member-rail nav a { padding: 10px 12px; gap: 8px; font-size: 13px; }
+  .nv-member-help { display: none; }
+  .nv-partnership-hero h1 { font-size: 46px; }
+  .nv-partnership-audiences { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 28px; }
+  .nv-partnership-contact { gap: 28px; }
+  .nv-partnership-contact h2 { font-size: 32px; }
+}
+@media (max-width: 700px) {
+  .nv-member-overview, .nv-member-lower-grid, .nv-member-settings, .nv-referral-tools, .nv-partnership-contact { grid-template-columns: 1fr; }
+  .nv-member-heading h1 { font-size: 32px; }
+  .nv-member-heading { margin-bottom: 24px; padding-bottom: 20px; }
+  .nv-member-credits button > .bg-nuvira-gradient { min-height: 220px; }
+  .nv-referral-offer { grid-template-columns: minmax(0,.85fr) minmax(0,1fr); }
+  .nv-referral-offer > img { height: 280px; }
+  .nv-referral-offer > div { padding: 20px; }
+  .nv-referral-offer h2 { font-size: 29px; }
+  .nv-referral-milestones { border-left: 0; border-top: 1px solid #dbe5df; padding: 24px 0 0; }
+  .nv-member-settings .nv-settings-delete { padding: 24px 0 0; }
+  .nv-member-settings .nv-settings-delete > button { position: static; margin-top: 16px; }
+  .nv-partnership-hero { height: 420px; }
+  .nv-partnership-hero h1 { font-size: 38px; }
+  .nv-partnership-form { padding: 22px; }
+}
+@media (max-width: 480px) {
+  .nv-referral-offer { grid-template-columns: 1fr; }
+  .nv-referral-offer > img { height: 230px; }
+  .nv-member-rail nav a { font-size: 12px; padding-inline: 10px; }
+  .nv-partnership-fields { grid-template-columns: 1fr; }
+}

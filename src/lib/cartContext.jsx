@@ -73,8 +73,22 @@ function storeCart(items) {
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(readStoredCart);
+  const [cartPreview, setCartPreview] = useState(null);
+  const previewTriggerRef = useRef(null);
   const cartTrackingTimerRef = useRef(null);
   const hasObservedInitialCartRef = useRef(false);
+
+  const openCartPreview = useCallback((addedTitle = '', triggerElement = document.activeElement) => {
+    previewTriggerRef.current = { element: triggerElement, path: window.location.pathname };
+    setCartPreview({ open: true, addedTitle });
+  }, []);
+  const closeCartPreview = useCallback(() => {
+    setCartPreview(current => current?.open ? { ...current, open: false } : current);
+  }, []);
+  const restoreCartPreviewFocus = useCallback(() => {
+    const trigger = previewTriggerRef.current;
+    if (trigger?.path === window.location.pathname && trigger.element?.isConnected) trigger.element.focus?.();
+  }, []);
 
   useEffect(() => {
     storeCart(items);
@@ -91,7 +105,7 @@ export function CartProvider({ children }) {
     };
   }, [items]);
 
-  const addItem = (product, quantity = 1, extra = {}) => {
+  const addItem = (product, quantity = 1, extra = {}, { preview = false, triggerElement } = {}) => {
     // Earned items must use the validated reward selection path, never addItem.
     if (isEarnedRewardItem({ ...extra, product_id: product.id })) return;
     if (extra.isBirthdayReward === true) {
@@ -128,6 +142,7 @@ export function CartProvider({ children }) {
         ...extra,
       }];
     });
+    if (preview) openCartPreview(product.title, triggerElement);
   };
 
   const removeItem = (lineKey) => {
@@ -181,6 +196,7 @@ export function CartProvider({ children }) {
   return (
     <CartContext.Provider value={{
       items, addItem, removeItem, updateQuantity, updateBundleComposition, clearCart,
+      cartPreview, openCartPreview, closeCartPreview, restoreCartPreviewFocus,
       setEarnedRewardItem, setEarnedRewardSelection, clearEarnedRewardItems, trackCheckoutStarted, subtotal, itemCount
     }}>
       {children}

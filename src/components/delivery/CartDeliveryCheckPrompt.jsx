@@ -17,7 +17,7 @@ export default function CartDeliveryCheckPrompt() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border border-primary/20 overflow-hidden"
+      className="nv-cart-delivery-check rounded-2xl border border-primary/20 overflow-hidden"
       style={{ background: 'linear-gradient(135deg, rgba(11,61,46,0.06) 0%, rgba(14,90,67,0.04) 100%)' }}
     >
       {!expanded ? (
@@ -38,6 +38,7 @@ export default function CartDeliveryCheckPrompt() {
             </button>
             <button
               onClick={() => setDismissed(true)}
+              aria-label="Dismiss delivery reminder"
               className="w-7 h-7 flex items-center justify-center text-muted-foreground active:opacity-60 transition-opacity"
             >
               <X className="w-3.5 h-3.5" />

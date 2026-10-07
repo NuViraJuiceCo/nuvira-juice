@@ -27,3 +27,9 @@ export function birthdayEligibilityMessage({ status }) {
   if (status === 'outside_birthday_window' || status === 'signup_not_before_birthday') return 'One free 12oz juice during your eligible birthday window, through 30 days afterward.';
   return unavailable;
 }
+import { rewardProductEligible } from './rewardSelection.js';
+
+export function birthdayProductEligible(product) {
+  return rewardProductEligible({ reward_type: 'free_bottle' }, product)
+    && Number.isFinite(Number(product.price)) && Number(product.price) > 0;
+}

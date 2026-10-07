@@ -8,6 +8,7 @@ import { trackGoogleSelectItem } from '@/lib/googleAnalytics';
 import { productCardImage } from '@/lib/product-card-images';
 import { approvedProductMedia } from '@/lib/approved-product-media';
 import ProductPhoto from '@/components/shop/ProductPhoto';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 // Tap-vs-scroll guard: only fire click if touch didn't move more than 8px
 function useTapGuard() {
@@ -49,7 +50,7 @@ export default function ProductCard({ product, compact = false }) {
         extra.bundle_composition = [];
       }
     }
-    addItem(product, 1, extra);
+    addItem(product, 1, extra, { preview: !isNativeAppRuntime(), triggerElement: e.currentTarget });
   };
 
   const handleSelect = () => {

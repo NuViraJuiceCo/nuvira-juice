@@ -155,6 +155,12 @@ export const PROGRAM_BY_KEY = Object.freeze(
   Object.fromEntries(PROGRAMS.map((program) => [program.key, program])),
 );
 
+export function programCollectionSummary(programs = PROGRAMS) {
+  const options = programs.flatMap(program => program.durationOptions || [program]);
+  const values = key => [...new Set(options.map(option => option[key]))].sort((a, b) => a - b).join(' or ');
+  return `${values('days')} days of juice, thoughtfully paired. ${values('bottles')} bottles per program.`;
+}
+
 export const DAILY_PROGRAM_SCHEDULES = Object.freeze({
   radiance: Object.freeze([
     Object.freeze({ timeKey: 'morning', time: 'Morning', suggestedTime: '8:00 AM', product: 'AURA' }),

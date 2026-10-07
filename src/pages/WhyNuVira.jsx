@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import SEO from '@/components/SEO';
 import { BRAND_IMAGES, brandImageUrl } from '@/lib/brandImages';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopWhyNuVira from '@/components/desktop/DesktopWhyNuVira';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
 
@@ -151,6 +153,8 @@ function StandardCard({ icon: Icon, title, body }) {
 }
 
 export default function WhyNuVira() {
+  const desktopWebsite = useDesktopStorefront();
+  if (desktopWebsite) return <><SEO title={pageContent.seo.title} description={pageContent.seo.description} image={brandImageUrl(pageContent.seo.image)} /><DesktopWhyNuVira principles={principles} processSteps={processSteps} /></>;
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SEO

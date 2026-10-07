@@ -7,10 +7,16 @@ import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import { usesImmediateCustomerWebsiteLayout } from '@/lib/customerWebsiteMotion';
 import { startedWithAuthReturn } from '@/lib/app-params';
 import PublicRouteLoading from './PublicRouteLoading';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopHeader from '@/components/desktop/DesktopHeader';
+import DesktopFooter from '@/components/desktop/DesktopFooter';
+import CartPreviewHost from '@/components/cart/CartPreviewHost';
+import '@/styles/browser-audit.css';
 
 export default function AppLayout() {
   const location = useLocation();
   const adminShell = location.pathname.startsWith('/admin');
+  const desktopWebsite = useDesktopStorefront() && !adminShell;
   const immediateCustomerWebsite = usesImmediateCustomerWebsiteLayout({
     pathname: location.pathname,
     search: location.search,
@@ -26,10 +32,11 @@ export default function AppLayout() {
       className="bg-background flex"
       data-admin-shell={adminShell ? 'true' : undefined}
       data-desktop-storefront={!adminShell && !isNativeAppRuntime() ? 'true' : undefined}
+      data-desktop-brand={desktopWebsite ? 'true' : undefined}
       style={{ minHeight: '100dvh' }}
     >
       {/* Sidebar — tablet & desktop */}
-      <SideNav />
+      {desktopWebsite ? <DesktopHeader /> : <SideNav />}
 
       {/* Main content — single natural scroll container, no overflow-hidden */}
       <div className="flex-1 min-w-0 md:ml-60 overflow-x-hidden w-full">
@@ -58,10 +65,12 @@ export default function AppLayout() {
             </AnimatePresence>
           )}
         </main>
+        {desktopWebsite && <DesktopFooter />}
       </div>
 
       {/* Bottom nav — mobile only */}
-      <MobileNav />
+      {!desktopWebsite && <MobileNav />}
+      {!adminShell && !isNativeAppRuntime() && <CartPreviewHost />}
     </div>
   );
 }

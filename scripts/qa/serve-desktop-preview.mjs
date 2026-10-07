@@ -150,7 +150,7 @@ export async function createPreviewHandler({ dist, port = 4196 }) {
     };
     try {
       // Every non-read method is denied before any route or fixture dispatch.
-      if (!['GET', 'HEAD'].includes(req.method)) return send(jsonReply(403, { error: 'All writes are disabled in this local preview.' }));
+      if (!['GET', 'HEAD'].includes(req.method)) return send(jsonReply(403, { code: 'LOCAL_PREVIEW_READ_ONLY', error: 'All writes are disabled in this local preview.' }));
       if (![undefined, `127.0.0.1:${port}`, `localhost:${port}`].includes(req.headers.host)) {
         return send(jsonReply(403, { error: 'Loopback preview host required.' }));
       }

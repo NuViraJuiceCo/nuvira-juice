@@ -8,6 +8,8 @@ import { base44 } from '@/api/base44Client';
 import SEO from '@/components/SEO';
 import PullToRefresh from '@/components/PullToRefresh';
 import { eventStructuredDateTimes, resolveEventTimeSemantics } from '@/lib/eventTimeSemantics';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import { BRAND_IMAGES } from '@/lib/brandImages';
 
 function buildEventSchema(events) {
   if (!events.length) return null;
@@ -85,6 +87,7 @@ function eventSortValue(event = {}) {
 }
 
 export default function Events() {
+  const desktop = useDesktopStorefront();
   const { data: dbEvents = [], refetch } = useQuery({
     queryKey: ['events'],
     queryFn: () => base44.entities.Event.filter({ is_active: true }, 'date', 50),
@@ -117,14 +120,18 @@ export default function Events() {
       {/* Header — safe-area-aware via MobilePageHeader (G40D) */}
       <MobilePageHeader title="Events & Community" backTo="/account" />
 
-      <div className="px-4 py-6 space-y-6">
+      <div className="nv-events-content px-4 py-6 space-y-6">
         {/* Intro */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="nuvira-citrus-panel rounded-2xl border p-5 text-center"
+          className="nv-events-intro nuvira-citrus-panel rounded-2xl border p-5 text-center"
         >
-          <h2 className="font-heading text-2xl font-bold mb-2">Find Your People.</h2>
+          {desktop ? (
+            <h1 className="font-heading text-2xl font-bold mb-2">Events & Community</h1>
+          ) : (
+            <h2 className="font-heading text-2xl font-bold mb-2">Find Your People.</h2>
+          )}
           <p className="text-sm leading-relaxed text-foreground/75">
             NuVira is more than a juice — it's a movement. Join us in St. Louis and beyond as we build a community around wellness, freshness, and intentional living.
           </p>
@@ -135,9 +142,9 @@ export default function Events() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="relative rounded-2xl overflow-hidden h-36"
+          className="nv-events-photo relative rounded-2xl overflow-hidden h-36"
         >
-          <img src={TRIO_URL} alt="NuVira Community" className="w-full h-full object-cover" />
+          <img src={desktop ? BRAND_IMAGES.trioOutdoorEvent : TRIO_URL} alt="NuVira Community" className="w-full h-full object-cover" />
           <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, rgba(200,232,106,0.22) 0%, rgba(29,140,53,0.82) 42%, rgba(6,42,32,0.72) 100%)' }} />
           <div className="absolute inset-0 flex items-center px-6">
             <div>
@@ -153,10 +160,10 @@ export default function Events() {
         </motion.div>
 
         {/* Events List */}
-        <div className="space-y-4">
+        <div className="nv-events-list space-y-4">
           <h3 className="font-heading text-lg font-semibold">Upcoming</h3>
           {events.length === 0 && (
-            <div className="nuvira-premium-card rounded-2xl p-5 text-center">
+            <div className="nv-events-empty nuvira-premium-card rounded-2xl p-5 text-center">
               <p className="font-heading text-lg font-bold">Next dates are being finalized.</p>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
                 Public pop-ups and partner events will appear here as soon as they are active in the NuVira event calendar.

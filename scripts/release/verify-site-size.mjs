@@ -14,8 +14,15 @@ export function assertSiteSize(bytes) {
 export function measureSiteSize(directory) {
   let bytes = 0;
   let files = 0;
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  const names = new Set(entries.map(entry => entry.name));
+  for (const entry of entries) {
     const target = path.join(directory, entry.name);
+    // Finder/cloud-sync numbered copies must never silently enter a release.
+    const numberedCopy = entry.name.match(/^(.*) \d+(\.[^.]+)$/);
+    if (numberedCopy && names.has(`${numberedCopy[1]}${numberedCopy[2]}`)) {
+      throw new Error(`Site package contains a numbered copy: ${target}. Rebuild into an empty output directory.`);
+    }
     if (entry.isSymbolicLink()) throw new Error(`Site package must not contain a symlink: ${target}`);
     if (entry.isDirectory()) {
       const child = measureSiteSize(target);

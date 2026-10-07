@@ -114,6 +114,7 @@ const imports = {
   '@/lib/AuthContext': { AuthProvider: pass, useAuth: () => auth },
   '@/lib/cartContext': { CartProvider: pass },
   '@/components/layout/AppLayout': { default: Router.Outlet },
+  '@/components/layout/CustomerFlowLayout': { default: Router.Outlet },
   '@/components/StartupStatus': { default: ({ phase }) => React.createElement('div', { 'data-startup-phase': phase }, 'Waiting') },
   '@/components/ui/sonner': { Toaster: empty },
   '@/components/AppErrorBoundary': { default: pass },

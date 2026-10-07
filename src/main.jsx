@@ -5,6 +5,7 @@ import '@/index.css'
 import '@/styles/desktop-storefront.css'
 import '@/styles/desktop-home.css'
 import '@/styles/desktop-utility.css'
+import '@/styles/desktop-brand.css'
 import { initializeNativeLiveUpdates } from '@/lib/nativeLiveUpdates'
 
 initializeNativeLiveUpdates()

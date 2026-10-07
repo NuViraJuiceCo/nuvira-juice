@@ -10,11 +10,12 @@ function BottleImage({ product }) {
   return <ProductPhoto product={product} thumbnail alt={product.title} className="h-full w-full object-contain p-1" fallback={<Gift aria-hidden="true" className="h-6 w-6 text-primary/60" />} />;
 }
 
-export default function RewardProductPicker({ open, onClose, onSelect, reward }) {
+export default function RewardProductPicker({ open, onClose, onSelect, reward, triggerRef }) {
   const [quantities, setQuantities] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const savingRef = useRef(false);
+  const returnFocus = useRef(null);
   const required = rewardSelectionCount(reward);
   const selectedCount = Object.values(quantities).reduce((sum, quantity) => sum + quantity, 0);
   const upgrade = reward?.reward_type === 'bundle_upgrade';
@@ -65,7 +66,18 @@ export default function RewardProductPicker({ open, onClose, onSelect, reward })
     }
   };
   return <Dialog open={open} onOpenChange={next => { if (!next && !savingRef.current) onClose(); }}>
-    <DialogContent className="block max-w-xl rounded-3xl p-0">
+    <DialogContent className="block nv-customer-modal max-w-xl rounded-3xl p-0"
+      onOpenAutoFocus={() => { returnFocus.current = triggerRef?.current || document.activeElement; }}
+      onCloseAutoFocus={event => {
+        if (returnFocus.current instanceof HTMLElement && returnFocus.current.isConnected) {
+          event.preventDefault();
+          returnFocus.current.focus();
+        }
+      }}
+      onEscapeKeyDown={event => { if (savingRef.current) event.preventDefault(); }}
+      onPointerDownOutside={event => { if (savingRef.current) event.preventDefault(); }}
+      aria-busy={saving}
+    >
       <DialogHeader className="border-b border-border bg-gradient-to-br from-primary/15 via-card to-card px-5 pb-5 pt-6 pr-12 text-left">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Made yours · Earned by you</p>
         <DialogTitle className="font-heading text-xl">{reward?.title || 'Choose your reward'}</DialogTitle>

@@ -25,11 +25,14 @@ import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import ActiveProgramJourneyCard from '@/components/program/ActiveProgramJourneyCard';
 import { BRAND_IMAGES } from '@/lib/brandImages';
 import { publicCatalogQueryOptions, PUBLIC_WEBSITE_PRODUCT_LIMIT } from '@/lib/publicCatalogQueries';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
+import DesktopHome from '@/components/desktop/DesktopHome';
 
 
 export default function Home({ seoActive = true }) {
   const { user } = useAuth();
   const isNative = isNativeAppRuntime();
+  const desktopWebsite = useDesktopStorefront();
 
   // Read first name from localStorage cache so it reflects immediately after settings change
   const cachedFirstName = React.useMemo(() => {
@@ -108,10 +111,11 @@ export default function Home({ seoActive = true }) {
             structuredData={LOCAL_BUSINESS_SCHEMA}
           />
           {/* Visually hidden h1 for SEO — the logo serves as the visual brand mark */}
-          <h1 className="sr-only">NuVira Juice Co. — Cold-Pressed Juice Delivery in Wentzville &amp; St. Louis, MO</h1>
+          {!desktopWebsite && <h1 className="sr-only">NuVira Juice Co. — Cold-Pressed Juice Delivery in Wentzville &amp; St. Louis, MO</h1>}
         </>
       )}
 
+      {desktopWebsite ? <DesktopHome products={products} lastOrder={lastOrder} hasMember={Boolean(user?.email)} /> : <>
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -246,6 +250,7 @@ export default function Home({ seoActive = true }) {
           <p className="text-center text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Co. · Based in Wentzville, MO · <a href="mailto:support@nuvirajuice.com" className="inline-flex min-h-11 items-center transition-colors hover:text-foreground">support@nuvirajuice.com</a></p>
         </footer>
       )}
+      </>}
     </div>
     </PullToRefresh>
     </>

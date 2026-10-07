@@ -8,6 +8,7 @@ import { transformSync } from 'esbuild';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { customerWebsiteMotionOverrides, usesImmediateCustomerWebsiteLayout } from '../../src/lib/customerWebsiteMotion.js';
+import { REFERRAL_OFFER } from '../../src/lib/referralOffer.js';
 
 const BASELINE = '27bd7d184e7d957a07aef59b33744f01e7af1c08';
 const read = file => fs.readFileSync(file, 'utf8');
@@ -55,6 +56,8 @@ const motion = { div: ({ initial, animate, exit, transition, children, ...props 
   return React.createElement('div', props, children);
 } };
 const imports = {
+  '@/lib/referralOffer': { REFERRAL_OFFER },
+  '@/components/SEO': { default: () => null },
   react: React,
   'react-router-dom': {
     Link: ({ to, children, ...props }) => React.createElement('a', { href: to, ...props }, children),
@@ -70,6 +73,8 @@ const imports = {
   '@/lib/AuthContext': { useAuth: () => ({ user: { email: 'member@example.test', role }, logout: noContent, navigateToLogin: noContent }) },
   '@/lib/admin-access': { isAdminUser: user => user?.role === 'admin' },
   '@/lib/nativeRuntime': { isNativeAppRuntime: () => native },
+  '@/hooks/useDesktopStorefront': { default: () => false },
+  '@/components/desktop/DesktopAccount': { default: noContent },
   '@/lib/customerWebsiteMotion': { customerWebsiteMotionOverrides },
   '@/lib/customerDashboardQueries': {
     customerDashboardQueryOptions: () => ({ queryKey: ['account-dashboard', 'member@example.test'] }),
@@ -106,9 +111,23 @@ function renderSource(source, isNative, userRole = 'user') {
 
 for (const file of ['src/pages/Account.jsx', 'src/pages/OrderHistory.jsx']) {
   const source = read(file);
-  const baseline = original(file);
-  // Removing only presentation additions must recover the exact approved source.
+  // The canonical order-row selector is separately covered by desktop-member
+  // tests. Keep this harness focused on the unchanged small-screen/motion branch.
+  const baseline = file.includes('Account.jsx') ? original(file)
+    .replace('const orders = dashData?.orders || [];', 'const orders = dashData?.all_orders_raw || [];')
+    .replace("import { PROGRAM_BY_KEY } from '@/lib/program-catalog';", "import { PROGRAM_BY_KEY } from '@/lib/program-catalog';\nimport { REFERRAL_OFFER } from '@/lib/referralOffer';")
+    .replace('Give $5 and earn a reward when a friend orders.', '{REFERRAL_OFFER.summary}') : original(file)
+    .replace("import React from 'react';", "import React from 'react';\nimport SEO from '@/components/SEO';")
+    .replace('export default function OrderHistory() {', 'export default function OrderHistory() {\n  return <><SEO title="Your Orders" noindex /><OrderHistoryContent /></>;\n}\n\nfunction OrderHistoryContent() {')
+    .replace('<button onClick={() => navigate(-1)}', '<button type="button" aria-label="Go back" onClick={() => navigate(-1)}');
   const withoutOverrides = source
+    .replace(/^import useDesktopStorefront from '@\/hooks\/useDesktopStorefront';\n/m, '')
+    .replace(/^import DesktopAccount from '@\/components\/desktop\/DesktopAccount';\n/m, '')
+    .replace('import { customerDashboardQueryOptions, customerDashboardOrders }', 'import { customerDashboardQueryOptions }')
+    .replace(/^  const desktop = useDesktopStorefront\(\);\n/m, '')
+    .replace(', isError: isDashError, refetch: refetchDashboard', '')
+    .replace('const orders = customerDashboardOrders(dashData);', 'const orders = dashData?.all_orders_raw || [];')
+    .replace(/^  if \(desktop\) return <DesktopAccount[^\n]+\n\n/m, '')
     .replace(/^import \{ customerWebsiteMotionOverrides \} from '@\/lib\/customerWebsiteMotion';\n/m, '')
     .replace(/^import \{ isNativeAppRuntime \} from '@\/lib\/nativeRuntime';\n/m, '')
     .replace(/^  const immediateMotion = customerWebsiteMotionOverrides\(isNativeAppRuntime\(\)\);\n/gm, '')
