@@ -335,6 +335,34 @@ test('16f. audited historical mappings retain traceable containing-PR ancestry',
   }
 });
 
+test('16g. PR 810 integration mapping pins its observed open-PR head and exact parents', () => {
+  const inputPath = 'config/release/native-release-range.json';
+  const input = JSON.parse(read(inputPath));
+  const integration = 'b60d465c3ea68b95648a21bdd4f25305f5aaed8c';
+  const expected = {
+    number: 810,
+    merge_commit: integration,
+    title: 'Represent the PR #810 branch integration of released browser sign-in fixes',
+    source_pr_url: 'https://github.com/NuViraJuiceCo/nuvira-juice/pull/810',
+    source_pr_head_commit: integration,
+    integration_parent_commits: ['2dc3ae7538215d5c141a203a810e0ca322bbb2f8', 'dec1d650d1d2b4cbe4d063f30171aae4a7a4cb40'],
+  };
+  const records = input.included_prs.filter((item) => item.merge_commit === integration);
+  assert(records.length === 1, 'PR 810 integration mapping missing or duplicated');
+  assert(Object.keys(records[0]).length === Object.keys(expected).length && Object.entries(expected).every(([key, value]) => JSON.stringify(records[0][key]) === JSON.stringify(value)), 'PR 810 integration record differs from verified open-PR evidence');
+  assert(!Object.hasOwn(records[0], 'source_pr_merge_commit'), 'open PR integration must not invent a containing PR merge');
+  const parents = run('git', ['show', '-s', '--format=%P', integration]);
+  assert(parents.status === 0 && parents.stdout.trim() === expected.integration_parent_commits.join(' '), 'PR 810 actual integration parents differ from recorded evidence');
+  for (const parent of expected.integration_parent_commits) {
+    assert(run('git', ['merge-base', '--is-ancestor', parent, records[0].source_pr_head_commit]).status === 0, 'integration parent is not contained in the observed PR 810 head');
+  }
+  assert(run('git', ['merge-base', '--is-ancestor', integration, 'HEAD']).status === 0, 'PR 810 integration is not contained in current source');
+  const original = run('git', ['show', `${integration}:${inputPath}`]);
+  assert(original.status === 0, 'pre-mapping release input is unavailable');
+  const baseline = JSON.parse(original.stdout).previous_released_commit;
+  assert(baseline === 'e1dcdc5f2adcc788251c0f1dbd33fe3e932397aa' && input.previous_released_commit === baseline, 'integration mapping changed the previous released baseline');
+});
+
 // 17-20 source/dependency/xcode/bundle/no-side-effect coverage.
 test('17. filesystem mtime alone cannot prove bundle freshness', () => {
   const source = read('scripts/release/verify-native-release-source.mjs');

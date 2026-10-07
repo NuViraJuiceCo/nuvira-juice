@@ -4,6 +4,17 @@
   "included_prs_policy": "derive_from_merge_history_or_fail_when_merge_commits_are_unrepresented",
   "included_prs": [
     {
+      "number": 810,
+      "merge_commit": "b60d465c3ea68b95648a21bdd4f25305f5aaed8c",
+      "title": "Represent the PR #810 branch integration of released browser sign-in fixes",
+      "source_pr_url": "https://github.com/NuViraJuiceCo/nuvira-juice/pull/810",
+      "source_pr_head_commit": "b60d465c3ea68b95648a21bdd4f25305f5aaed8c",
+      "integration_parent_commits": [
+        "2dc3ae7538215d5c141a203a810e0ca322bbb2f8",
+        "dec1d650d1d2b4cbe4d063f30171aae4a7a4cb40"
+      ]
+    },
+    {
       "number": 808,
       "merge_commit": "306a8dbfda4f456a3d486c4ad9608ffa8ab662cd",
       "title": "Represent the internal main-branch integration included in reviewed PR #808",
