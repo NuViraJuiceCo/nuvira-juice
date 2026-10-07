@@ -24,6 +24,7 @@ function load(file, imports = {}) {
   return module.exports;
 }
 const policy = load('src/lib/publicStorefrontStartup.js');
+const motionPolicy = load('src/lib/customerWebsiteMotion.js', { './publicStorefrontStartup.js': policy });
 const Loading = load('src/components/layout/PublicRouteLoading.jsx', { react: React }).default;
 let native = false;
 let initialAuthReturn = false;
@@ -45,7 +46,7 @@ const Layout = load('src/components/layout/AppLayout.jsx', {
   './MobileNav': { default: () => React.createElement('nav', { 'data-test-navigation': 'mobile' }, 'Home Shop') },
   './PublicRouteLoading': { default: Loading },
   '@/lib/nativeRuntime': { isNativeAppRuntime: () => native },
-  '@/lib/publicStorefrontStartup': policy,
+  '@/lib/customerWebsiteMotion': motionPolicy,
   '@/lib/app-params': { get startedWithAuthReturn() { return initialAuthReturn; } },
 }).default;
 function render(path, isNative = false, search = '', hash = '') {
@@ -68,17 +69,31 @@ for (const route of ['/', '/shop', '/contact', '/support']) {
   assert.match(render(route, true), /data-outer-startup/);
   assert.doesNotMatch(render(route, true), /data-test-navigation|data-public-route-loading/);
 }
-for (const route of ['/account', '/account/orders', '/rewards', '/admin/orders', '/checkout', '/unknown']) {
+for (const route of ['/account', '/account/orders', '/account/programs', '/account/programs/example',
+  '/account/settings', '/account/subscriptions', '/rewards', '/notifications', '/return-reward',
+  '/cart', '/cart/example', '/delete-account', '/referral', '/partner', '/book-event']) {
+  const html = render(route);
+  assert.match(html, /data-test-navigation="desktop"/);
+  assert.match(html, /data-test-navigation="mobile"/);
+  assert.match(html, /data-public-route-loading="true"/);
+  assert.match(html, /data-page-transition="immediate"/);
+  assert.doesNotMatch(html, /data-outer-startup|data-page-ready|data-motion-wrapper/);
+  assert.match(render(route, true), /data-outer-startup/);
+}
+checks.push('Already-authorized customer website member chunks retain the shell with neutral immediate loading, never previous page data');
+for (const route of ['/admin/orders', '/checkout', '/order-confirmation', '/unknown', '/account/unknown']) {
   assert.match(render(route), /data-outer-startup/);
   assert.doesNotMatch(render(route), /data-public-route-loading/);
 }
 for (const key of ['code', 'state', 'access_token', 'clear_access_token', 'error', 'is_new_user', 'native_provider_callback', 'native_browser_callback', 'reset_sign_in']) {
-  assert.match(render('/support', false, `?${key}=synthetic`), /data-outer-startup/);
-  assert.match(render('/support', false, '', `#${key}=synthetic`), /data-outer-startup/);
+  for (const route of ['/support', '/account', '/account/orders', '/rewards']) {
+    assert.match(render(route, false, `?${key}=synthetic`), /data-outer-startup/);
+    assert.match(render(route, false, '', `#${key}=synthetic`), /data-outer-startup/);
+  }
 }
-checks.push('Native, protected, admin, unknown and auth-return paths retain the original outer boundary');
+checks.push('Native, admin, checkout, unknown and auth-return paths retain the original outer boundary');
 initialAuthReturn = true;
-for (const route of ['/', '/shop', '/contact', '/support', '/about']) {
+for (const route of ['/', '/shop', '/contact', '/support', '/about', '/account', '/rewards']) {
   const html = render(route, false, '', '');
   assert.match(html, /data-outer-startup/);
   assert.doesNotMatch(html, /data-public-route-loading|data-test-navigation/);

@@ -104,6 +104,23 @@ export function productAdditionalImageUrls(product = {}, { absolute = false } = 
   ));
 }
 
+const WEBSITE_GALLERY_THUMBNAILS = new Map(
+  Object.values(PRODUCT_GALLERY_IMAGES).flat().map(image => [
+    image.path,
+    `/images/website-performance-20261006/gallery/${image.path.split('/').pop().replace(/\.jpg$/, '-384.webp')}`,
+  ]),
+);
+
+export function productGalleryThumbnail(image = {}, { website = false } = {}) {
+  // Keep approved primary/card mappings, unknown provider media, full gallery
+  // URLs, structured data, and native delivery behavior exactly as before.
+  if (website !== true || image.thumbnail) return image.thumbnail || image.src;
+  const absolute = image.src?.startsWith(`${SITE_URL}/`);
+  const original = absolute ? image.src.slice(SITE_URL.length) : image.src;
+  const thumbnail = WEBSITE_GALLERY_THUMBNAILS.get(original);
+  return thumbnail ? `${absolute ? SITE_URL : ''}${thumbnail}` : image.src;
+}
+
 export function buildProductGallery(product = {}, { absolute = false } = {}) {
   const title = String(product.title || product.name || 'NuVira product').trim();
   const key = productGalleryKey(product);

@@ -117,6 +117,8 @@ const sideImports = {
   '@/lib/brandImages': { BRAND_IMAGES: { wordmark: '/images/wordmark.webp' } },
   '@/lib/startupPages': { isPublicNavigationPreloadRoute: loaders.isPublicNavigationPreloadRoute,
     preloadPublicNavigation: (route, options) => { intents.push({ route, options }); return Promise.resolve(true); } },
+  '@/lib/memberNavigationPreload': { isMemberNavigationPreloadRoute: () => false,
+    preloadMemberNavigation: () => { throw new Error('Anonymous public navigation must not warm member pages'); } },
 };
 const SideNav = load('src/components/layout/SideNav.jsx', sideImports, {
   window: { matchMedia: query => { assert.equal(query, '(min-width: 1024px)'); return { matches: desktop }; } },

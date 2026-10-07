@@ -10,7 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { build } from 'esbuild';
 import { PUBLIC_PRODUCT_FALLBACKS } from '../../src/lib/public-product-catalog.js';
 import { approvedProductMedia, productPrimaryImage, productThumbnailImage, isApprovedProductImage } from '../../src/lib/approved-product-media.js';
-import { buildProductGallery, productAdditionalImageUrls } from '../../src/lib/product-gallery-images.js';
+import { buildProductGallery, productAdditionalImageUrls, productGalleryThumbnail } from '../../src/lib/product-gallery-images.js';
 import { buildProductSeoMetadata, buildProductStructuredData } from '../../src/lib/product-seo.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -265,7 +265,14 @@ check('approved hero and thumbnail framing use matching image ratios without sid
   assert.doesNotMatch(heroGeometry, /(?:^|\s)(?:\w+:)?(?:h-|min-h-|max-h-|p-|border(?:-|\s|$))/, 'approved hero must have no height clamps, padding or physical borders causing bands');
   assert.match(detail, /\{isMerchProduct && \([\s\S]*?blur-2xl/, 'decorative hero blur remains merch-only');
   assert.doesNotMatch(detail, /isMerchProduct \|\| selectedProductImage\.fit/);
-  assert.match(detail, /src=\{image\.thumbnail \|\| image\.src\}/, 'approved gallery thumbnail must use its square derivative');
+  assert.match(detail, /src=\{productGalleryThumbnail\(image, \{ website: !isNativeAppRuntime\(\) \}\)\}/, 'gallery thumbnail must use the platform-gated delivery resolver');
+  for (const target of targets) {
+    const product = PUBLIC_PRODUCT_FALLBACKS.find(item => item.id === target.id);
+    const image = buildProductGallery(product)[0];
+    for (const website of [false, true]) {
+      assert.equal(productGalleryThumbnail(image, { website }), `${baseFor(target)}/${target.key}-card.webp`, 'approved gallery thumbnail must retain its exact approved square derivative on web and native');
+    }
+  }
   assert.match(detail, /const hasApprovedMedia = Boolean\(approvedProductMedia\(product\)\)/);
   assert.match(detail, /hasApprovedMedia \? 'aspect-square border-0' : 'aspect-\[4\/3\] border'/, 'only approved products get square thumbnail frames; non-target framing is retained');
   assert.match(cards, /relative aspect-square overflow-hidden/, 'shop frame must match square card image');
@@ -274,21 +281,30 @@ check('approved hero and thumbnail framing use matching image ratios without sid
 });
 check('failed square thumbnail retries its full-size image before removing a healthy gallery item', () => {
   const detail = read('src/pages/ProductDetail.jsx');
-  const thumbnailSource = detail.slice(detail.indexOf('src={image.thumbnail || image.src}'));
+  const thumbnailSource = detail.slice(detail.indexOf('src={productGalleryThumbnail('));
   const handler = thumbnailSource.match(/onError=\{\(event\) => \{([\s\S]*?)\n\s*\}\}/);
   assert.ok(handler, 'actual thumbnail onError handler must be present');
-  const onError = new Function('image', 'index', 'handleGalleryImageError', 'event', handler[1]);
+  const onError = new Function('image', 'index', 'handleGalleryImageError', 'event', 'productGalleryThumbnail', 'isNativeAppRuntime', handler[1]);
+  for (const native of [false, true]) {
+  const invoke = (image, index, failed, currentTarget) => onError(image, index, (...args) => failed.push(args), { currentTarget }, productGalleryThumbnail, () => native);
   const image = { src: `${base}/oasis-primary.webp`, thumbnail: `${base}/oasis-card.webp` };
   const failures = [];
   const currentTarget = { src: image.thumbnail, getAttribute(name) { assert.equal(name, 'src'); return this.src; } };
-  onError(image, 0, (...args) => failures.push(args), { currentTarget });
+  invoke(image, 0, failures, currentTarget);
   assert.equal(currentTarget.src, image.src);
   assert.deepEqual(failures, [], 'card-only failure must not remove healthy primary');
-  onError(image, 0, (...args) => failures.push(args), { currentTarget });
+  invoke(image, 0, failures, currentTarget);
   assert.deepEqual(failures, [[image.src, 0]], 'actual primary failure retains existing gallery recovery');
   const secondary = { src: '/images/authentic-products/oasis/oasis-event-cooler.jpg' };
-  onError(secondary, 1, (...args) => failures.push(args), { currentTarget });
+  currentTarget.src = productGalleryThumbnail(secondary, { website: !native });
+  invoke(secondary, 1, failures, currentTarget);
+  if (!native) {
+    assert.equal(currentTarget.src, secondary.src, 'website authentic thumbnail failure must restore the same full-size photo');
+    assert.equal(failures.length, 1, 'a thumbnail-only failure cannot remove the healthy authentic photo');
+    invoke(secondary, 1, failures, currentTarget);
+  }
   assert.deepEqual(failures[1], [secondary.src, 1]);
+  }
 });
 check('metadata changes images only and preserves prices, offers, availability and canonical identity', () => {
   for (const product of PUBLIC_PRODUCT_FALLBACKS) {

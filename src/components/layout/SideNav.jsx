@@ -9,6 +9,7 @@ import { adminNavGroups, isAdminNavActive } from './adminNavItems';
 import { useActiveProgramJourney } from '@/lib/program-journey-state';
 import { BRAND_IMAGES } from '@/lib/brandImages';
 import { isPublicNavigationPreloadRoute, preloadPublicNavigation } from '@/lib/startupPages';
+import { isMemberNavigationPreloadRoute, preloadMemberNavigation } from '@/lib/memberNavigationPreload';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
@@ -33,10 +34,16 @@ export default function SideNav() {
   const visibleNavItems = isAdminUser(user) ? [...customerNavItems, adminNavItem] : customerNavItems;
   const showWebsiteFooter = !isNativeAppRuntime();
   const publicIntentProps = (path) => {
-    if (!showWebsiteFooter || location.pathname.startsWith('/admin') || !isPublicNavigationPreloadRoute(path)) return {};
+    if (!showWebsiteFooter || location.pathname.startsWith('/admin')) return {};
+    const publicRoute = isPublicNavigationPreloadRoute(path);
+    const memberRoute = Boolean(user?.email) && isMemberNavigationPreloadRoute(path);
+    if (!publicRoute && !memberRoute) return {};
     const preload = () => {
       if (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 1024px)').matches) {
-        void preloadPublicNavigation(path, { isNative: false, isAdmin: false });
+        if (publicRoute) void preloadPublicNavigation(path, { isNative: false, isAdmin: false });
+        else void preloadMemberNavigation(path, {
+          isNative: false, isAdmin: false, isAuthenticated: Boolean(user?.email),
+        });
       }
     };
     return { onMouseEnter: preload, onFocus: preload };

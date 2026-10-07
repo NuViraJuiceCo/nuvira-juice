@@ -12,7 +12,8 @@ import {
   UsersRound,
 } from 'lucide-react';
 import SEO from '@/components/SEO';
-import { BRAND_IMAGES, brandImageUrl } from '@/lib/brandImages';
+import { BRAND_IMAGES, brandImageUrl, websiteBrandImageProps } from '@/lib/brandImages';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 const LOGO_URL = 'https://media.base44.com/images/public/69d48d0c39891f7945481152/b04d63077_Asset18322x.png';
 
@@ -167,6 +168,12 @@ function GalleryImage({ src, alt, caption, className = '' }) {
 }
 
 export default function About() {
+  const website = !isNativeAppRuntime();
+  const desktopHero = websiteBrandImageProps(BRAND_IMAGES.aboutHeroEvent, {
+    website,
+    sizes: '(min-width: 1152px) 624px, (min-width: 1024px) calc(60vw - 68px), calc(100vw - 64px)',
+  });
+  const mobileHero = websiteBrandImageProps(BRAND_IMAGES.aboutHeroMobile, { website, sizes: 'calc(100vw - 40px)' });
   return (
     <div className="nuvira-about-page min-h-screen bg-background text-foreground">
       <SEO
@@ -208,9 +215,14 @@ export default function About() {
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
             <picture className="overflow-hidden rounded-lg">
-              <source media="(min-width: 768px)" srcSet={BRAND_IMAGES.aboutHeroEvent} />
+              <source
+                media="(min-width: 768px)"
+                srcSet={desktopHero.srcSet || BRAND_IMAGES.aboutHeroEvent}
+                sizes={desktopHero.sizes}
+                data-original-srcset={website ? BRAND_IMAGES.aboutHeroEvent : undefined}
+              />
               <img
-                src={BRAND_IMAGES.aboutHeroMobile}
+                {...mobileHero}
                 alt="NuVira booth serving customers at a local wellness event"
                 className="h-[23rem] w-full object-cover object-center md:h-[32rem] lg:h-[30rem]"
                 width="1800"

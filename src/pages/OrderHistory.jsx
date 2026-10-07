@@ -4,6 +4,8 @@ import PullToRefresh from '@/components/PullToRefresh';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { customerDashboardQueryOptions, customerDashboardOrders, customerDashboardOrderPollInterval } from '@/lib/customerDashboardQueries';
+import { customerWebsiteMotionOverrides } from '@/lib/customerWebsiteMotion';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import { useAuth } from '@/lib/AuthContext';
 import { ArrowLeft, ChevronRight, Package, RotateCcw, Leaf, MapPin, Camera } from 'lucide-react';
 import { useCart } from '@/lib/cartContext';
@@ -149,6 +151,7 @@ const returnStatusColor = {
 };
 
 function OrderCard({ order, index, bagReturn, userProfile }) {
+  const immediateMotion = customerWebsiteMotionOverrides(isNativeAppRuntime());
   const TERMINAL = ['delivered', 'picked_up', 'cancelled', 'refunded', 'failed'];
   const isActive = !TERMINAL.includes(order.status);
   const isCancelled = ['cancelled', 'refunded', 'failed'].includes(order.status);
@@ -198,6 +201,7 @@ function OrderCard({ order, index, bagReturn, userProfile }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
+      {...immediateMotion}
     >
       <Link to={order.order_number ? `/order-tracker/${order.order_number}?source=order_history` : `/order-tracker/${order.id}?source=order_history`}>
         <div className="rounded-xl border p-3.5 active:bg-secondary/50 transition-colors nuvira-premium-card">

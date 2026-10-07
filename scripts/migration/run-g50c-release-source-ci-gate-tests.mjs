@@ -249,6 +249,119 @@ test('16b. current PR validation can represent a branch-local merge commit', () 
   const representedMerge = manifest.included_prs.find((item) => item.number === 585);
   assert(representedMerge?.current_pr_validation_branch_merge === true, 'current PR branch merge marker missing');
 });
+test('16c. explicit historical mapping passes push context without changing the release baseline', () => {
+  const { dir, head, previous } = makeManifestRepo({ mergeWithoutPr: true });
+  const inputPath = 'config/release/native-release-range.json';
+  const input = JSON.parse(fs.readFileSync(path.join(dir, inputPath), 'utf8'));
+  input.included_prs = [{ number: 804, merge_commit: head, title: 'Audited historical internal merge' }];
+  write(inputPath, JSON.stringify(input, null, 2), dir);
+  const result = run(process.execPath, [manifestScript, '--evidence-dir', 'release-evidence'], {
+    cwd: dir,
+    env: {
+      G50C_XCODE_BUILD_SETTINGS_FIXTURE: path.join(dir, 'xcode-settings.json'),
+      G50C_CURRENT_PR_NUMBER: '',
+      GITHUB_EVENT_PATH: '',
+      G50C_RELEASE_RANGE_HEAD: head,
+    },
+  });
+  assert(result.status === 0, `explicit push mapping failed: ${result.stderr}`);
+  const manifest = JSON.parse(result.stdout);
+  assert(manifest.previous_released_commit === previous, 'historical mapping changed the release baseline');
+  assert(manifest.included_prs.length === 1, 'historical merge was omitted from the release range');
+  assert(manifest.included_prs[0].number === 804 && manifest.included_prs[0].merge_commit === head, 'explicit historical PR attribution was lost');
+  assert(!manifest.included_prs[0].current_pr_validation_branch_merge, 'push mapping incorrectly relied on current-PR fallback');
+});
+test('16d. explicit historical mapping keeps its original PR in current-PR validation', () => {
+  const { dir, head } = makeManifestRepo({ mergeWithoutPr: true });
+  const inputPath = 'config/release/native-release-range.json';
+  const input = JSON.parse(fs.readFileSync(path.join(dir, inputPath), 'utf8'));
+  input.included_prs = [{ number: 804, merge_commit: head, title: 'Audited historical internal merge' }];
+  write(inputPath, JSON.stringify(input, null, 2), dir);
+  const result = run(process.execPath, [manifestScript, '--evidence-dir', 'release-evidence'], {
+    cwd: dir,
+    env: {
+      G50C_XCODE_BUILD_SETTINGS_FIXTURE: path.join(dir, 'xcode-settings.json'),
+      G50C_CURRENT_PR_NUMBER: '809',
+      GITHUB_EVENT_PATH: '',
+      G50C_RELEASE_RANGE_HEAD: head,
+    },
+  });
+  assert(result.status === 0, `explicit PR mapping failed: ${result.stderr}`);
+  const manifest = JSON.parse(result.stdout);
+  assert(manifest.included_prs[0].number === 804, 'historical merge was incorrectly relabeled as the current PR');
+  assert(!manifest.included_prs[0].current_pr_validation_branch_merge, 'historical explicit mapping used current-PR fallback');
+});
+test('16e. an unrelated explicit mapping does not waive an unrepresented merge in push context', () => {
+  const { dir, head } = makeManifestRepo({ mergeWithoutPr: true });
+  const inputPath = 'config/release/native-release-range.json';
+  const input = JSON.parse(fs.readFileSync(path.join(dir, inputPath), 'utf8'));
+  input.included_prs = [{ number: 804, merge_commit: '0'.repeat(40), title: 'Unrelated merge' }];
+  write(inputPath, JSON.stringify(input, null, 2), dir);
+  const result = run(process.execPath, [manifestScript, '--evidence-dir', 'release-evidence'], {
+    cwd: dir,
+    env: {
+      G50C_XCODE_BUILD_SETTINGS_FIXTURE: path.join(dir, 'xcode-settings.json'),
+      G50C_CURRENT_PR_NUMBER: '',
+      GITHUB_EVENT_PATH: '',
+      G50C_RELEASE_RANGE_HEAD: head,
+    },
+  });
+  assert(result.status !== 0, 'unrepresented merge was allowed by an unrelated mapping');
+  const failure = JSON.parse(result.stderr);
+  assert(failure.message.includes('cannot be represented') && failure.unrepresented?.[0]?.merge_commit === head, 'failure did not identify the actual unmapped historical merge');
+});
+test('16f. audited historical mappings retain traceable containing-PR ancestry', () => {
+  const input = JSON.parse(read('config/release/native-release-range.json'));
+  const expectedMappings = [
+    { number: 808, merge_commit: '306a8dbfda4f456a3d486c4ad9608ffa8ab662cd', head: '306a8dbfda4f456a3d486c4ad9608ffa8ab662cd', merged: 'cbb224c81197dd5efd141c968e6d195bd9212522' },
+    { number: 805, merge_commit: '60463a3442663901642883ea64cb3e1fdb61219c', head: '4f07088b388cddbaf1b47df47925d4022ceb5049', merged: 'b0127bdca0c1de2127b41966e2203571346eeecf' },
+    { number: 804, merge_commit: '8bc2dcf0236107ac6f8a7b244cfa5f98e7abc610', head: '8bc2dcf0236107ac6f8a7b244cfa5f98e7abc610', merged: 'c16a90d5f2b243817559e48c746b4fb36d9d0f06' },
+  ];
+  for (const expected of expectedMappings) {
+    const records = input.included_prs.filter((item) => item.merge_commit === expected.merge_commit);
+    assert(records.length === 1, `historical merge mapping missing or duplicated: ${expected.merge_commit}`);
+    const record = records[0];
+    assert(record.number === expected.number, `incorrect historical PR for ${expected.merge_commit}`);
+    assert(record.source_pr_url === `https://github.com/NuViraJuiceCo/nuvira-juice/pull/${expected.number}`, 'historical PR URL mismatch');
+    assert(record.source_pr_head_commit === expected.head && record.source_pr_merge_commit === expected.merged, 'historical PR source identity mismatch');
+    const merge = run('git', ['show', '-s', '--format=%P%n%s', record.source_pr_merge_commit]);
+    assert(merge.status === 0, `missing historical PR merge object: ${record.source_pr_merge_commit}`);
+    const [parentLine, subject] = merge.stdout.trim().split('\n');
+    const parents = parentLine.split(' ');
+    assert(parents.length === 2 && parents[1] === record.source_pr_head_commit, 'historical PR head is not the recorded merge second parent');
+    assert(subject.startsWith(`Merge pull request #${record.number} `), 'recorded containing merge does not identify its PR');
+    assert(run('git', ['merge-base', '--is-ancestor', record.merge_commit, parents[1]]).status === 0, 'internal merge is not contained in the recorded PR head');
+    assert(run('git', ['merge-base', '--is-ancestor', record.merge_commit, parents[0]]).status === 1, 'internal merge was already in main before the recorded PR');
+  }
+});
+
+test('16g. PR 810 integration mapping pins its observed open-PR head and exact parents', () => {
+  const inputPath = 'config/release/native-release-range.json';
+  const input = JSON.parse(read(inputPath));
+  const integration = 'b60d465c3ea68b95648a21bdd4f25305f5aaed8c';
+  const expected = {
+    number: 810,
+    merge_commit: integration,
+    title: 'Represent the PR #810 branch integration of released browser sign-in fixes',
+    source_pr_url: 'https://github.com/NuViraJuiceCo/nuvira-juice/pull/810',
+    source_pr_head_commit: integration,
+    integration_parent_commits: ['2dc3ae7538215d5c141a203a810e0ca322bbb2f8', 'dec1d650d1d2b4cbe4d063f30171aae4a7a4cb40'],
+  };
+  const records = input.included_prs.filter((item) => item.merge_commit === integration);
+  assert(records.length === 1, 'PR 810 integration mapping missing or duplicated');
+  assert(Object.keys(records[0]).length === Object.keys(expected).length && Object.entries(expected).every(([key, value]) => JSON.stringify(records[0][key]) === JSON.stringify(value)), 'PR 810 integration record differs from verified open-PR evidence');
+  assert(!Object.hasOwn(records[0], 'source_pr_merge_commit'), 'open PR integration must not invent a containing PR merge');
+  const parents = run('git', ['show', '-s', '--format=%P', integration]);
+  assert(parents.status === 0 && parents.stdout.trim() === expected.integration_parent_commits.join(' '), 'PR 810 actual integration parents differ from recorded evidence');
+  for (const parent of expected.integration_parent_commits) {
+    assert(run('git', ['merge-base', '--is-ancestor', parent, records[0].source_pr_head_commit]).status === 0, 'integration parent is not contained in the observed PR 810 head');
+  }
+  assert(run('git', ['merge-base', '--is-ancestor', integration, 'HEAD']).status === 0, 'PR 810 integration is not contained in current source');
+  const original = run('git', ['show', `${integration}:${inputPath}`]);
+  assert(original.status === 0, 'pre-mapping release input is unavailable');
+  const baseline = JSON.parse(original.stdout).previous_released_commit;
+  assert(baseline === 'e1dcdc5f2adcc788251c0f1dbd33fe3e932397aa' && input.previous_released_commit === baseline, 'integration mapping changed the previous released baseline');
+});
 
 // 17-20 source/dependency/xcode/bundle/no-side-effect coverage.
 test('17. filesystem mtime alone cannot prove bundle freshness', () => {

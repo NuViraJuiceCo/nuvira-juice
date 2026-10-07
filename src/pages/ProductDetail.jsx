@@ -33,7 +33,7 @@ import {
   buildProductStructuredData,
   shouldRenderClientProductStructuredData,
 } from '@/lib/product-seo';
-import { buildProductGallery } from '@/lib/product-gallery-images';
+import { buildProductGallery, productGalleryThumbnail } from '@/lib/product-gallery-images';
 import { approvedProductMedia } from '@/lib/approved-product-media';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
@@ -465,12 +465,13 @@ export default function ProductDetail() {
                   }`}
                 >
                   <img
-                    src={image.thumbnail || image.src}
+                    src={productGalleryThumbnail(image, { website: !isNativeAppRuntime() })}
                     alt=""
                     aria-hidden="true"
                     loading={index === 0 ? 'eager' : 'lazy'}
                     onError={(event) => {
-                      if (image.thumbnail && event.currentTarget.getAttribute('src') === image.thumbnail) {
+                      const thumbnail = productGalleryThumbnail(image, { website: !isNativeAppRuntime() });
+                      if (thumbnail !== image.src && event.currentTarget.getAttribute('src') === thumbnail) {
                         event.currentTarget.src = image.src;
                         return;
                       }

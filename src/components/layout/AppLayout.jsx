@@ -4,14 +4,14 @@ import { AnimatePresence, motion } from 'framer-motion';
 import MobileNav from './MobileNav';
 import SideNav from './SideNav';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
-import { canRenderPublicStorefront } from '@/lib/publicStorefrontStartup';
+import { usesImmediateCustomerWebsiteLayout } from '@/lib/customerWebsiteMotion';
 import { startedWithAuthReturn } from '@/lib/app-params';
 import PublicRouteLoading from './PublicRouteLoading';
 
 export default function AppLayout() {
   const location = useLocation();
   const adminShell = location.pathname.startsWith('/admin');
-  const publicWebsiteRoute = canRenderPublicStorefront({
+  const immediateCustomerWebsite = usesImmediateCustomerWebsiteLayout({
     pathname: location.pathname,
     search: location.search,
     hash: location.hash,
@@ -34,23 +34,29 @@ export default function AppLayout() {
       {/* Main content — single natural scroll container, no overflow-hidden */}
       <div className="flex-1 min-w-0 md:ml-60 overflow-x-hidden w-full">
         <main className={mainClassName} data-storefront-page={location.pathname}>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -3 }}
-              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              style={{ willChange: 'opacity, transform' }}
-              data-page-transition="true"
-            >
-              {publicWebsiteRoute ? (
-                <Suspense fallback={<PublicRouteLoading />}>
-                  <Outlet />
-                </Suspense>
-              ) : <Outlet />}
-            </motion.div>
-          </AnimatePresence>
+          {immediateCustomerWebsite ? (
+            <div data-page-transition="immediate">
+              {/* Reset the content boundary on navigation: never retain the
+                  previous page's private body while the new module loads. */}
+              <Suspense key={location.pathname} fallback={<PublicRouteLoading />}>
+                <Outlet />
+              </Suspense>
+            </div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -3 }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                style={{ willChange: 'opacity, transform' }}
+                data-page-transition="true"
+              >
+                <Outlet />
+              </motion.div>
+            </AnimatePresence>
+          )}
         </main>
       </div>
 

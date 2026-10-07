@@ -2,16 +2,6 @@
   "description": "Pinned acknowledgements for open release-critical PRs that are intentionally excluded from G50C native release source.",
   "acknowledged_excluded_critical_prs": [
     {
-      "number": 810,
-      "head_sha": "2dc3ae7538215d5c141a203a810e0ca322bbb2f8",
-      "base_branch": "main",
-      "reason": "Owner approved only the browser sign-in fix. The independent website speed candidate remains unmerged and unpublished pending separate approval; Speed confirmed publication is held during this release. Only verified historical merge mappings are shared bookkeeping, not speed runtime changes.",
-      "status": "manual_release_exclusion_acknowledged",
-      "acknowledged_by": "codex-browser-signin-only-release",
-      "acknowledged_at": "2026-10-07T02:02:00Z",
-      "expires_at": "2026-10-14T02:02:00Z"
-    },
-    {
       "number": 545,
       "head_sha": "41f603075826bdc0a9d7662728d7f26ac9f2076b",
       "base_branch": "main",
