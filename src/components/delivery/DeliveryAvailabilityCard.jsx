@@ -15,7 +15,7 @@ import {
 import WaitlistForm from '@/components/delivery/WaitlistForm';
 import { Link, useLocation } from 'react-router-dom';
 import { trackGoogleRetentionEvent } from '@/lib/googleAnalytics';
-import { useCart } from '@/lib/CartContext';
+import { useCart } from '@/lib/cartContext';
 import { deliveryContinuation } from '@/lib/deliveryContinuation';
 
 export default function DeliveryAvailabilityCard({ programSelection } = {}) {

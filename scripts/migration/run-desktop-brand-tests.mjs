@@ -559,6 +559,9 @@ checks.push('Full-width heroes, shared information edges, stronger title weight,
 checks.push('Program portraits cannot stretch beyond sharp display size; Hydration stays red and How it works steps must align');
 checks.push('Program desktop layout reuses the existing selectors, shot limits, total and purchase handler; mobile ordering is unchanged');
 
+const deliveryCardSource = read('src/components/delivery/DeliveryAvailabilityCard.jsx');
+const cartImport = deliveryCardSource.match(/import \{ useCart \} from '@\/lib\/([^']+)'/)[1];
+assert.ok(fs.readdirSync('src/lib').includes(`${cartImport}.jsx`), 'Delivery cart import must match the exact filename on case-sensitive hosts');
 let hookIndex = 0;
 let cardState = [];
 let invoked = 0;
@@ -577,7 +580,7 @@ const DeliveryCard = load('src/components/delivery/DeliveryAvailabilityCard.jsx'
   '@/lib/preliminaryDeliveryAvailability': { PRELIMINARY_DELIVERY_CHECK_VERSION: 1, classifyPreliminaryDeliveryAvailability: () => { throw new Error('Unexpected classification'); }, restorePreliminaryDeliveryAvailability: () => null },
   '@/components/delivery/WaitlistForm': { default: empty },
   'react-router-dom': { Link: 'a', useLocation: () => ({ pathname: '/' }) },
-  '@/lib/CartContext': { useCart: () => ({ items: [] }) },
+  '@/lib/cartContext': { useCart: () => ({ items: [] }) },
   '@/lib/deliveryContinuation': { deliveryContinuation },
   '@/lib/googleAnalytics': { trackGoogleRetentionEvent: () => { throw new Error('Unexpected measurement'); } },
 }).default;

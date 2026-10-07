@@ -16,7 +16,7 @@ const compiled = await build({
   loader: { '.css': 'empty' }, logLevel: 'silent',
   plugins: [{ name: 'no-live-transport', setup(builder) {
     builder.onResolve({ filter: /^@\/lib\/AuthContext$/ }, () => ({ path: 'auth', namespace: 'fixture' }));
-    builder.onResolve({ filter: /^@\/lib\/CartContext$/ }, () => ({ path: 'cart', namespace: 'fixture' }));
+    builder.onResolve({ filter: /^@\/lib\/cartContext$/ }, () => ({ path: 'cart', namespace: 'fixture' }));
     builder.onResolve({ filter: /^@\/api\/base44Client$/ }, () => ({ path: 'api', namespace: 'fixture' }));
     builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path: name }) => ({ loader: 'js', contents: name === 'auth'
       ? `export const useAuth = () => ({user:${JSON.stringify(user)},isLoadingAuth:false});`
