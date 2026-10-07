@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Package } from 'lucide-react';
 import { resolveOrderItemImageCandidates } from '@/lib/order-item-images';
 import { isApprovedProductImage } from '@/lib/approved-product-media';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
 
 const SIZE_CLASSES = {
   compact: 'h-7 w-7 rounded-full',
@@ -10,7 +11,8 @@ const SIZE_CLASSES = {
 };
 
 export default function OrderItemThumbnail({ item, size = 'default', className = '' }) {
-  const imageCandidates = resolveOrderItemImageCandidates(item);
+  const website = useDesktopStorefront();
+  const imageCandidates = resolveOrderItemImageCandidates(item, { website });
   const [failedImageUrls, setFailedImageUrls] = useState([]);
   const imageUrl = imageCandidates.find(candidate => !failedImageUrls.includes(candidate)) || null;
 

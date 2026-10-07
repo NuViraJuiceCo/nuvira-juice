@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { RotateCcw, ChevronRight, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 
 const DISMISS_KEY = 'nuvira_quick_reorder_dismissed';
 
-export default function QuickReorder({ lastOrder }) {
+export default function QuickReorder({ lastOrder, website = false }) {
   const [dismissed, setDismissed] = useState(() => {
     try { return sessionStorage.getItem(DISMISS_KEY) === '1'; } catch { return false; }
   });
@@ -18,6 +19,24 @@ export default function QuickReorder({ lastOrder }) {
     try { sessionStorage.setItem(DISMISS_KEY, '1'); } catch {}
     setDismissed(true);
   };
+
+  if (website) {
+    const items = lastOrder.items || [];
+    const title = items.slice(0, 2).map(item => item.title).filter(Boolean).join(', ') || 'Your recent NuVira order';
+    return <section className="nv-brand-last-order" aria-labelledby="nv-last-order-heading">
+      <div className="nv-brand-last-order-images" aria-hidden="true">
+        {items.slice(0, 2).map((item, index) => <OrderItemThumbnail key={item.cart_line_key || `${item.product_id || 'item'}-${index}`} item={item} />)}
+        {!items.length && <RotateCcw size={24} />}
+      </div>
+      <div className="nv-brand-last-order-copy">
+        <p className="nv-brand-eyebrow">Your Last Order</p>
+        <h2 id="nv-last-order-heading">{title}{items.length > 2 && ` +${items.length - 2} more`}</h2>
+        <p>Your favorites, ready for another look.</p>
+      </div>
+      <Link to="/account/orders" className="nv-brand-text-link">View Your Orders <ChevronRight size={18} aria-hidden="true" /></Link>
+      <button type="button" onClick={handleDismiss} aria-label="Dismiss last order" title="Dismiss last order"><X size={17} aria-hidden="true" /></button>
+    </section>;
+  }
 
   return (
     <AnimatePresence>

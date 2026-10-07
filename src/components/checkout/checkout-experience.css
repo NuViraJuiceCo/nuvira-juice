@@ -8,7 +8,7 @@
   background:radial-gradient(ellipse 580px 460px at 85% 140px,var(--nv-ambient),transparent 74%),var(--nv-bg);
   color:var(--nv-text); color-scheme:light; font-family:Inter,system-ui,sans-serif;
 }
-.dark .nv-checkout-page {
+.dark .nv-checkout-page:not([data-desktop-checkout="true"]) {
   --nv-bg:#0b1b13; --nv-surface:#172f23; --nv-raised:#234333; --nv-input:#10281c;
   --nv-text:#faf7ed; --nv-muted:#b8ccbe; --nv-line:#3a5c47; --nv-soft:#244b30;
   --nv-accent:#c4ed8a; --nv-accent-text:#102d1c; --nv-focus:#c7f392; --nv-error:#ffb8aa;
@@ -53,6 +53,9 @@
 .nv-checkout-benefits>summary>span {flex:1}
 .nv-checkout-benefits>fieldset {padding:0 16px 16px}
 .nv-checkout-benefits .nv-checkout-note {padding:0 16px 16px}
+.nv-checkout-benefits-edit {padding:0 16px 16px}
+.nv-checkout-benefits-edit .nv-checkout-note {padding:0;margin:0 0 12px}
+.nv-checkout-benefits-edit button {display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;width:100%;padding:10px 16px;border:1px solid var(--nv-line);border-radius:999px;background:var(--nv-surface);color:var(--nv-accent);font-size:13px;font-weight:600}
 .nv-checkout-guest {font-size:12px;color:var(--nv-muted);margin-bottom:18px}
 .nv-checkout-guest>summary {display:flex;align-items:center;gap:8px;min-height:44px}
 .nv-checkout-guest>summary>svg {flex-shrink:0;margin-left:auto}

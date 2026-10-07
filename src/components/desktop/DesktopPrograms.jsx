@@ -10,14 +10,21 @@ const PROGRAM_TASTE = {
   reset: 'Crisp apple and cucumber, with a splash of watermelon.',
 };
 
-export default function DesktopPrograms() {
+export default function DesktopPrograms({ onSelectionChange } = {}) {
   const [selection, setSelection] = useState({ index: 0, days: null });
   const tabs = useRef([]);
   const program = PROGRAMS[selection.index];
   const startingOption = program.durationOptions.reduce((lowest, option) => option.price < lowest.price ? option : lowest);
   const selectedOption = program.durationOptions.find(option => option.days === selection.days) || startingOption;
   const dailyBottles = selectedOption.bottles / selectedOption.days;
-  const selectProgram = index => setSelection(current => ({ ...current, index }));
+  const updateSelection = next => {
+    setSelection(next);
+    const nextProgram = PROGRAMS[next.index];
+    const option = nextProgram.durationOptions.find(item => item.days === next.days)
+      || nextProgram.durationOptions.reduce((lowest, item) => item.price < lowest.price ? item : lowest);
+    onSelectionChange?.({ key: nextProgram.key, days: option.days });
+  };
+  const selectProgram = index => updateSelection({ ...selection, index });
 
   const handleTabKey = (event, index) => {
     let next;
@@ -63,7 +70,7 @@ export default function DesktopPrograms() {
               <div className="nv-brand-program-length-options">
                 {program.durationOptions.map(option => (
                   <button type="button" key={option.days} aria-pressed={option.days === selectedOption.days}
-                    onClick={() => setSelection(current => ({ ...current, days: option.days }))}>
+                    onClick={() => updateSelection({ ...selection, days: option.days })}>
                     <span className="nv-brand-program-length-title">{option.days} Days{option.days === selectedOption.days && <Check size={16} aria-hidden="true" />}</span>
                     <span className="nv-brand-program-length-bottles">{option.bottles} bottles</span>
                     <strong>${option.price}</strong>

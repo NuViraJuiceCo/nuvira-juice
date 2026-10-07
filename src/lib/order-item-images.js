@@ -1,5 +1,6 @@
 import { findPublicProductFallback } from '@/lib/public-products';
 import { approvedProductMedia } from './approved-product-media.js';
+import { programForOrderItem } from './program-catalog.js';
 
 const PROGRAM_IMAGES = [
   {
@@ -53,7 +54,7 @@ function orderItemIdentifiers(item = {}) {
   ].map(value => String(value || '').trim()).filter(Boolean);
 }
 
-export function resolveOrderItemImageCandidates(item = {}) {
+export function resolveOrderItemImageCandidates(item = {}, { website = false } = {}) {
   const candidates = [];
   const addCandidate = value => {
     const imageUrl = safeImageUrl(value);
@@ -61,6 +62,13 @@ export function resolveOrderItemImageCandidates(item = {}) {
   };
 
   const identifiers = orderItemIdentifiers(item);
+  if (website) {
+    const program = programForOrderItem(item);
+    const blends = program?.durationOptions?.[0]?.bundleComposition || [];
+    const leadBlend = blends.reduce((lead, blend) => !lead || blend.quantity > lead.quantity ? blend : lead, null);
+    addCandidate(approvedProductMedia({ title: leadBlend?.product_name })?.card);
+    addCandidate(program?.image);
+  }
   addCandidate(approvedProductMedia(item)?.card);
   for (const identifier of identifiers) {
     const catalogProduct = findPublicProductFallback(identifier);

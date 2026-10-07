@@ -14,6 +14,7 @@ import { DAILY_PROGRAM_SCHEDULES, PROGRAMS, programOptionForDays } from '../../s
 import { deliveryLandingProducts } from '../../src/lib/localDeliveryShopping.js';
 import { DESKTOP_HERO_STATEMENTS } from '../../src/components/desktop/desktopHeroCopy.js';
 import * as deliveryPolicy from '../../src/lib/delivery-policy.js';
+import { deliveryContinuation } from '../../src/lib/deliveryContinuation.js';
 import { createPreviewHandler, LOCAL_CATALOG } from '../qa/serve-desktop-preview.mjs';
 
 const read = file => fs.readFileSync(file, 'utf8');
@@ -146,9 +147,10 @@ for (const page of ['Delivery', 'Merch', 'WhyNuVira']) {
 }
 checks.push('Goods preserves product identity, pricing, availability, cart handler, loading and waitlist states; all three new layouts are desktop-only');
 assert.match(home, /<ProductCard product=\{product\}/);
-assert.match(home, /<DeliveryAvailabilityCard \/>/);
+assert.match(home, /<DeliveryAvailabilityCard programSelection=\{deliveryProgram\} \/>/);
 assert.match(home, /Minimum 3 juices, 6 shots, or an equivalent mix/);
-assert.match(home, /<DesktopPrograms \/>/);
+assert.match(home, /<DesktopPrograms onSelectionChange=\{setDeliveryProgram\} \/>/);
+assert.ok(home.indexOf('<QuickReorder') < home.indexOf('id="signature"'), 'Returning member appears near the top, not above the footer');
 assert.match(programSelector, /PROGRAMS\.map/);
 assert.match(home, /approvedProductMedia/);
 assert.match(home, /websiteBrandImageProps\(BRAND_IMAGES\.bottlesCoolerWide, \{ website: true \}\)/);
@@ -341,6 +343,13 @@ function findLengthOptions(element) {
 programSelection = { index: 0, days: 2 };
 findLengthOptions(ProgramSelector())[1].props.onClick();
 assert.equal(programSelection.days, 3);
+let continuedProgram;
+findLengthOptions(ProgramSelector({ onSelectionChange: next => { continuedProgram = next; } }))[0].props.onClick();
+assert.equal(continuedProgram.key, 'radiance');
+assert.equal(continuedProgram.days, 2);
+findTabs(ProgramSelector({ onSelectionChange: next => { continuedProgram = next; } }))[2].props.onClick();
+assert.equal(continuedProgram.key, 'reset');
+assert.equal(continuedProgram.days, 3, 'Reset continuation must normalize a previous two-day choice');
 programSelection = { index: 2, days: 2 };
 assert.equal(findLengthOptions(ProgramSelector()).length, 1, 'Reset must not invent a two-day option');
 assert.match(renderToStaticMarkup(React.createElement(ProgramSelector)), /href="\/program\/reset\?days=3"/);
@@ -437,7 +446,7 @@ for (const isNative of [false, true]) for (const isDesktop of [false, true]) {
 checks.push('Cart summary is in-flow only on desktop web; native/tablet/mobile retain the existing portal and safe-area footer, with identical children');
 const Experience = load('src/components/checkout/CheckoutExperience.jsx', {
   react: { ...React, default: React },
-  'lucide-react': Object.fromEntries(['ArrowLeft', 'Check', 'ChevronDown', 'Gift', 'LockKeyhole', 'MapPin'].map(name => [name, empty])),
+  'lucide-react': Object.fromEntries(['ArrowLeft', 'Check', 'ChevronDown', 'Gift', 'LockKeyhole', 'MapPin', 'Pencil'].map(name => [name, empty])),
   '@/components/orders/OrderItemThumbnail': { default: empty },
   '@/hooks/useDesktopStorefront': { default: () => desktop && !native },
   '@/lib/brandImages': { BRAND_IMAGES: { wordmark: '/existing-wordmark.webp' } },
@@ -469,6 +478,50 @@ assert.match(read('src/pages/ProductDetail.jsx'), /productGalleryThumbnail\(imag
 checks.push('Checkout/auth brand hooks exclude native and small viewports; locked checkout stays disabled, totals and original forms stay intact');
 checks.push('Desktop cart reserve space removed, checkout action stays inside its original form, portal styling is explicitly website-scoped, Speed thumbnail path retained');
 checks.push('Desktop cart and event grids explicitly override mobile sibling margins; their gap owns spacing without changing mobile stacks');
+for (const locked of [false, true]) {
+  const html = renderToStaticMarkup(React.createElement(Experience, { items: [], total: 144, paymentReady: true, locked, onEditBenefits: empty, benefits: React.createElement('input', { name: 'discount' }) }));
+  assert.match(html, /fieldset disabled="" class="nv-checkout-slot"/);
+  assert.match(html, locked ? /button type="button" disabled="">Edit Rewards/ : /button type="button">Edit Rewards/);
+  assert.ok(html.indexOf('Edit Rewards') < html.indexOf('name="discount"'), 'Safe edit action precedes locked controls');
+}
+const checkoutStyles = read('src/components/checkout/checkout-experience.css');
+assert.match(checkoutStyles, /\.dark \.nv-checkout-page:not\(\[data-desktop-checkout="true"\]\)/);
+assert.match(css, /\.nv-checkout-page\[data-desktop-checkout="true"\] \{[^}]*--foreground: 158 32% 14%/);
+checks.push('Payment-ready rewards remain protected; visible edit action uses the existing safe cancellation flow and respects checkout locks');
+
+for (const [input, route, label] of [
+  [{}, '/shop', 'Start My Order'],
+  [{ programSelection: { key: 'hydration', days: 2 } }, '/program/hydration?days=2', 'Continue with Hydration'],
+  [{ programSelection: { key: 'radiance', days: 3 } }, '/program/radiance?days=3', 'Continue with Radiance'],
+  [{ programSelection: { key: 'reset', days: 2 } }, '/program/reset?days=3', 'Continue with Reset'],
+  [{ programSelection: { key: 'missing' } }, '/shop', 'Start My Order'],
+  [{ items: [{ category: 'bundle', quantity: 1 }] }, '/cart', 'Continue My Order'],
+  [{ pathname: '/cart', items: [{ category: 'bundle', quantity: 1 }] }, '/checkout', 'Continue to Checkout'],
+  [{ pathname: '/cart', items: [{ category: 'juice', quantity: 1 }] }, '/cart', 'Continue Building My Order'],
+  [{ pathname: '/cart', items: [{ category: 'juice', quantity: -1 }] }, '/cart', 'Continue Building My Order'],
+]) {
+  assert.deepEqual(deliveryContinuation(input), { to: route, label });
+}
+checks.push('ZIP continuation preserves chosen program and duration, existing carts, and item-count minimums');
+
+let orderDismissed = false;
+const Reorder = load('src/components/home/QuickReorder.jsx', {
+  react: { ...React, default: React, useState: () => [orderDismissed, value => { orderDismissed = value; }] },
+  'react-router-dom': { Link: ({ to, children, ...props }) => React.createElement('a', { href: to, ...props }, children) },
+  'lucide-react': { RotateCcw: empty, ChevronRight: empty, X: empty },
+  'framer-motion': { AnimatePresence: 'div', motion: { div: 'div' } },
+  '@/components/orders/OrderItemThumbnail': { default: ({ item }) => React.createElement('img', { alt: item.title }) },
+}).default;
+const recentOrder = { items: [{ title: 'Reset Program (3-Day)' }] };
+const reorderTree = Reorder({ lastOrder: recentOrder, website: true });
+const reorderMarkup = renderToStaticMarkup(reorderTree);
+assert.match(reorderMarkup, /alt="Reset Program \(3-Day\)"/);
+assert.match(reorderMarkup, /href="\/account\/orders"/);
+assert.doesNotMatch(reorderMarkup, /<a[^>]*>[^]*<button[^]*<\/a>/);
+assert.equal(Reorder({ website: true }), null);
+findHeaderElement(reorderTree, node => node.props?.['aria-label'] === 'Dismiss last order').props.onClick({ preventDefault: empty, stopPropagation: empty });
+assert.equal(Reorder({ lastOrder: recentOrder, website: true }), null);
+checks.push('Website last-order panel uses product imagery, separate accessible dismissal, existing order destination, and no order mutation');
 const geometry = { viewport: 1440, documentWidth: 1440, desktop: true, clippedFields: [], eventMargins: ['0px'], checkoutOrder: [], checkoutSections: [], cartCards: [{ top: 100, bottom: 350 }, { top: 100, bottom: 350 }] };
 assert.doesNotThrow(() => assertDesktopGeometry(geometry));
 assert.throws(() => assertDesktopGeometry({ ...geometry, cartCards: [geometry.cartCards[0], { top: 112, bottom: 362 }] }), /top edges/);
@@ -523,7 +576,9 @@ const DeliveryCard = load('src/components/delivery/DeliveryAvailabilityCard.jsx'
   '@/lib/deliveryAvailability': { getDeliveryAvailability: () => null, clearDeliveryAvailability: () => {}, setDeliveryAvailability: () => { savedEligibility++; } },
   '@/lib/preliminaryDeliveryAvailability': { PRELIMINARY_DELIVERY_CHECK_VERSION: 1, classifyPreliminaryDeliveryAvailability: () => { throw new Error('Unexpected classification'); }, restorePreliminaryDeliveryAvailability: () => null },
   '@/components/delivery/WaitlistForm': { default: empty },
-  'react-router-dom': { Link: 'a' },
+  'react-router-dom': { Link: 'a', useLocation: () => ({ pathname: '/' }) },
+  '@/lib/CartContext': { useCart: () => ({ items: [] }) },
+  '@/lib/deliveryContinuation': { deliveryContinuation },
   '@/lib/googleAnalytics': { trackGoogleRetentionEvent: () => { throw new Error('Unexpected measurement'); } },
 }).default;
 function checkButton(element) {
