@@ -21,7 +21,6 @@ import {
   createEncryptedNativeAuthCallbackUrl,
   consumeNativeAuthCallbackUrl,
   getNativeBrowserProviderReturnUrl,
-  getNativeProviderReturnUrl,
   getProviderLoginUrl,
   getStoredBase44Token,
   NATIVE_BROWSER_CALLBACK_MARKER,
@@ -32,7 +31,7 @@ import { createSessionCredentials } from '@/lib/sessionCredentials';
 import { preloadStartupPage } from '@/lib/startupPages';
 import { BRAND_IMAGES } from '@/lib/brandImages';
 import { useAuth } from '@/lib/AuthContext';
-import { sanitizeAuthReturnRoute } from '@/lib/authReturnTo';
+import { getBrowserProviderReturnUrl, sanitizeAuthReturnRoute } from '@/lib/authReturnTo';
 import SEO from '@/components/SEO';
 import {
   GUEST_LOYALTY_ACTIVATION_RETURN_ROUTE,
@@ -197,7 +196,7 @@ export default function NativeLogin() {
         return;
       }
 
-      base44.auth.loginWithProvider(provider, getNativeProviderReturnUrl(returnTo));
+      base44.auth.loginWithProvider(provider, getBrowserProviderReturnUrl(returnTo));
     } catch (error) {
       if (!isCurrentAuthOperation(operation)) return;
       if (error?.code === 'AUTH_CANCELED') {

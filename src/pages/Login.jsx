@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
-import { safeReturnTo } from "@/lib/authReturnTo";
+import { getBrowserProviderReturnUrl, safeReturnTo } from "@/lib/authReturnTo";
 import { prepareGoogleProviderAuthRedirect, trackGoogleLogin } from "@/lib/googleAnalytics";
 import { beginAuthOperation, isCurrentAuthOperation } from "@/lib/authOperation";
 import { createSessionCredentials } from "@/lib/sessionCredentials";
@@ -43,10 +43,15 @@ export default function Login() {
   const handleGoogle = () => {
     beginAuthOperation();
     setLoading(false);
-    base44.auth.loginWithProvider(
-      "google",
-      prepareGoogleProviderAuthRedirect(returnTo, 'login', 'google')
-    );
+    setError("");
+    try {
+      base44.auth.loginWithProvider(
+        "google",
+        getBrowserProviderReturnUrl(prepareGoogleProviderAuthRedirect(returnTo, 'login', 'google'))
+      );
+    } catch (err) {
+      setError(err.message || "Unable to start Google sign-in.");
+    }
   };
 
   return (

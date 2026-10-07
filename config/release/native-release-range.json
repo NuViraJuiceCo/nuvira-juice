@@ -4,6 +4,30 @@
   "included_prs_policy": "derive_from_merge_history_or_fail_when_merge_commits_are_unrepresented",
   "included_prs": [
     {
+      "number": 808,
+      "merge_commit": "306a8dbfda4f456a3d486c4ad9608ffa8ab662cd",
+      "title": "Represent the internal main-branch integration included in reviewed PR #808",
+      "source_pr_url": "https://github.com/NuViraJuiceCo/nuvira-juice/pull/808",
+      "source_pr_head_commit": "306a8dbfda4f456a3d486c4ad9608ffa8ab662cd",
+      "source_pr_merge_commit": "cbb224c81197dd5efd141c968e6d195bd9212522"
+    },
+    {
+      "number": 805,
+      "merge_commit": "60463a3442663901642883ea64cb3e1fdb61219c",
+      "title": "Represent the internal WELCOME10 source integration included in reviewed PR #805",
+      "source_pr_url": "https://github.com/NuViraJuiceCo/nuvira-juice/pull/805",
+      "source_pr_head_commit": "4f07088b388cddbaf1b47df47925d4022ceb5049",
+      "source_pr_merge_commit": "b0127bdca0c1de2127b41966e2203571346eeecf"
+    },
+    {
+      "number": 804,
+      "merge_commit": "8bc2dcf0236107ac6f8a7b244cfa5f98e7abc610",
+      "title": "Represent the internal main-branch sync included in reviewed PR #804",
+      "source_pr_url": "https://github.com/NuViraJuiceCo/nuvira-juice/pull/804",
+      "source_pr_head_commit": "8bc2dcf0236107ac6f8a7b244cfa5f98e7abc610",
+      "source_pr_merge_commit": "c16a90d5f2b243817559e48c746b4fb36d9d0f06"
+    },
+    {
       "number": 790,
       "merge_commit": "0064d5e5afef335b53edbd0d06a8adfd85a8b678",
       "title": "Represent canonical publishing safeguards integrated into reviewed rewards PR #790"

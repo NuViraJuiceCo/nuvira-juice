@@ -9,7 +9,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { toast } from "sonner";
-import { safeReturnTo } from "@/lib/authReturnTo";
+import { getBrowserProviderReturnUrl, safeReturnTo } from "@/lib/authReturnTo";
 import { prepareGoogleProviderAuthRedirect, trackGoogleSignUp } from "@/lib/googleAnalytics";
 import { prepareMetaRegistrationEvent } from "@/lib/metaPixel";
 import { prepareSnapRegistrationEvent } from "@/lib/snapPixel";
@@ -92,10 +92,15 @@ export default function Register() {
   const handleGoogle = () => {
     beginAuthOperation();
     setLoading(false);
-    base44.auth.loginWithProvider(
-      "google",
-      prepareGoogleProviderAuthRedirect(safeReturnTo(), 'sign_up', 'google')
-    );
+    setError("");
+    try {
+      base44.auth.loginWithProvider(
+        "google",
+        getBrowserProviderReturnUrl(prepareGoogleProviderAuthRedirect(safeReturnTo(), 'sign_up', 'google'))
+      );
+    } catch (err) {
+      setError(err.message || "Unable to start Google sign-in.");
+    }
   };
 
   if (showOtp) {
