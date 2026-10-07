@@ -24,7 +24,9 @@ Existing native auth and checkout regression suites remain required.
 Three already-merged internal merge references are recorded for PRs #804,
 #805, and #808 to repair the existing release-manifest failure on main.
 GitHub PR heads, merge commits, and ancestry were checked. The previous native
-release commit and all enforcement rules are unchanged.
+release commit and all enforcement rules are unchanged. Speed PR #810 is
+explicitly excluded at its reviewed exact head with a time-limited
+acknowledgement, following the owner's sign-in-only authorization.
 
 ## Release Boundary
 
