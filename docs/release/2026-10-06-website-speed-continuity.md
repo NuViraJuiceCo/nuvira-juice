@@ -52,3 +52,11 @@ Appflow remains separately held: the full website tree contains earlier native-v
 ## Release limits
 
 Complete browser QA and final-source CI before requesting action-time website publication approval. Preserve the exact prior approved bundle/source for rollback and verify deployed asset parity afterward. No live payment/provider test, physical-device verification, production Core Web Vitals, universal speed improvement or issue-free launch is established here. Follow `change-and-release-runbook.md`; keep website, Appflow, native/store and V3 status separate.
+
+## Reconciliation after the separate browser sign-in release
+
+The preceding metrics are the original speed candidate. A separate website-only sign-in repair subsequently shipped from PR #811, merge `dec1d650d1d2b4cbe4d063f30171aae4a7a4cb40`. Its published entry is `/assets/index-b82w7Qcv.js`, SHA-256 `bb4c3ccb64eaa9a2dedf8a22c81080589ff708c4d3890dfdee55759fb0ccd64d`. The speed branch now incorporates that exact main before any later publication; the old `index-Daj25Dnl.js` speed build must not be deployed over the sign-in repair.
+
+The four sign-in implementation files (`authReturnTo.js`, `NativeLogin.jsx`, `Login.jsx`, `Register.jsx`) are retained byte-for-byte from the released sign-in source. Its browser-provider-return harness joins all three speed harnesses, making the combined critical runner 178 harnesses. The historical native-merge mappings already present on both branches are retained without duplication. Only the temporary acknowledgement excluding this speed PR #810 is removed, because this candidate includes that work; all other acknowledgements, validators, workflows and the previous-released baseline remain unchanged.
+
+Reconciliation requires fresh exact-commit tests, build identity, hosted CI, local smoke, and a rollback copy of the sign-in-fixed release. Current receipts are maintained in `outputs/live-speed-continuity-20261006/after-sso/`. Earlier green results do not substitute for these checks. The desktop redesign remains excluded. No new production, backend, provider, Appflow or store action is authorized by this reconciliation; website publication still requires separate action-time approval.

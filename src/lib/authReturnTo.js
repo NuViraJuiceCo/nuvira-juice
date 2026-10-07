@@ -21,6 +21,26 @@ export function sanitizeAuthReturnRoute(route) {
   }
 }
 
+// Browser sign-in must not return to an OS-associated native callback URL.
+export function getBrowserProviderReturnUrl(returnRoute = '/') {
+  if (typeof document !== 'undefined' && document.querySelector('[data-desktop-preview-badge="true"]')) {
+    throw new Error('Sign-in is unavailable in this local design preview. Please sign in at nuvirajuice.com.');
+  }
+  const route = sanitizeAuthReturnRoute(returnRoute);
+  const origin = window.location.origin;
+  const url = new URL(route, origin);
+  let pathname;
+  try {
+    pathname = decodeURIComponent(url.pathname);
+  } catch {
+    return new URL('/account', origin).toString();
+  }
+  if (/^\/native-(?:login|auth-bridge)(?:\/|$)/i.test(pathname)) {
+    return new URL('/account', origin).toString();
+  }
+  return url.toString();
+}
+
 // Resolve ?returnTo= to a safe same-origin path, else "/".
 //
 // The same-origin check alone is not enough: a value like /.//evil.com or
