@@ -5,7 +5,7 @@
 // Bundle revision: reward-settlement-20260908 (no-cash eligibility; unreleased).
 // Bundle revision: first-order-offer-20260907 (opt-in policy; no offer activation).
 // Read-only deployment proof; POST routing and authorization remain unchanged.
-const ADMIN_PACKAGE_REVISION = '2026-09-09.admin-package-g165-auth-parity';
+const ADMIN_PACKAGE_REVISION = '2026-10-08.admin-inventory-count-parity';
 const REWARD_ROUTE_PACKAGE_REVISION = '2026-09-09.integrated-route-rewards-v8';
 // Bundle revision: g165-production-yield-surplus-20260828.
 // Bundle revision: g127-product-date-batching-multi-event-pos-allocation-20260824.

@@ -9,6 +9,7 @@ import { base44 } from '@/api/base44Client';
 import { isAdminUser } from '@/lib/admin-access';
 import { useAuth } from '@/lib/AuthContext';
 import { unwrapBase44Result } from '@/lib/base44-result';
+import { requireConfirmedAdminWrite } from '@/lib/confirmedAdminWrite';
 import { usePageVisibility } from '@/lib/usePageVisibility';
 import {
   CalendarDays,
@@ -208,7 +209,7 @@ function requestId(prefix) {
   return `${prefix}_${Date.now()}_${randomId}`;
 }
 
-function EventEditor({ event, onClose, onSubmit, pending }) {
+function EventEditor({ event, onClose, onSubmit, pending, error }) {
   const isEdit = Boolean(event?.id);
   const [form, setForm] = useState(() => ({
     title: event?.title || '',
@@ -229,6 +230,10 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
     tags: Array.isArray(event?.tags) && event.tags.length > 0 ? event.tags : ['Community'],
   }));
   const opener = useRef(document.activeElement);
+  const errorRef = useRef(null);
+  React.useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
   const setField = (field, value) => setForm(current => ({ ...current, [field]: value }));
   const welcomeConfigurationReady = !form.event_welcome_enabled || (
     form.time
@@ -243,6 +248,7 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
       <DialogContent onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }} className="sm:max-w-2xl" onEscapeKeyDown={event => { if (pending) event.preventDefault(); }} onInteractOutside={event => event.preventDefault()}>
       <DialogTitle>{isEdit ? 'Edit event' : 'Add event'}</DialogTitle>
       <DialogDescription>Event details. Dates and times use America/Chicago.</DialogDescription>
+      {error && <p ref={errorRef} role="alert" tabIndex={-1} className="nv-admin-form-error">{error} Your entries are still here. Check the event records before retrying to avoid a duplicate.</p>}
       <form
         onSubmit={(submitEvent) => {
           submitEvent.preventDefault();
@@ -412,7 +418,7 @@ export default function AdminEvents() {
       });
       const result = unwrapBase44Result(res);
       if (result?.error) throw new Error(result.error);
-      return result;
+      return requireConfirmedAdminWrite(result);
     },
     onSuccess: async () => {
       setEditorEvent(undefined);
@@ -423,6 +429,10 @@ export default function AdminEvents() {
   const archiveEvent = (event) => {
     if (!window.confirm(`Archive ${event.title || 'this event'}? It will no longer appear as active.`)) return;
     eventMutation.mutate({ operation: 'archive_event', eventId: event.id });
+  };
+  const openEventEditor = event => {
+    eventMutation.reset();
+    setEditorEvent(event);
   };
   const directEventsByKey = useMemo(() => {
     const map = new Map();
@@ -530,7 +540,7 @@ export default function AdminEvents() {
             <AdminStatusPill label={dataSources.native_available ? 'Customer App active' : 'Customer App unavailable'} tone={dataSources.native_available ? 'native' : 'warning'} size="md" />
             <AdminStatusPill label="Native event records" tone="neutral" size="md" />
             {isFetching && <RefreshCw className="h-4 w-4 animate-spin text-primary" />}
-            <button type="button" onClick={() => setEditorEvent({})} className="ml-auto inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground">
+            <button type="button" onClick={() => openEventEditor({})} className="ml-auto inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground">
               <Plus className="h-4 w-4" />
               Add event
             </button>
@@ -584,7 +594,7 @@ export default function AdminEvents() {
           </div>
         )}
 
-        {eventMutation.isError && (
+        {eventMutation.isError && editorEvent === undefined && (
           <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
             <p className="text-sm font-semibold text-destructive">Unable to save event</p>
             <p className="mt-1 text-xs text-muted-foreground">{eventMutation.error?.message || 'Try again later.'}</p>
@@ -612,7 +622,7 @@ export default function AdminEvents() {
               <EventRow
                 key={`${event.id || event.title}-${event.date || event.start_datetime}`}
                 event={event}
-                onEdit={setEditorEvent}
+                onEdit={openEventEditor}
                 onArchive={archiveEvent}
               />
             ))}
@@ -624,6 +634,7 @@ export default function AdminEvents() {
           key={editorEvent?.id || 'new-event'}
           event={editorEvent}
           pending={eventMutation.isPending}
+          error={eventMutation.isError ? eventMutation.error?.message || 'The save could not be confirmed.' : null}
           onClose={() => setEditorEvent(undefined)}
           onSubmit={event => eventMutation.mutate({
             operation: editorEvent?.id ? 'update_event' : 'create_event',

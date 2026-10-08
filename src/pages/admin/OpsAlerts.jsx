@@ -208,7 +208,7 @@ export default function OpsAlerts() {
   const isPageVisible = usePageVisibility();
   const [search, setSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('active');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [pendingAction, setPendingAction] = useState(null);
   const [feedbackByAlert, setFeedbackByAlert] = useState({});
@@ -370,8 +370,8 @@ export default function OpsAlerts() {
                 onChange={event => setStatusFilter(event.target.value)}
                 className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <option value="all">Active Inbox</option>
-                <option value="active">Active</option>
+                <option value="active">Active Inbox</option>
+                <option value="all">All Statuses</option>
                 <option value="open">Open</option>
                 <option value="new">New</option>
                 <option value="unresolved">Unresolved</option>

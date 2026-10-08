@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { deriveInventoryStatus, hasBagSyncError } from '../../base44/functions/getAdminOperationsDashboardSummary/inventoryPolicy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
@@ -44,6 +45,8 @@ function loadHandler({ env = {}, hubData = hubResponse(), hubStatus = 200, fetch
   );
 
   const context = vm.createContext({
+    inventoryStatus: deriveInventoryStatus,
+    hasBagSyncError,
     console,
     URL,
     URLSearchParams,

@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '../..');
 
-const functionPath = path.join(repoRoot, 'base44/functions/getAdminOpsAlertsSummary/entry.ts');
+const functionPath = path.join(repoRoot, 'base44/functions/getAdminOperationsDashboardSummary/handlers/getAdminOpsAlertsSummary/entry.ts');
 const pagePath = path.join(repoRoot, 'src/pages/admin/ReviewQueue.jsx');
 
 const functionSource = fs.readFileSync(functionPath, 'utf8');

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import * as inventoryPolicy from '../../base44/functions/getAdminOperationsDashboardSummary/inventoryPolicy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../..');
@@ -15,6 +16,7 @@ function loadHandler({ env = {}, hubData = hubInventoryResponse() } = {}) {
   source = source.replace('export default async function handler(req: Request)', 'globalThis.__handler = async function handler(req)');
 
   const context = vm.createContext({
+    ...inventoryPolicy,
     console,
     URL,
     URLSearchParams,

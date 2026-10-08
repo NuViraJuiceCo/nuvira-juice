@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { deriveInventoryStatus as inventoryStatus, hasBagSyncError } from '../../inventoryPolicy.js';
 
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
@@ -11,7 +12,6 @@ const G39Q_DELIVERY_COMPLETED_MARKER = 'g39q_delivery_completed_in_range_route_d
 const UNSCHEDULED_NATIVE_ORDER_REVIEW_DAYS = 14;
 const BACKEND_READINESS_MAX_ROWS = 500;
 const BACKEND_READINESS_RECENT_ORDER_WRITE_MINUTES = 60;
-const FOOD_STOCK_EXCLUDED_CATEGORIES = new Set(['produce', 'juice base', 'spices & herbs']);
 
 const G39N_AGGREGATE_SPECS = Object.freeze([
   {
@@ -395,7 +395,7 @@ function sanitizeSummary(summary) {
     orders: sanitizeCountGroup(summary?.orders, ['total', 'paid', 'fulfilled', 'delivered']),
     production: sanitizeCountGroup(summary?.production, ['batch_count', 'planned_units', 'produced_units']),
     delivery: sanitizeCountGroup(summary?.delivery, ['today_stops', 'tomorrow_stops', 'completed_in_range', 'unscheduled']),
-    inventory: sanitizeCountGroup(summary?.inventory, ['low', 'critical', 'out_of_stock', 'demand_based_food', 'stock_tracked']),
+    inventory: sanitizeCountGroup(summary?.inventory, ['low', 'critical', 'out_of_stock', 'count_required', 'sync_error', 'demand_based_food', 'stock_tracked']),
     alerts: sanitizeCountGroup(summary?.alerts, ['active', 'critical', 'warning', 'info']),
     source_mix: sanitizeCountGroup(summary?.source_mix, ['one_time', 'subscription', 'pos', 'other']),
     ops_health: sanitizeCountGroup(summary?.ops_health, ['review_open', 'command_failed', 'command_rejected', 'command_running']),
@@ -1119,14 +1119,16 @@ function inventoryStatusSummaryToDashboardCounts(summary) {
     low: numberOrZero(summary?.low_stock_count),
     critical: numberOrZero(summary?.critical_count),
     out_of_stock: numberOrZero(summary?.out_of_stock_count),
+    count_required: numberOrZero(summary?.count_required_count),
+    sync_error: numberOrZero(summary?.shopify_sync_error_count),
     demand_based_food: numberOrZero(summary?.demand_based_food_count),
     stock_tracked: numberOrZero(summary?.stock_tracked_item_count),
   };
 }
 
 function buildNativeInventoryPolicyOverlay(hubSummary, nativeSummary) {
-  const hubInventory = sanitizeCountGroup(hubSummary?.inventory, ['low', 'critical', 'out_of_stock', 'demand_based_food', 'stock_tracked']);
-  const nativeInventory = sanitizeCountGroup(nativeSummary?.inventory, ['low', 'critical', 'out_of_stock', 'demand_based_food', 'stock_tracked']);
+  const hubInventory = sanitizeCountGroup(hubSummary?.inventory, ['low', 'critical', 'out_of_stock', 'count_required', 'sync_error', 'demand_based_food', 'stock_tracked']);
+  const nativeInventory = sanitizeCountGroup(nativeSummary?.inventory, ['low', 'critical', 'out_of_stock', 'count_required', 'sync_error', 'demand_based_food', 'stock_tracked']);
   const nativeHasInventoryPolicy = nativeInventory.stock_tracked > 0 || nativeInventory.demand_based_food > 0;
   return {
     applied: nativeHasInventoryPolicy,
@@ -1254,21 +1256,6 @@ function isInternalTestReviewQueueItem(row) {
   if (row?.is_test_record === true || row?.is_test_order === true || row?.internal_test === true) return true;
   const orderRef = normalizeOrderNumber(row?.existing_order_number || row?.order_number || row?.shopify_order_number);
   return orderRef.startsWith('nv-test-') || orderRef.includes('-test-');
-}
-
-function isFoodInventoryItem(item) {
-  return FOOD_STOCK_EXCLUDED_CATEGORIES.has(normalizeLower(item?.category));
-}
-
-function inventoryStatus(item) {
-  if (isFoodInventoryItem(item)) return 'demand_based';
-  const stock = Number(item?.stock);
-  const reorderPoint = Number(item?.reorder_point);
-  if (!Number.isFinite(stock)) return 'unknown';
-  if (stock <= 0) return 'out_of_stock';
-  if (Number.isFinite(reorderPoint) && reorderPoint > 0 && stock <= reorderPoint * 0.5) return 'critical';
-  if (Number.isFinite(reorderPoint) && reorderPoint > 0 && stock <= reorderPoint) return 'low';
-  return 'ok';
 }
 
 async function listEntity(base44, entityName, sort, limit = 500) {
@@ -1728,8 +1715,9 @@ async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, 
     ...complianceAlerts,
   ].filter(alert => inRange(alertDate(alert), dateFrom, dateTo)).filter(isActiveAlert);
 
-  const inventoryCounts = { low: 0, critical: 0, out_of_stock: 0, demand_based_food: 0, stock_tracked: 0 };
+  const inventoryCounts = { low: 0, critical: 0, out_of_stock: 0, count_required: 0, sync_error: 0, demand_based_food: 0, stock_tracked: 0 };
   for (const item of inventoryItems) {
+    if (hasBagSyncError(item)) inventoryCounts.sync_error += 1;
     const status = inventoryStatus(item);
     if (status === 'demand_based') {
       inventoryCounts.demand_based_food += 1;
@@ -1739,6 +1727,7 @@ async function loadNativeOperationsDashboardContext(base44, { dateFrom, dateTo, 
     if (status === 'low') inventoryCounts.low += 1;
     if (status === 'critical') inventoryCounts.critical += 1;
     if (status === 'out_of_stock') inventoryCounts.out_of_stock += 1;
+    if (status === 'count_required') inventoryCounts.count_required += 1;
   }
 
   const sourceMix = { one_time: 0, subscription: 0, pos: 0, other: 0 };

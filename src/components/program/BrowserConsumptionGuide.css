@@ -1,0 +1,37 @@
+[data-desktop-brand="true"] .nv-consumption-guide { min-width: 0; color: var(--nv-program-title); }
+[data-desktop-brand="true"] .nv-guide-heading h2 { margin: 6px 0 10px; font-family: var(--font-heading); font-size: 28px; line-height: 1.2; font-weight: var(--nv-title-weight); }
+[data-desktop-brand="true"] .nv-guide-eyebrow { color: var(--nv-program-accent); font-size: 12px; font-weight: 600; }
+[data-desktop-brand="true"] .nv-guide-heading > p:last-child { max-width: 65ch; color: #506056; font-size: 14px; line-height: 1.6; }
+[data-desktop-brand="true"] .nv-guide-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin-top: 22px; padding-bottom: 16px; border-bottom: 1px solid #d5e1db; }
+[data-desktop-brand="true"] .nv-guide-day-tabs { height: auto; padding: 4px; gap: 4px; border-radius: 8px; background: #eff3f0; }
+[data-desktop-brand="true"] .nv-guide-day-tabs [role="tab"] { min-height: 40px; min-width: 68px; padding: 8px 14px; border-radius: 5px; color: #506056; font-size: 14px; box-shadow: none; }
+[data-desktop-brand="true"] .nv-guide-day-tabs [role="tab"][data-state="active"] { background: var(--nv-program-accent); color: #fff; }
+[data-desktop-brand="true"] .nv-guide-day-tabs [role="tab"]:focus-visible { outline: 2px solid var(--nv-program-accent); outline-offset: 3px; }
+[data-desktop-brand="true"] .nv-guide-toolbar > p { color: #506056; font-size: 13px; }
+[data-desktop-brand="true"] .nv-guide-toolbar > p span { margin-inline: 5px; }
+[data-desktop-brand="true"] .nv-guide-day { margin: 0; }
+[data-desktop-brand="true"] .nv-guide-pairing { display: flex; align-items: center; gap: 12px; min-height: 84px; padding-block: 16px; }
+[data-desktop-brand="true"] .nv-guide-pairing > svg { flex: 0 0 20px; width: 20px; height: 20px; color: var(--nv-program-accent); }
+[data-desktop-brand="true"] .nv-guide-pairing strong { font-size: 14px; line-height: 1.5; font-weight: 600; }
+[data-desktop-brand="true"] .nv-guide-pairing p { margin-top: 3px; color: #506056; font-size: 13px; line-height: 1.5; }
+[data-desktop-brand="true"] .nv-guide-timeline { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; list-style: none; padding: 0; margin: 0; }
+[data-desktop-brand="true"] .nv-guide-stop { min-width: 0; padding: 16px; border: 1px solid #d5e1db; border-radius: 8px; background: #f8faf8; }
+[data-desktop-brand="true"] .nv-guide-stop-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin-bottom: 14px; font-size: 13px; line-height: 1.5; }
+[data-desktop-brand="true"] .nv-guide-stop-heading > span:first-child { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+[data-desktop-brand="true"] .nv-guide-stop-heading svg { flex-shrink: 0; width: 18px; height: 18px; }
+[data-desktop-brand="true"] .nv-guide-time { color: #506056; white-space: nowrap; font-variant-numeric: tabular-nums; }
+[data-desktop-brand="true"] .nv-guide-bottle { display: flex; align-items: center; gap: 16px; }
+[data-desktop-brand="true"] .nv-guide-bottle img { flex-shrink: 0; width: 72px; height: 88px; object-fit: cover; border-radius: 4px; }
+[data-desktop-brand="true"] .nv-guide-bottle > div { min-width: 0; }
+[data-desktop-brand="true"] .nv-guide-bottle-number { color: #506056; font-size: 12px; }
+[data-desktop-brand="true"] .nv-guide-bottle h3 { margin: 3px 0; font-size: 23px; line-height: 1.2; font-weight: var(--nv-title-weight); }
+[data-desktop-brand="true"] .nv-guide-bottle p { color: #506056; font-size: 13px; line-height: 1.5; }
+[data-desktop-brand="true"] .nv-guide-storage { display: flex; align-items: flex-start; gap: 10px; margin: 20px 0 0; padding-top: 16px; border-top: 1px solid #d5e1db; color: #506056; font-size: 13px; line-height: 1.6; }
+[data-desktop-brand="true"] .nv-guide-storage svg { flex: 0 0 18px; width: 18px; height: 18px; margin-top: 2px; color: var(--nv-program-accent); }
+@media (max-width: 600px) {
+  [data-desktop-brand="true"] .nv-guide-heading h2 { font-size: 25px; }
+  [data-desktop-brand="true"] .nv-guide-timeline { grid-template-columns: minmax(0,1fr); gap: 10px; }
+  [data-desktop-brand="true"] .nv-guide-stop { padding: 14px; }
+  [data-desktop-brand="true"] .nv-guide-bottle img { width: 64px; height: 78px; }
+  [data-desktop-brand="true"] .nv-program-how .nv-program-steps { grid-template-columns: 1fr; }
+}

@@ -93,9 +93,9 @@ const sections = [
       {
         title: 'Inventory Status',
         route: '/admin/inventory-status',
-        description: 'Read-only stock levels, reorder health, suppliers, and storage locations.',
+        description: 'Stock levels, verified counts, reorder health, suppliers, and storage locations.',
         icon: Package,
-        badges: ['Read-only', 'Source-backed'],
+        badges: ['Verified counts', 'Source-backed'],
       },
       {
         title: 'Compliance Ops',
@@ -301,7 +301,9 @@ function topCountEntries(map = {}, limit = 3) {
 function inventoryDiagnosticCount(inventory = {}) {
   return Number(inventory.low || 0)
     + Number(inventory.critical || 0)
-    + Number(inventory.out_of_stock || 0);
+    + Number(inventory.out_of_stock || 0)
+    + Number(inventory.count_required || 0)
+    + Number(inventory.sync_error || 0);
 }
 
 function validateRange(from, to) {
@@ -435,7 +437,7 @@ function buildTodayRunway(summary) {
         : activeAlerts > 0
           ? 'Review sanitized ops alerts.'
           : inventoryDiagnostics > 0
-            ? `${formatNumber(inventoryDiagnostics)} stock reference rows need cleanup before counts are authoritative.`
+            ? inventoryActionDetail(inventory)
             : 'No active alerts in this snapshot.',
       route: opsIssueCount > 0
         ? (Number(opsHealth.review_open || 0) > 0 ? '/admin/review-queue' : '/admin/audit-trail')
@@ -454,12 +456,16 @@ function inventoryActionDetail(inventory) {
   const critical = Number(inventory.critical || 0);
   const low = Number(inventory.low || 0);
   const out = Number(inventory.out_of_stock || 0);
+  const pending = Number(inventory.count_required || 0);
+  const syncErrors = Number(inventory.sync_error || 0);
   const parts = [
+    pending > 0 ? `${formatNumber(pending)} awaiting verified counts` : null,
     critical > 0 ? `${formatNumber(critical)} critical` : null,
     low > 0 ? `${formatNumber(low)} low` : null,
-    out > 0 ? `${formatNumber(out)} out` : null,
+    out > 0 ? `${formatNumber(out)} out of stock` : null,
+    syncErrors > 0 ? `${formatNumber(syncErrors)} sync errors` : null,
   ].filter(Boolean);
-  return `${parts.join(' · ')} reference row${parts.length === 1 ? '' : 's'} · diagnostic until stock policy is approved`;
+  return parts.join(' · ');
 }
 
 function TodayRunway({ summary }) {
@@ -580,17 +586,17 @@ function OperationsPulse({ summary }) {
       />
       <PulseCard
         label="Watchlist"
-        value={exceptionCount > 0 ? formatNumber(exceptionCount) : 'Clear'}
+        value={exceptionCount > 0 ? formatNumber(exceptionCount) : inventoryDiagnostics > 0 ? 'Inventory review' : 'Clear'}
         detail={exceptionCount > 0
           ? `${formatNumber(unscheduledStops)} unscheduled delivery · ${formatNumber(openReview)} review · ${formatNumber(commandIssues)} command · ${formatNumber(activeAlerts)} alerts`
           : inventoryDiagnostics > 0
-            ? `${formatNumber(orders.total)} orders · inventory reference setup still open`
+            ? `${formatNumber(orders.total)} orders · inventory needs attention`
             : `${formatNumber(orders.total)} orders in this range · no active alerts`}
         route={exceptionCount > 0
           ? (unscheduledStops > 0 ? '/admin/delivery-queue' : openReview > 0 ? '/admin/review-queue' : commandIssues > 0 ? '/admin/audit-trail' : '/admin/ops-alerts')
           : inventoryDiagnostics > 0 ? '/admin/inventory-status' : '/admin/orders'}
         icon={exceptionCount > 0 ? AlertTriangle : Activity}
-        tone={exceptionCount > 0 ? 'warning' : 'success'}
+        tone={exceptionCount > 0 || inventoryDiagnostics > 0 ? 'warning' : 'success'}
       />
     </section>
   );
@@ -808,10 +814,12 @@ function DetailedSnapshotMetrics({ summary, isFetching }) {
           <SnapshotMetricCard label="Completed In Range" value={summary.delivery?.completed_in_range} tone="success" />
         </SnapshotGroup>
 
-        <SnapshotGroup title="Inventory Setup" description="Diagnostic stock references only until inventory policy is approved">
+        <SnapshotGroup title="Inventory" description="Pending counts are separate from verified stock alerts">
+          <SnapshotMetricCard label="Counts Needed" value={summary.inventory?.count_required} tone="info" />
           <SnapshotMetricCard icon={AlertTriangle} label="Low" value={summary.inventory?.low} tone="warning" />
           <SnapshotMetricCard label="Critical" value={summary.inventory?.critical} tone="warning" />
           <SnapshotMetricCard label="Out Of Stock" value={summary.inventory?.out_of_stock} tone="warning" />
+          <SnapshotMetricCard label="Sync Errors" value={summary.inventory?.sync_error} tone="warning" />
         </SnapshotGroup>
 
         <SnapshotGroup title="Alerts" description="Active sanitized ops alerts">
@@ -862,6 +870,7 @@ function MobileOperationsSnapshot({ summary, isLoading, showError, onExpand }) {
   const production = summary.production || {};
   const delivery = summary.delivery || {};
   const alerts = summary.alerts || {};
+  const inventoryDiagnostics = inventoryDiagnosticCount(summary.inventory);
   const opsHealth = summary.ops_health || {};
   const watchCount = Number(delivery.unscheduled || 0)
     + Number(alerts.active || 0)
@@ -875,7 +884,7 @@ function MobileOperationsSnapshot({ summary, isLoading, showError, onExpand }) {
       ? '/admin/review-queue'
       : watchCount > 0
         ? '/admin/ops-alerts'
-        : '/admin/orders';
+        : inventoryDiagnostics > 0 ? '/admin/inventory-status' : '/admin/orders';
   const loadingValue = isLoading ? '...' : showError ? 'Check' : null;
 
   return (
@@ -919,9 +928,9 @@ function MobileOperationsSnapshot({ summary, isLoading, showError, onExpand }) {
         />
         <MobileSnapshotMetric
           label="Watch"
-          value={loadingValue || (watchCount > 0 ? formatNumber(watchCount) : 'Clear')}
+          value={loadingValue || (watchCount > 0 ? formatNumber(watchCount) : inventoryDiagnostics > 0 ? 'Inventory' : 'Clear')}
           route={watchRoute}
-          tone={watchCount > 0 ? 'warning' : 'success'}
+          tone={watchCount > 0 || inventoryDiagnostics > 0 ? 'warning' : 'success'}
         />
       </div>
     </section>
