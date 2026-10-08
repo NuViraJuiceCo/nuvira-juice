@@ -102,12 +102,17 @@ await test('actual Checkout reward-completion callback only clears cart and open
   });
   callback(); assert.deepEqual(calls, ['remove:nuvira_pending_checkout_session', 'clear', '/order-confirmation?order_number=NV-SYNTHETIC']);
 });
-function cancelFixture(result, throwing = false) {
+function cancelFixture(result, throwing = false, state = {}) {
   const node = find(n => ts.isJsxElement(n) && n.openingElement.tagName.getText(tree) === 'button'
     && n.children.some(child => ts.isJsxText(child) && child.text.includes('Edit order details')));
   const attribute = node.openingElement.attributes.properties.find(p => p.name?.getText(tree) === 'onClick');
+  assert.equal(attribute.initializer.expression.getText(tree), 'handleEditOrderDetails');
+  const experience = find(n => ts.isJsxOpeningElement(n) && n.tagName.getText(tree) === 'CheckoutExperience');
+  assert.equal(experience.attributes.properties.find(p => p.name?.getText(tree) === 'onEditBenefits').initializer.expression.getText(tree), 'handleEditOrderDetails');
+  const handler = find(n => ts.isVariableDeclaration(n) && n.name.getText(tree) === 'handleEditOrderDetails');
   const calls = []; const ref = { current: false }; const key = { current: 'old-attempt' };
-  const callback = vm.runInNewContext(`(${attribute.initializer.expression.getText(tree)})`, {
+  const callback = vm.runInNewContext(`(${handler.initializer.getText(tree)})`, {
+    isSubmitting: false, checkoutStartLocked: false,
     rewardCheckoutSessionId: sessionId, checkoutAttemptInFlightRef: ref, checkoutIdempotencyKey: key,
     forgetRewardAttempt: () => calls.push('forget-attempt'),
     setIsSubmitting: value => calls.push(`submitting:${value}`),
@@ -116,6 +121,8 @@ function cancelFixture(result, throwing = false) {
     setPendingOrderNumber: value => calls.push(`order:${value}`),
     setConfirmedDeliverySchedule: value => calls.push(`schedule:${value}`),
     setRouteCheckout: () => {},
+    setCheckoutStartLockedSafely: value => calls.push(`locked:${value}`),
+    setPaidRecovery: value => calls.push(`recover:${value.attempt.attempt_key}`),
     refreshCheckoutPoints: async () => calls.push('refresh-points'),
     crypto: { randomUUID: () => 'new-attempt' },
     toast: { error: () => calls.push('error') },
@@ -124,6 +131,7 @@ function cancelFixture(result, throwing = false) {
       assert.equal(payload.checkout_session_id, sessionId); calls.push('cancel');
       if (throwing) throw new Error('synthetic'); return { data: result };
     } } },
+    ...state,
   });
   return { callback, calls, ref, key };
 }
@@ -143,6 +151,16 @@ for (const [name, result, throwing] of [
 await test('actual edit callback ignores double taps while cancellation is in flight', async () => {
   const f = cancelFixture({ ok: true, checkout_session_expired: true, reward_reservation_released: true });
   await Promise.all([f.callback(), f.callback()]); assert.equal(f.calls.filter(value => value === 'cancel').length, 1);
+});
+for (const state of [{ isSubmitting: true }, { checkoutStartLocked: true }]) await test('both edit entry points remain blocked during checkout preparation', async () => {
+  const f = cancelFixture({}, false, state);
+  await f.callback(); assert.deepEqual(f.calls, []);
+});
+await test('paid edit entry point delegates to existing recovery without dropping payment identity or re-preparing', async () => {
+  const f = cancelFixture({}, false, { rewardCheckoutSessionId: null, paidAttemptRef: { current: { attempt_key: 'paid-attempt' } } });
+  await f.callback();
+  assert.deepEqual(f.calls, ['secret:null', 'locked:true', 'recover:paid-attempt']);
+  assert.equal(f.key.current, 'old-attempt');
 });
 const recovery = { kind: 'reward_no_payment', checkout_session_id: sessionId, order_number: 'NV-SYNTHETIC' };
 await test('recovery hint accepts only the typed failure and bounded non-secret identity', () => {

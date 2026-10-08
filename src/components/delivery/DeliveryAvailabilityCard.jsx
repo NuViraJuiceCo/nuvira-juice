@@ -13,10 +13,15 @@ import {
   restorePreliminaryDeliveryAvailability,
 } from '@/lib/preliminaryDeliveryAvailability';
 import WaitlistForm from '@/components/delivery/WaitlistForm';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { trackGoogleRetentionEvent } from '@/lib/googleAnalytics';
+import { useCart } from '@/lib/cartContext';
+import { deliveryContinuation } from '@/lib/deliveryContinuation';
 
-export default function DeliveryAvailabilityCard() {
+export default function DeliveryAvailabilityCard({ programSelection } = {}) {
+  const { items } = useCart();
+  const { pathname } = useLocation();
+  const continuation = deliveryContinuation({ items, pathname, programSelection });
   const [zip, setZip] = useState('');
   const [status, setStatus] = useState('idle'); // idle | checking | eligible | ineligible | error
   const [showWaitlist, setShowWaitlist] = useState(false);
@@ -144,10 +149,8 @@ export default function DeliveryAvailabilityCard() {
                 </div>
               </div>
               <div className="nv-home-delivery-result-actions flex gap-2 mt-4">
-                <Link to="/shop" className="flex-1">
-                  <button className="w-full h-10 rounded-xl nuvira-gradient-button text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
-                    Start My Order <ArrowRight className="w-4 h-4" />
-                  </button>
+                <Link to={continuation.to} className="flex-1 min-h-10 px-3 py-2 rounded-xl nuvira-gradient-button text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-transform">
+                  {continuation.label} <ArrowRight className="w-4 h-4 shrink-0" />
                 </Link>
                 <button
                   onClick={handleReset}

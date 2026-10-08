@@ -18,6 +18,7 @@ const FLAVORS = {
 };
 
 export default function DesktopHome({ products, lastOrder, hasMember }) {
+  const [deliveryProgram, setDeliveryProgram] = React.useState(null);
   const { hash } = useLocation();
   const headline = desktopHeroStatement();
   React.useEffect(() => {
@@ -47,6 +48,8 @@ export default function DesktopHome({ products, lastOrder, hasMember }) {
 
       <div className="nv-brand-promise-strip"><span>Cold-pressed in small batches</span><span>Real fruits & vegetables</span><span>Local delivery, thoughtfully planned</span></div>
 
+      {hasMember && <div className="nv-brand-member nv-brand-width" aria-label="Your NuVira orders and program"><QuickReorder lastOrder={lastOrder} website /><ActiveProgramJourneyCard enabled={hasMember} /></div>}
+
       <section id="signature" className="nv-brand-section nv-brand-width" aria-labelledby="nv-signature-heading">
         <div className="nv-brand-section-heading"><div><p className="nv-brand-eyebrow">The Signature Collection</p><h2 id="nv-signature-heading">A taste for the everyday.</h2><p className="nv-brand-section-description">Sun-bright citrus. Cool watermelon. Crisp, clean greens.</p></div><Link className="nv-brand-text-link" to="/shop">Shop All Juices & Shots <ArrowUpRight size={18} aria-hidden="true" /></Link></div>
         <div className="nv-brand-signature-grid">{signature.map(product => {
@@ -56,11 +59,11 @@ export default function DesktopHome({ products, lastOrder, hasMember }) {
         <div className="nv-brand-minimum-note"><p>Minimum 3 juices, 6 shots, or an equivalent mix. Delivery fees and area minimums apply.</p><Link to="/delivery.html">Delivery Details <ArrowRight size={16} aria-hidden="true" /></Link></div>
       </section>
 
-      <DesktopPrograms />
+      <DesktopPrograms onSelectionChange={setDeliveryProgram} />
 
       <section id="delivery" className="nv-brand-section nv-brand-width nv-brand-delivery" aria-labelledby="nv-delivery-heading">
         <div><p className="nv-brand-eyebrow">From Wentzville, With Care</p><h2 id="nv-delivery-heading">Fresh juice.<br />Closer to home.</h2><p className="nv-brand-body">We make your juice in small batches and deliver on planned local routes. Check your area, build your mix, and choose an available delivery date at checkout.</p><Link className="nv-brand-text-link" to="/delivery.html">How Delivery Works <ArrowRight size={17} aria-hidden="true" /></Link></div>
-        <div className="nv-brand-delivery-tool"><div className="nv-brand-delivery-location"><MapPin size={20} aria-hidden="true" /><span>Wentzville & Greater St. Louis</span></div><DeliveryAvailabilityCard /></div>
+        <div className="nv-brand-delivery-tool"><div className="nv-brand-delivery-location"><MapPin size={20} aria-hidden="true" /><span>Wentzville & Greater St. Louis</span></div><DeliveryAvailabilityCard programSelection={deliveryProgram} /></div>
       </section>
 
       <section id="community" className="nv-brand-community" aria-labelledby="nv-community-heading">
@@ -89,7 +92,6 @@ export default function DesktopHome({ products, lastOrder, hasMember }) {
 
       <section className="nv-brand-perks nv-brand-width"><div><p className="nv-brand-eyebrow">Stay Connected</p><h2>More From NuVira</h2></div><Link to="/rewards"><span>Rewards</span><p>Make every order count.</p><ArrowUpRight size={20} aria-hidden="true" /></Link><Link to="/return-reward"><span>Return + Reward</span><p>A fresh reason to return.</p><ArrowUpRight size={20} aria-hidden="true" /></Link><Link to="/merch"><span>NuVira Goods</span><p>Take the good with you.</p><ArrowUpRight size={20} aria-hidden="true" /></Link></section>
 
-      {hasMember && <section className="nv-brand-member nv-brand-width" aria-label="Your NuVira orders and program"><QuickReorder lastOrder={lastOrder} /><ActiveProgramJourneyCard enabled={hasMember} /></section>}
     </div>
   );
 }

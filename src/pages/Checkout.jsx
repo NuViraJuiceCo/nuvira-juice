@@ -1126,6 +1126,39 @@ function CheckoutFlow() {
     );
   }
 
+  const handleEditOrderDetails = async () => {
+    if (isSubmitting || checkoutStartLocked) return;
+    if (!rewardCheckoutSessionId && paidAttemptRef.current) {
+      setClientSecret(null);
+      setCheckoutStartLockedSafely(true);
+      setPaidRecovery({ attempt: paidAttemptRef.current });
+      return;
+    }
+    if (rewardCheckoutSessionId) {
+      if (checkoutAttemptInFlightRef.current) return;
+      checkoutAttemptInFlightRef.current = true;
+      setIsSubmitting(true);
+      try {
+        const result = await base44.functions.invoke('createPaymentIntent', {
+          mode: 'cancel_reward_checkout', checkout_session_id: rewardCheckoutSessionId,
+        });
+        if (result.data?.ok !== true || (result.data.checkout_session_expired !== true && result.data.route_review_cancelled !== true)
+          || result.data.reward_reservation_released !== true) throw new Error('cancel_unconfirmed');
+        forgetRewardAttempt();
+        checkoutIdempotencyKey.current = crypto.randomUUID();
+        setRewardCheckoutSessionId(null);
+        await refreshCheckoutPoints();
+      } catch {
+        toast.error('We could not confirm cancellation. Check your orders before starting another checkout.');
+        return;
+      } finally {
+        checkoutAttemptInFlightRef.current = false;
+        setIsSubmitting(false);
+      }
+    }
+    setClientSecret(null); setPendingOrderNumber(null); setConfirmedDeliverySchedule(null); setRouteCheckout(null);
+  };
+
   const contactReady = isValidCheckoutEmail(normalizedCustomerEmail) && Boolean(normalizeNamePart(firstName) && normalizeNamePart(lastName) && phone.trim());
   const routeReview = zoneEligibility?.zone_type === 'route_review' && zoneEligibility?.checkout_allowed;
   const deliveryReady = Boolean(routeReview || (addressValidated && zoneEligibility?.checkout_allowed && selectedDeliveryOption?.option_id));
@@ -1144,6 +1177,7 @@ function CheckoutFlow() {
       deliveryReady={deliveryReady}
       deliveryMessage={validatingAddress ? 'Checking your delivery address…' : addressValidationError || zoneEligibility?.customer_message || 'Enter your address and choose an available delivery window to continue.'}
       onBack={() => navigate('/cart')}
+      onEditBenefits={handleEditOrderDetails}
       benefitsLabel={user?.email && availablePoints >= 100 ? `Save up to $${maxDiscount.toFixed(2)} with points · Offers` : 'Rewards & discount code'}
       summary={<>
 {/* Order Summary */}
@@ -1617,38 +1651,8 @@ function CheckoutFlow() {
             }}
           />}
           <button
-            disabled={isSubmitting}
-            onClick={async () => {
-              if (!rewardCheckoutSessionId && paidAttemptRef.current) {
-                setClientSecret(null);
-                setCheckoutStartLockedSafely(true);
-                setPaidRecovery({ attempt: paidAttemptRef.current });
-                return;
-              }
-              if (rewardCheckoutSessionId) {
-                if (checkoutAttemptInFlightRef.current) return;
-                checkoutAttemptInFlightRef.current = true;
-                setIsSubmitting(true);
-                try {
-                  const result = await base44.functions.invoke('createPaymentIntent', {
-                    mode: 'cancel_reward_checkout', checkout_session_id: rewardCheckoutSessionId,
-                  });
-                  if (result.data?.ok !== true || (result.data.checkout_session_expired !== true && result.data.route_review_cancelled !== true)
-                    || result.data.reward_reservation_released !== true) throw new Error('cancel_unconfirmed');
-                  forgetRewardAttempt();
-                  checkoutIdempotencyKey.current = crypto.randomUUID();
-                  setRewardCheckoutSessionId(null);
-                  await refreshCheckoutPoints();
-                } catch {
-                  toast.error('We could not confirm cancellation. Check your orders before starting another checkout.');
-                  return;
-                } finally {
-                  checkoutAttemptInFlightRef.current = false;
-                  setIsSubmitting(false);
-                }
-              }
-              setClientSecret(null); setPendingOrderNumber(null); setConfirmedDeliverySchedule(null); setRouteCheckout(null);
-            }}
+            disabled={isSubmitting || checkoutStartLocked}
+            onClick={handleEditOrderDetails}
             className="w-full text-center text-xs text-muted-foreground underline mt-3"
           >
             ← Edit order details

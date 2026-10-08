@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, Gift, LockKeyhole, MapPin } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Gift, LockKeyhole, MapPin, Pencil } from 'lucide-react';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import useDesktopStorefront from '@/hooks/useDesktopStorefront';
 import { BRAND_IMAGES } from '@/lib/brandImages';
@@ -41,7 +41,7 @@ export function CheckoutAction({ children }) {
 export default function CheckoutExperience({
   children, items, total, paymentReady, rewardOnly = false, locked, memberReady, contactReady,
   contactSummary, deliverySummary, deliveryReady, deliveryMessage,
-  onBack, summary, benefits, benefitsLabel, guest, contact, delivery, payment,
+  onBack, onEditBenefits, summary, benefits, benefitsLabel, guest, contact, delivery, payment,
 }) {
   const desktop = useDesktopStorefront();
   const [step, setStep] = useState(0);
@@ -124,8 +124,11 @@ export default function CheckoutExperience({
             </details>
             <details className="nv-checkout-benefits">
               <summary><Gift size={16} aria-hidden="true" /><span>{benefitsLabel}</span><ChevronDown size={14} aria-hidden="true" /></summary>
+              {paymentReady && <div className="nv-checkout-benefits-edit">
+                <p className="nv-checkout-note">Want to use points or a code? Return to order details before paying. We will first check that your current payment can be safely closed.</p>
+                {onEditBenefits && <button type="button" disabled={locked} onClick={onEditBenefits}><Pencil size={15} aria-hidden="true" />Edit Rewards &amp; Code</button>}
+              </div>}
               <fieldset disabled={locked || paymentReady} className="nv-checkout-slot">{benefits}</fieldset>
-              {paymentReady && <p className="nv-checkout-note">To change rewards or a code, choose Edit order details below.</p>}
             </details>
           </section>
           {guest && <details className="nv-checkout-guest"><summary>No account needed · Earn rewards on this order <ChevronDown size={14} /></summary><div className="nv-checkout-slot">{guest}</div></details>}

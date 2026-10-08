@@ -74,6 +74,10 @@ const isolatedRequire = name => name === 'react' ? {
 const module = { exports: {} };
 new Function('require', 'module', 'exports', bundled.outputFiles[0].text)(isolatedRequire, module, module.exports);
 const { productCardImage, resolveOrderItemImageCandidates, ProductPhoto } = module.exports;
+assert.equal(resolveOrderItemImageCandidates({ title: 'Reset Program (3-Day)' }, { website: true })[0], approvedProductMedia({ title: 'RE-NU' }).card);
+assert.equal(resolveOrderItemImageCandidates({ title: 'Radiance Program (2-Day)' }, { website: true })[0], approvedProductMedia({ title: 'AURA' }).card);
+assert.equal(resolveOrderItemImageCandidates({ title: 'Hydration Program (3-Day)' }, { website: true })[0], approvedProductMedia({ title: 'OASIS' }).card);
+assert.match(resolveOrderItemImageCandidates({ title: 'Reset Program (3-Day)' })[0], /^https:\/\/media\.base44\.com/);
 
 check('all three exact identities map to their own distinct approved media', () => {
   for (const target of targets) {
