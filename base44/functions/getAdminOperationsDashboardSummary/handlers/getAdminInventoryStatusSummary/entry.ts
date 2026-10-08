@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { COUNT_STATUSES, isFoodInventoryItem, hasBagSyncError, rawThresholdStatus, countStatus, deriveInventoryStatus } from '../../inventoryPolicy.js';
 
 const HUB_API_URL = Deno.env.get('HUB_API_URL');
 const CUSTOMER_APP_SYNC_SECRET = Deno.env.get('CUSTOMER_APP_SYNC_SECRET');
@@ -7,8 +8,6 @@ const SHOPIFY_API_VERSION = '2026-07';
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 100;
 const VALID_STATUSES = new Set(['ok', 'low', 'critical', 'out_of_stock', 'demand_based', 'count_required', 'sync_error']);
-const FOOD_STOCK_EXCLUDED_CATEGORIES = new Set(['produce', 'juice base', 'spices & herbs']);
-const FOOD_STOCK_EXCLUDED_ITEMS = new Set(['honey']);
 const INVENTORY_MIGRATION_OPERATIONS = new Set(['preview_non_food_import', 'execute_non_food_import']);
 const INVENTORY_ITEM_OPERATIONS = new Set(['create_native_item', 'update_native_item']);
 const SHOPIFY_INVENTORY_OPERATIONS = new Set([
@@ -21,7 +20,6 @@ const SHOPIFY_INVENTORY_OPERATIONS = new Set([
 const INVENTORY_UNITS = new Set(['lbs', 'g', 'L', 'mL', 'units', 'cases', 'bottles']);
 const INVENTORY_CATEGORIES = new Set(['Produce', 'Juice Base', 'Spices & Herbs', 'Packaging', 'Supplies', 'Other']);
 const INVENTORY_KINDS = new Set(['ingredient', 'label', 'bag', 'packaging', 'supply', 'other']);
-const COUNT_STATUSES = new Set(['pending_count', 'verified']);
 const SUPPLIER_PACKAGING_UNITS = new Set(['case', 'bunch', 'lb', 'kg', 'count', 'box', 'bag', 'other']);
 
 async function readJsonBody(req) {
@@ -136,34 +134,6 @@ function mergeSummary(a, b) {
   });
 }
 
-function isFoodInventoryItem(item) {
-  return FOOD_STOCK_EXCLUDED_CATEGORIES.has(normalizeLower(item?.category))
-    || FOOD_STOCK_EXCLUDED_ITEMS.has(normalizeMatchKey(item?.ingredient));
-}
-
-function rawThresholdStatus(item) {
-  const stock = Number(item.stock);
-  const reorderPoint = Number(item.reorder_point);
-  if (!Number.isFinite(stock)) return null;
-  if (stock <= 0) return 'out_of_stock';
-  if (Number.isFinite(reorderPoint) && reorderPoint > 0 && stock <= reorderPoint * 0.5) return 'critical';
-  if (Number.isFinite(reorderPoint) && reorderPoint > 0 && stock <= reorderPoint) return 'low';
-  return 'ok';
-}
-
-function countStatus(item) {
-  const status = normalizeLower(item?.count_status);
-  if (COUNT_STATUSES.has(status)) return status;
-  return Number.isFinite(Number(item?.stock)) ? 'verified' : 'pending_count';
-}
-
-function deriveInventoryStatus(item) {
-  if (isFoodInventoryItem(item)) return 'demand_based';
-  if (countStatus(item) !== 'verified') return 'count_required';
-  if (normalizeLower(item?.shopify_sync_status) === 'error') return 'sync_error';
-  return rawThresholdStatus(item);
-}
-
 function stockTrackingPolicy(item) {
   return isFoodInventoryItem(item) ? 'food_make_to_order' : 'stock_tracked';
 }
@@ -273,7 +243,7 @@ function summaryFromItems(items, procurementPlan, openPurchaseOrders) {
     out_of_stock_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status === 'out_of_stock').length,
     count_required_count: safeItems.filter(item => item.stock_tracking_policy === 'stock_tracked' && item.status === 'count_required').length,
     shopify_synced_bag_count: safeItems.filter(item => item.inventory_kind === 'bag' && item.shopify_sync_enabled === true && item.shopify_sync_status === 'in_sync').length,
-    shopify_sync_error_count: safeItems.filter(item => item.inventory_kind === 'bag' && item.shopify_sync_status === 'error').length,
+    shopify_sync_error_count: safeItems.filter(hasBagSyncError).length,
     category_count: new Set(safeItems.map(item => item.category).filter(Boolean)).size,
     procurement_item_count: safePlan.length,
     procurement_supplier_count: new Set(safePlan.map(item => item.supplier).filter(Boolean)).size,

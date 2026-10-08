@@ -10,6 +10,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import SEO from '@/components/SEO';
 import ConsumptionSchedule from '@/components/program/ConsumptionSchedule';
+import BrowserConsumptionGuide from '@/components/program/BrowserConsumptionGuide';
 import {
   PROGRAMS,
   PROGRAM_SCHEDULE_VERSION,
@@ -488,11 +489,15 @@ export default function ProgramDetail() {
             transition={{ delay: 0.1 }}
             className="nv-program-schedule"
           >
-            <ConsumptionSchedule
+            {desktop ? <BrowserConsumptionGuide
               programKey={program.key}
               days={selectedOption.days}
               shotNames={selectedShotNames}
-            />
+            /> : <ConsumptionSchedule
+              programKey={program.key}
+              days={selectedOption.days}
+              shotNames={selectedShotNames}
+            />}
           </motion.div>
 
           <motion.div

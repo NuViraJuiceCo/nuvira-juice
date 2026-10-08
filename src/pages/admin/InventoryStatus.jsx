@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { base44 } from '@/api/base44Client';
 import { useAuth } from '@/lib/AuthContext';
 import { isAdminUser } from '@/lib/admin-access';
+import { unwrapBase44Result } from '@/lib/base44-result';
+import { requireConfirmedAdminWrite } from '@/lib/confirmedAdminWrite';
 
 function formatDateTime(value) {
   if (!value) return null;
@@ -270,8 +272,12 @@ function InventoryCards({ items, onEdit, onShopify }) {
   );
 }
 
-function InventoryEditor({ item, open, onOpenChange, onSave, pending, productOptions = [] }) {
+function InventoryEditor({ item, open, onOpenChange, onSave, pending, error, productOptions = [] }) {
   const [form, setForm] = useState(null);
+  const errorRef = React.useRef(null);
+  React.useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
 
   React.useEffect(() => {
     if (!item || !open) return;
@@ -340,6 +346,7 @@ function InventoryEditor({ item, open, onOpenChange, onSave, pending, productOpt
             onSave(form);
           }}
         >
+          {error && <p ref={errorRef} role="alert" tabIndex={-1} className="nv-admin-form-error">{error} Your entries are still here. Check the inventory records before retrying to avoid a duplicate.</p>}
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground" htmlFor="inventory-item-name">Item</label>
             <input id="inventory-item-name" value={form.ingredient} onChange={event => setField('ingredient', event.target.value)} disabled={!isNew || pending} required className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground disabled:bg-muted disabled:opacity-80" />
@@ -754,9 +761,9 @@ export default function InventoryStatus() {
         confirm: operation === 'execute_non_food_import',
         limit: 200,
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error) throw new Error(result.error);
-      return result;
+      return requireConfirmedAdminWrite(result);
     },
     onSuccess: async (result) => {
       if (result?.dry_run) {
@@ -781,9 +788,9 @@ export default function InventoryStatus() {
         confirm: true,
         item,
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error) throw new Error(result.error);
-      return result;
+      return requireConfirmedAdminWrite(result);
     },
     onSuccess: async (result) => {
       setEditingItem(null);
@@ -804,9 +811,9 @@ export default function InventoryStatus() {
         confirm: writeOperation,
         ...values,
       });
-      const result = res?.data || res;
+      const result = unwrapBase44Result(res);
       if (result?.error) throw new Error(result.error);
-      return result;
+      return requireConfirmedAdminWrite(result);
     },
     onSuccess: async result => {
       if (result?.dry_run) {
@@ -827,6 +834,12 @@ export default function InventoryStatus() {
     if (item.shopify_sync_enabled !== true) {
       shopifyInventory.mutate({ operation: 'preview_shopify_inventory_link', item });
     }
+  }
+
+  function openInventoryEditor(item) {
+    inventoryItemUpdate.reset();
+    setCopyMessage(null);
+    setEditingItem(item);
   }
 
   async function copyProcurementPlan() {
@@ -931,7 +944,7 @@ export default function InventoryStatus() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => setEditingItem({ id: null, ingredient: '', unit: 'units', stock: '', reorder_point: 0, max_stock: '', category: 'Packaging', inventory_kind: 'label', count_status: 'pending_count' })}
+              onClick={() => openInventoryEditor({ id: null, ingredient: '', unit: 'units', stock: '', reorder_point: 0, max_stock: '', category: 'Packaging', inventory_kind: 'label', count_status: 'pending_count' })}
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -1025,7 +1038,7 @@ export default function InventoryStatus() {
           </div>
         )}
 
-        {inventoryItemUpdate.isError && (
+        {inventoryItemUpdate.isError && !editingItem && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
             {inventoryItemUpdate.error?.message || 'Inventory item could not be updated.'}
           </div>
@@ -1068,8 +1081,8 @@ export default function InventoryStatus() {
                 Results are capped. Narrow the search or filters for a more complete view.
               </p>
             )}
-            <InventoryTable items={items} onEdit={setEditingItem} onShopify={openShopifyInventory} />
-            <InventoryCards items={items} onEdit={setEditingItem} onShopify={openShopifyInventory} />
+            <InventoryTable items={items} onEdit={openInventoryEditor} onShopify={openShopifyInventory} />
+            <InventoryCards items={items} onEdit={openInventoryEditor} onShopify={openShopifyInventory} />
           </div>
         )}
       </div>
@@ -1080,6 +1093,7 @@ export default function InventoryStatus() {
         onOpenChange={open => !open && setEditingItem(null)}
         onSave={item => inventoryItemUpdate.mutate(item)}
         pending={inventoryItemUpdate.isPending}
+        error={inventoryItemUpdate.isError ? inventoryItemUpdate.error?.message || 'The save could not be confirmed.' : null}
         productOptions={productOptions}
       />
       <ShopifyInventoryDialog

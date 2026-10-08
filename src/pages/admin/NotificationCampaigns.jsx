@@ -358,7 +358,7 @@ export default function NotificationCampaigns() {
       if (data.success) {
         const sent = Number(data.sent_count || 0);
         const pushSent = Number(data.push_sent_count || 0);
-        toast.success(`${form.audience === 'test_only' ? 'Test campaign' : 'Campaign'} sent to ${sent} recipient${sent === 1 ? '' : 's'}${pushSent ? `; ${pushSent} push delivery${pushSent === 1 ? '' : 'ies'}` : ''}.`);
+        toast.success(`${form.audience === 'test_only' ? 'Test campaign' : 'Campaign'} sent to ${sent} recipient${sent === 1 ? '' : 's'}${pushSent ? `; ${pushSent} push ${pushSent === 1 ? 'delivery' : 'deliveries'}` : ''}.`);
         setForm({
           title: '',
           message: '',
@@ -697,7 +697,7 @@ export default function NotificationCampaigns() {
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-1">
                   {campaignSendResult.success
-                    ? `${campaignSendResult.sent_count || 0} notification${Number(campaignSendResult.sent_count || 0) === 1 ? '' : 's'} created; ${campaignSendResult.push_sent_count || 0} push delivery${Number(campaignSendResult.push_sent_count || 0) === 1 ? '' : 'ies'} sent.`
+                    ? `${campaignSendResult.sent_count || 0} notification${Number(campaignSendResult.sent_count || 0) === 1 ? '' : 's'} created; ${campaignSendResult.push_sent_count || 0} push ${Number(campaignSendResult.push_sent_count || 0) === 1 ? 'delivery' : 'deliveries'} sent.`
                     : campaignSendResult.message || campaignSendResult.error || 'Send did not complete.'}
                   {Number(campaignSendResult.skipped_count || 0) > 0 && (
                     <span className="block mt-1">

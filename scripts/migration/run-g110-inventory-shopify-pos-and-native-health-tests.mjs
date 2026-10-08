@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import * as inventoryPolicy from '../../base44/functions/getAdminOperationsDashboardSummary/inventoryPolicy.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -87,6 +88,7 @@ function loadHandler(fetchImpl = async () => { throw new Error('unexpected provi
     .replace(/: Request/g, '')
     .replace('export default async function handler', 'globalThis.__handler = async function handler');
   const context = vm.createContext({
+    ...inventoryPolicy,
     console, URL, URLSearchParams, Headers, Date, Math, Number, String, Boolean, Array,
     Object, Set, Map, RegExp, JSON, Error, Response, Promise, Intl,
     createClientFromRequest: req => req.__base44,
