@@ -159,12 +159,12 @@ export default function AuditTrail() {
       <AdminOpsHeader title="Audit Trail" subtitle="Read-only command history" badge="Read-only" />
 
       <main className="mx-auto mt-4 w-full max-w-[1180px] space-y-4 px-4">
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 gap-2 lg:grid-cols-4">
           <StatCard icon={Activity} label="Commands" value={stats.total} isRefreshing={isFetching} />
           <StatCard icon={CheckCircle2} label="Success" value={stats.success} tone="success" />
           <StatCard icon={AlertTriangle} label="Failed" value={stats.failed} tone={stats.failed > 0 ? 'danger' : 'default'} />
           <StatCard icon={Clock3} label="Pending / Running" value={stats.running} tone={stats.running > 0 ? 'warning' : 'default'} />
-        </div>
+        </div>}
 
         <section className="rounded-xl border border-border bg-card p-4">
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_180px]">

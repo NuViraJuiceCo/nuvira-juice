@@ -1,3 +1,5 @@
+import { requireConfirmedAdminWrite } from '@/lib/confirmedAdminWrite';
+import { businessDateTime } from '@/lib/businessDate';
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,8 +12,8 @@ import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 export default function SanitationLogForm({ onClose }) {
   const [, setUser] = useState(null);
   const [formData, setFormData] = useState({
-    log_date: new Date().toISOString().split('T')[0],
-    log_time: new Date().toTimeString().slice(0, 5),
+    log_date: businessDateTime().date,
+    log_time: businessDateTime().time,
     staff_member: '',
     area: 'Prep Area',
     sanitizer_type: 'Bleach Solution',
@@ -22,6 +24,7 @@ export default function SanitationLogForm({ onClose }) {
     notes: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -40,16 +43,19 @@ export default function SanitationLogForm({ onClose }) {
     if (!formData.cleaned || !formData.sanitized) return;
 
     setIsSubmitting(true);
+    setSaveError('');
     try {
-      await base44.functions.invoke('saveAdminComplianceRecord', {
+      requireConfirmedAdminWrite(await base44.functions.invoke('saveAdminComplianceRecord', {
         record_type: 'sanitation',
         data: formData,
-      });
+      }));
 
       queryClient.invalidateQueries({ queryKey: ['sanitation_logs'] });
       queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
       queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
       onClose?.();
+    } catch {
+      setSaveError('The save could not be confirmed. Your entries are still here. Check the records before retrying to avoid a duplicate.');
     } finally {
       setIsSubmitting(false);
     }
@@ -65,10 +71,12 @@ export default function SanitationLogForm({ onClose }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {saveError && <p role="alert" className="nv-admin-form-error">{saveError}</p>}
+          <p className="nv-admin-form-timezone">Dates and times: America/Chicago</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Date</label>
-              <input
+              <label htmlFor="SanitationLogForm-field-2784" className="text-sm font-medium">Date</label>
+              <input aria-label="log date" id="SanitationLogForm-field-2784"
                 type="date"
                 value={formData.log_date}
                 onChange={(e) => handleChange('log_date', e.target.value)}
@@ -76,8 +84,8 @@ export default function SanitationLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Time</label>
-              <input
+              <label htmlFor="SanitationLogForm-field-3162" className="text-sm font-medium">Time</label>
+              <input aria-label="log time" id="SanitationLogForm-field-3162"
                 type="time"
                 value={formData.log_time}
                 onChange={(e) => handleChange('log_time', e.target.value)}
@@ -94,8 +102,8 @@ export default function SanitationLogForm({ onClose }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Area</label>
-              <select
+              <label htmlFor="SanitationLogForm-field-3812" className="text-sm font-medium">Area</label>
+              <select aria-label="area" id="SanitationLogForm-field-3812"
                 value={formData.area}
                 onChange={(e) => handleChange('area', e.target.value)}
                 className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
@@ -109,8 +117,8 @@ export default function SanitationLogForm({ onClose }) {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium">Sanitizer Type</label>
-              <select
+              <label htmlFor="SanitationLogForm-field-4459" className="text-sm font-medium">Sanitizer Type</label>
+              <select aria-label="sanitizer type" id="SanitationLogForm-field-4459"
                 value={formData.sanitizer_type}
                 onChange={(e) => handleChange('sanitizer_type', e.target.value)}
                 className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
@@ -124,8 +132,8 @@ export default function SanitationLogForm({ onClose }) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">Sanitizer Level</label>
-            <select
+            <label htmlFor="SanitationLogForm-field-5055" className="text-sm font-medium">Sanitizer Level</label>
+            <select aria-label="sanitizer level" id="SanitationLogForm-field-5055"
               value={formData.sanitizer_level}
               onChange={(e) => handleChange('sanitizer_level', e.target.value)}
               className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
@@ -164,8 +172,8 @@ export default function SanitationLogForm({ onClose }) {
           />
 
           <div>
-            <label className="text-sm font-medium">Notes (Optional)</label>
-            <textarea
+            <label htmlFor="SanitationLogForm-field-6648" className="text-sm font-medium">Notes (Optional)</label>
+            <textarea aria-label="notes" id="SanitationLogForm-field-6648"
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
               placeholder="Any issues or observations..."

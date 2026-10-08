@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import React, { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSessionMutation as useMutation } from '@/lib/useSessionMutation';
@@ -227,6 +228,7 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
     shopify_pos_location_name: event?.shopify_pos_location_name || '',
     tags: Array.isArray(event?.tags) && event.tags.length > 0 ? event.tags : ['Community'],
   }));
+  const opener = useRef(document.activeElement);
   const setField = (field, value) => setForm(current => ({ ...current, [field]: value }));
   const welcomeConfigurationReady = !form.event_welcome_enabled || (
     form.time
@@ -237,21 +239,17 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
   const canSubmit = form.title.trim() && form.date && welcomeConfigurationReady && !pending;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={isEdit ? 'Edit event' : 'Create event'}>
+    <Dialog open onOpenChange={open => { if (!open && !pending) onClose(); }}>
+      <DialogContent onCloseAutoFocus={event => { event.preventDefault(); opener.current?.focus(); }} className="sm:max-w-2xl" onEscapeKeyDown={event => { if (pending) event.preventDefault(); }} onInteractOutside={event => event.preventDefault()}>
+      <DialogTitle>{isEdit ? 'Edit event' : 'Add event'}</DialogTitle>
+      <DialogDescription>Event details. Dates and times use America/Chicago.</DialogDescription>
       <form
         onSubmit={(submitEvent) => {
           submitEvent.preventDefault();
           if (canSubmit) onSubmit(form);
         }}
-        className="max-h-[92dvh] w-full overflow-y-auto rounded-t-xl border border-border bg-card p-4 shadow-2xl sm:max-w-2xl sm:rounded-xl sm:p-5"
+        className="w-full"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-primary">Customer App event</p>
-            <h2 className="mt-1 text-lg font-black text-foreground">{isEdit ? 'Edit event' : 'Add event'}</h2>
-          </div>
-          <button type="button" onClick={onClose} className="h-9 rounded-lg border border-border px-3 text-xs font-bold text-foreground">Close</button>
-        </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="space-y-1 sm:col-span-2">
@@ -336,13 +334,14 @@ function EventEditor({ event, onClose, onSubmit, pending }) {
         </div>
 
         <div className="mt-5 flex justify-end gap-2 border-t border-border pt-4">
-          <button type="button" onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-bold text-foreground">Cancel</button>
+          <button type="button" disabled={pending} onClick={onClose} className="h-10 rounded-lg border border-border px-4 text-sm font-bold text-foreground">Cancel</button>
           <button type="submit" disabled={!canSubmit} className="h-10 rounded-lg bg-primary px-5 text-sm font-bold text-primary-foreground disabled:opacity-50">
             {pending ? 'Saving...' : isEdit ? 'Save event' : 'Create event'}
           </button>
         </div>
       </form>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -364,13 +363,15 @@ export default function AdminEvents() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [editorEvent, setEditorEvent] = useState(undefined);
   const today = todayDate();
-  const rangeEnd = addDays(today, 29);
+  const rangeStart = timingFilter === 'past' || timingFilter === 'all' ? addDays(today, -30) : today;
+  const rangeEnd = timingFilter === 'past' ? addDays(today, -1) : timingFilter === 'today' ? today : addDays(today, 29);
 
   const calendarQuery = useQuery({
-    queryKey: ['admin-events-calendar-read-model', today],
+    queryKey: ['admin-events-calendar-read-model', rangeStart, rangeEnd],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminCalendarEventsSummary', {
-        preset: 'next_30_days',
+        date_from: rangeStart,
+        date_to: rangeEnd,
         type: 'event',
         limit: 200,
       });
@@ -452,7 +453,7 @@ export default function AdminEvents() {
       .filter(event => !calendarIds.has(normalize(event.id)))
       .filter(event => {
         const key = dateKey(event.date || event.start_datetime);
-        return key && key >= today && key <= rangeEnd;
+        return key && key >= rangeStart && key <= rangeEnd;
       })
       .map(event => ({
         ...event,
@@ -465,7 +466,7 @@ export default function AdminEvents() {
 
     return [...calendarEvents, ...directOnlyEvents]
       .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
-  }, [calendarData.dates, directEvents, directEventsByKey, rangeEnd, today]);
+  }, [calendarData.dates, directEvents, directEventsByKey, rangeEnd, rangeStart]);
 
   const filteredEvents = useMemo(() => allEvents.filter(event => {
     const date = dateKey(event.date || event.start_datetime);
@@ -512,16 +513,16 @@ export default function AdminEvents() {
             <div className="min-w-0">
               <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Next event</p>
               <h2 className="mt-1 text-lg font-black leading-tight text-foreground">
-                {nextEvent?.title || 'No upcoming event in the next 30 days'}
+                {isLoading ? 'Loading events' : isError ? 'Event schedule unavailable' : timingFilter === 'past' ? 'Past 30 days' : nextEvent?.title || 'No upcoming event in this range'}
               </h2>
               <p className="mt-1 text-sm font-medium text-muted-foreground">
-                {nextEvent ? `${formatDate(nextEvent.date || nextEvent.start_datetime)}${nextEvent.location ? ` · ${nextEvent.location}` : ''}` : 'Add an event in the Customer App to publish it here.'}
+                {isLoading || isError ? 'Refresh the schedule before relying on event counts.' : nextEvent ? `${formatDate(nextEvent.date || nextEvent.start_datetime)}${nextEvent.location ? ` · ${nextEvent.location}` : ''}` : 'Add an event to publish it here.'}
               </p>
             </div>
             <div className="grid grid-cols-3 gap-4 rounded-lg border border-border/60 bg-background p-3 lg:min-w-[360px]">
-              <CompactMetric label="Today" value={formatCount(todayEvents.length)} />
-              <CompactMetric label="Upcoming" value={formatCount(upcomingEvents.length)} />
-              <CompactMetric label="Visible" value={formatCount(filteredEvents.length)} />
+              <CompactMetric label="Today" value={isLoading || isError ? '-' : formatCount(todayEvents.length)} />
+              <CompactMetric label="Upcoming" value={isLoading || isError ? '-' : formatCount(upcomingEvents.length)} />
+              <CompactMetric label="Visible" value={isLoading || isError ? '-' : formatCount(filteredEvents.length)} />
             </div>
           </div>
 
@@ -543,17 +544,17 @@ export default function AdminEvents() {
               <input
                 value={search}
                 onChange={event => setSearch(event.target.value)}
-                placeholder="Search title, location, source..."
+                aria-label="Search events" placeholder="Search title, location, source..."
                 className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring"
               />
             </label>
-            <select value={timingFilter} onChange={event => setTimingFilter(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground">
+            <select aria-label="Event date range" value={timingFilter} onChange={event => setTimingFilter(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground">
               <option value="upcoming">Upcoming</option>
               <option value="today">Today</option>
               <option value="all">All shown</option>
               <option value="past">Past</option>
             </select>
-            <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground">
+            <select aria-label="Event status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-foreground">
               <option value="all">All status</option>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
@@ -600,7 +601,7 @@ export default function AdminEvents() {
           <div className="flex justify-center py-16">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
-        ) : filteredEvents.length === 0 ? (
+        ) : isError && filteredEvents.length === 0 ? null : filteredEvents.length === 0 ? (
           <div className="rounded-xl border border-border/60 bg-card p-8 text-center">
             <p className="text-sm font-semibold text-foreground">No events found</p>
             <p className="mt-1 text-xs text-muted-foreground">Adjust the filters or add the event directly in the Customer App.</p>

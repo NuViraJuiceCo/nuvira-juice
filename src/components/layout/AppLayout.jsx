@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useLayoutEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import MobileNav from './MobileNav';
@@ -12,10 +12,20 @@ import DesktopHeader from '@/components/desktop/DesktopHeader';
 import DesktopFooter from '@/components/desktop/DesktopFooter';
 import CartPreviewHost from '@/components/cart/CartPreviewHost';
 import '@/styles/browser-audit.css';
+import BrowserAdminNav, { BrowserAdminSectionNav } from '@/components/admin/BrowserAdminNav';
+import '@/styles/browser-admin.css';
+
+const useBrowserLayoutEffect = typeof document === 'undefined' ? useEffect : useLayoutEffect;
 
 export default function AppLayout() {
   const location = useLocation();
   const adminShell = location.pathname.startsWith('/admin');
+  const browserAdmin = adminShell && !isNativeAppRuntime();
+  useBrowserLayoutEffect(() => {
+    if (!browserAdmin) return undefined;
+    document.documentElement.setAttribute('data-browser-admin', 'true');
+    return () => document.documentElement.removeAttribute('data-browser-admin');
+  }, [browserAdmin]);
   const desktopWebsite = useDesktopStorefront() && !adminShell;
   const immediateCustomerWebsite = usesImmediateCustomerWebsiteLayout({
     pathname: location.pathname,
@@ -29,19 +39,20 @@ export default function AppLayout() {
     : 'pb-24 md:pb-8 max-w-2xl md:max-w-none mx-auto overflow-x-hidden w-full';
   return (
     <div
-      className="bg-background flex"
+      className={`bg-background flex ${browserAdmin ? 'nv-browser-admin' : ''}`}
       data-admin-shell={adminShell ? 'true' : undefined}
       data-desktop-storefront={!adminShell && !isNativeAppRuntime() ? 'true' : undefined}
       data-desktop-brand={desktopWebsite ? 'true' : undefined}
       style={{ minHeight: '100dvh' }}
     >
       {/* Sidebar — tablet & desktop */}
-      {desktopWebsite ? <DesktopHeader /> : <SideNav />}
+      {browserAdmin ? <BrowserAdminNav /> : desktopWebsite ? <DesktopHeader /> : <SideNav />}
 
       {/* Main content — single natural scroll container, no overflow-hidden */}
-      <div className="flex-1 min-w-0 md:ml-60 overflow-x-hidden w-full">
+      <div className={`flex-1 min-w-0 overflow-x-hidden w-full ${browserAdmin ? 'nv-admin-workspace' : 'md:ml-60'}`}>
+        {browserAdmin && <BrowserAdminSectionNav />}
         <main className={mainClassName} data-storefront-page={location.pathname}>
-          {immediateCustomerWebsite ? (
+          {immediateCustomerWebsite || browserAdmin ? (
             <div data-page-transition="immediate">
               {/* Reset the content boundary on navigation: never retain the
                   previous page's private body while the new module loads. */}
@@ -69,7 +80,7 @@ export default function AppLayout() {
       </div>
 
       {/* Bottom nav — mobile only */}
-      {!desktopWebsite && <MobileNav />}
+      {!desktopWebsite && !browserAdmin && <MobileNav />}
       {!adminShell && !isNativeAppRuntime() && <CartPreviewHost />}
     </div>
   );

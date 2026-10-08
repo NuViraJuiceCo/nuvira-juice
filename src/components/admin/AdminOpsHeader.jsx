@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { AdminStatusPill } from './AdminStatusPill';
 import { installAdminSwipeBack } from '@/lib/adminSwipeBack';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 
 export default function AdminOpsHeader({
   title,
@@ -19,7 +20,7 @@ export default function AdminOpsHeader({
   const navigate = useNavigate();
   const location = useLocation();
   useEffect(() => {
-    if (!location.pathname.startsWith('/admin')) return undefined;
+    if (!location.pathname.startsWith('/admin') || !isNativeAppRuntime()) return undefined;
     const editingSelector = 'input, textarea, select, [contenteditable="true"], [role="slider"], [data-no-swipe-back]';
     const canNavigate = () => window.matchMedia('(max-width: 767px) and (pointer: coarse)').matches
       && !document.activeElement?.matches(editingSelector)
@@ -35,6 +36,11 @@ export default function AdminOpsHeader({
   const backProps = onBack ? { type: 'button', onClick: onBack } : { to: backTo };
   const mobileHeading = mobileTitle || title;
   const mobileDescription = mobileSubtitle || subtitle;
+
+  if (!isNativeAppRuntime()) return <header className="nv-admin-page-heading">
+    <div><p>NuVira / Administration</p><div><h1>{title}</h1>{badge && <AdminStatusPill label={badge} tone={badgeTone} />}</div>{subtitle && <p>{subtitle}</p>}</div>
+    {actions && <div className="nv-admin-heading-actions">{actions}</div>}
+  </header>;
 
   return (
     <header

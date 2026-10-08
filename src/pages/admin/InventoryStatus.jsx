@@ -864,14 +864,14 @@ export default function InventoryStatus() {
       />
 
       <div className="px-4 mt-4 space-y-4">
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+        {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 lg:grid-cols-6 gap-2">
           <StatCard icon={Package} label="Tracked Items" value={summary.total_items ?? 0} />
           <StatCard icon={Package} label="Tracked Supplies" value={summary.stock_tracked_item_count ?? 0} />
           <StatCard icon={ClipboardList} label="Counts Needed" value={summary.count_required_count ?? 0} />
           <StatCard icon={AlertTriangle} label="Supply Critical / Out" value={(summary.critical_count ?? 0) + (summary.out_of_stock_count ?? 0)} />
           <StatCard icon={ShoppingCart} label="Supply Needs" value={summary.net_procurement_item_count ?? 0} />
           <StatCard icon={ClipboardList} label="Open POs" value={summary.open_purchase_order_count ?? 0} />
-        </div>
+        </div>}
 
         <div className="bg-card border border-border rounded-xl p-4 space-y-3">
           <div className="relative">

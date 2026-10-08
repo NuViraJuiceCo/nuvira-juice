@@ -204,12 +204,12 @@ export default function Resources() {
       />
 
       <div className="px-4 mt-4 space-y-4">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 lg:grid-cols-4 gap-2">
           <StatCard icon={UsersRound} label="Team" value={summary.team_count ?? 0} />
           <StatCard icon={Wrench} label="Equipment" value={summary.equipment_count ?? 0} />
           <StatCard icon={ShieldCheck} label="Operational" value={summary.operational_equipment ?? 0} />
           <StatCard icon={RefreshCw} label="Maintenance" value={summary.maintenance_equipment ?? 0} isRefreshing={isFetching} />
-        </div>
+        </div>}
 
         <div className="bg-card border border-border rounded-xl p-4 space-y-3">
           <div className="relative">

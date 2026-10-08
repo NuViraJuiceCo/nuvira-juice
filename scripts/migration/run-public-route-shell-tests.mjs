@@ -37,6 +37,11 @@ const Outlet = () => {
 };
 const Layout = load('src/components/layout/AppLayout.jsx', {
   '@/styles/browser-audit.css': {},
+  '@/styles/browser-admin.css': {},
+  '@/components/admin/BrowserAdminNav': {
+    default: () => React.createElement('nav', { 'data-browser-admin-nav': 'true' }, 'Administration'),
+    BrowserAdminSectionNav: () => null,
+  },
   react: React,
   'react-router-dom': { Outlet, useLocation: () => location },
   'framer-motion': {
@@ -86,7 +91,7 @@ for (const route of ['/account', '/account/orders', '/account/programs', '/accou
   assert.match(render(route, true), /data-outer-startup/);
 }
 checks.push('Already-authorized customer website member chunks retain the shell with neutral immediate loading, never previous page data');
-for (const route of ['/admin/orders', '/checkout', '/order-confirmation', '/unknown', '/account/unknown']) {
+for (const route of ['/checkout', '/order-confirmation', '/unknown', '/account/unknown']) {
   assert.match(render(route), /data-outer-startup/);
   assert.doesNotMatch(render(route), /data-public-route-loading/);
 }
@@ -96,7 +101,11 @@ for (const key of ['code', 'state', 'access_token', 'clear_access_token', 'error
     assert.match(render(route, false, '', `#${key}=synthetic`), /data-outer-startup/);
   }
 }
-checks.push('Native, admin, checkout, unknown and auth-return paths retain the original outer boundary');
+assert.match(render('/admin/orders'), /data-browser-admin-nav/);
+assert.match(render('/admin/orders'), /data-public-route-loading/);
+assert.doesNotMatch(render('/admin/orders'), /data-test-navigation|data-outer-startup/);
+assert.match(render('/admin/orders', true), /data-outer-startup/);
+checks.push('Browser admin retains its dedicated shell while native, checkout, unknown and auth-return boundaries stay protected');
 initialAuthReturn = true;
 for (const route of ['/', '/shop', '/contact', '/support', '/about', '/account', '/rewards']) {
   const html = render(route, false, '', '');
@@ -110,7 +119,7 @@ for (const route of ['/', '/shop', '/account', '/admin/orders']) {
   for (const isNative of [false, true]) {
     const html = render(route, isNative);
     assert.match(html, /data-page-ready="true"/);
-    assert.match(html, /data-test-navigation="desktop"/);
+    assert.match(html, route.startsWith('/admin/') && !isNative ? /data-browser-admin-nav/ : /data-test-navigation="desktop"/);
     assert.doesNotMatch(html, /data-public-route-loading|data-outer-startup/);
   }
 }

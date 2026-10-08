@@ -1,3 +1,5 @@
+import { requireConfirmedAdminWrite } from '@/lib/confirmedAdminWrite';
+import { businessDateTime } from '@/lib/businessDate';
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -8,7 +10,7 @@ import { AlertCircle, ClipboardList, SprayCan, Thermometer } from 'lucide-react'
 import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 
 export default function DailyChecklistForm({ nativeCompliance }) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = businessDateTime().date;
   const [, setUser] = useState(null);
   const [existingChecklist, setExistingChecklist] = useState(null);
   const [formData, setFormData] = useState({
@@ -33,6 +35,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
     overall_status: 'Incomplete',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -82,6 +85,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
 
     const status = calculateStatus(formData);
     setIsSubmitting(true);
+    setSaveError('');
 
     try {
       const dataToSave = {
@@ -90,16 +94,18 @@ export default function DailyChecklistForm({ nativeCompliance }) {
         completed_at: new Date().toISOString(),
       };
 
-      await base44.functions.invoke('saveAdminComplianceRecord', {
+      requireConfirmedAdminWrite(await base44.functions.invoke('saveAdminComplianceRecord', {
         record_type: 'daily_checklist',
         existing_id: existingChecklist?.id || null,
         data: dataToSave,
-      });
+      }));
 
       queryClient.invalidateQueries({ queryKey: ['checklists_today'] });
       queryClient.invalidateQueries({ queryKey: ['daily_checklists_today'] });
       queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
       queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
+    } catch {
+      setSaveError('The save could not be confirmed. Your entries are still here. Check the records before retrying to avoid a duplicate.');
     } finally {
       setIsSubmitting(false);
     }
@@ -139,10 +145,12 @@ export default function DailyChecklistForm({ nativeCompliance }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
+          {saveError && <p role="alert" className="nv-admin-form-error">{saveError}</p>}
+          <p className="nv-admin-form-timezone">Dates and times: America/Chicago</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Date</label>
-              <input
+              <label htmlFor="DailyChecklistForm-field-5354" className="text-sm font-medium">Date</label>
+              <input aria-label="checklist date" id="DailyChecklistForm-field-5354"
                 type="date"
                 value={formData.checklist_date}
                 disabled
@@ -150,8 +158,8 @@ export default function DailyChecklistForm({ nativeCompliance }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Shift</label>
-              <select
+              <label htmlFor="DailyChecklistForm-field-5684" className="text-sm font-medium">Shift</label>
+              <select aria-label="shift" id="DailyChecklistForm-field-5684"
                 value={formData.shift}
                 onChange={(e) => handleChange('shift', e.target.value)}
                 className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
@@ -181,7 +189,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
                 id="morning_fridge"
               />
               <label htmlFor="morning_fridge" className="text-sm cursor-pointer flex-1">Morning refrigerator temperature logged</label>
-              <input
+              <input aria-label="morning fridge time"
                 type="time"
                 value={formData.morning_fridge_time}
                 onChange={(e) => handleChange('morning_fridge_time', e.target.value)}
@@ -196,7 +204,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
                 id="evening_fridge"
               />
               <label htmlFor="evening_fridge" className="text-sm cursor-pointer flex-1">Evening refrigerator temperature logged <span className="text-muted-foreground text-xs">(after production)</span></label>
-              <input
+              <input aria-label="evening fridge time"
                 type="time"
                 value={formData.evening_fridge_time}
                 onChange={(e) => handleChange('evening_fridge_time', e.target.value)}
@@ -218,7 +226,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
                 id="sanitizer_check"
               />
               <label htmlFor="sanitizer_check" className="text-sm cursor-pointer flex-1">Sanitizer levels checked</label>
-              <input
+              <input aria-label="sanitizer check time"
                 type="time"
                 value={formData.sanitizer_check_time}
                 onChange={(e) => handleChange('sanitizer_check_time', e.target.value)}
@@ -232,7 +240,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
                 id="equipment_san"
               />
               <label htmlFor="equipment_san" className="text-sm cursor-pointer flex-1">Equipment sanitized</label>
-              <input
+              <input aria-label="sanitization time"
                 type="time"
                 value={formData.sanitization_time}
                 onChange={(e) => handleChange('sanitization_time', e.target.value)}
@@ -246,7 +254,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
                 id="areas_clean"
               />
               <label htmlFor="areas_clean" className="text-sm cursor-pointer flex-1">Work areas cleaned</label>
-              <input
+              <input aria-label="cleaning time"
                 type="time"
                 value={formData.cleaning_time}
                 onChange={(e) => handleChange('cleaning_time', e.target.value)}
@@ -268,7 +276,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
               />
               <div className="flex-1">
                 <label htmlFor="batch_logs" className="text-sm cursor-pointer block">Batch logs completed</label>
-                <input
+                <input aria-label="batches logged"
                   type="text"
                   value={formData.batches_logged}
                   onChange={(e) => handleChange('batches_logged', e.target.value)}
@@ -285,7 +293,7 @@ export default function DailyChecklistForm({ nativeCompliance }) {
               />
               <div className="flex-1">
                 <label htmlFor="ccp_logs" className="text-sm cursor-pointer block">CCP / corrective-action log completed <span className="text-muted-foreground text-xs">(only if needed)</span></label>
-                <input
+                <input aria-label="ccp notes"
                   type="text"
                   value={formData.ccp_notes}
                   onChange={(e) => handleChange('ccp_notes', e.target.value)}
@@ -297,8 +305,8 @@ export default function DailyChecklistForm({ nativeCompliance }) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">Any Issues or Concerns?</label>
-            <textarea
+            <label htmlFor="DailyChecklistForm-field-12490" className="text-sm font-medium">Any Issues or Concerns?</label>
+            <textarea aria-label="issues reported" id="DailyChecklistForm-field-12490"
               value={formData.issues_reported}
               onChange={(e) => handleChange('issues_reported', e.target.value)}
               placeholder="Report any problems, equipment issues, or other concerns..."

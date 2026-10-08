@@ -24,6 +24,8 @@ import {
   Wrench,
 } from 'lucide-react';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import AdminQueryState from '@/components/admin/AdminQueryState';
+import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import ComplianceDashboard from '@/components/compliance/ComplianceDashboard';
 import TemperatureLogForm from '@/components/compliance/TemperatureLogForm';
 import PHLogForm from '@/components/compliance/pHLogForm';
@@ -58,6 +60,12 @@ const complianceTabs = [
   { value: 'labels', label: 'Labels', Icon: Tag },
   { value: 'haccp', label: 'HACCP', Icon: ShieldCheck },
   { value: 'export', label: 'Export', Icon: Download },
+];
+
+const complianceGroups = [
+  { label: 'Overview', views: ['dashboard', 'hub-parity'] },
+  { label: 'Record a log', views: ['temperature', 'pH', 'CCP', 'sanitation', 'corrective', 'checklist', 'batch'] },
+  { label: 'Standards & export', views: ['documents', 'labels', 'haccp', 'export'] },
 ];
 
 function ComplianceWorkflowPanel({ setActiveTab }) {
@@ -112,6 +120,8 @@ export default function ComplianceOps() {
   const [showNewEntry, setShowNewEntry] = useState(null);
   const [user, setUser] = useState(null);
   const isPageVisible = usePageVisibility();
+  const browserAdmin = !isNativeAppRuntime();
+  const activeGroup = complianceGroups.find(group => group.views.includes(activeTab));
 
   const {
     data: complianceSummary,
@@ -186,7 +196,7 @@ export default function ComplianceOps() {
     <div className="min-h-screen bg-background">
       <AdminOpsHeader
         title="Compliance Center"
-        subtitle="Native Customer App compliance logs, checklists, alerts, label review, HACCP review, and audit export"
+        subtitle="Batch records, daily checks, standards, and audit packets"
         mobileTitle="Logs"
         mobileSubtitle="Batch records and audit tools"
         compactMobile
@@ -194,11 +204,11 @@ export default function ComplianceOps() {
         badgeTone="success"
       />
 
-      <div className="hidden border-b border-border bg-card p-4 md:block">
+      <div className="nv-compliance-expanded hidden border-b border-border bg-card p-4 md:block">
         <div className="max-w-7xl mx-auto">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Operations, Audit & Compliance Tracking</h1>
+              <h2 className="text-lg font-bold text-foreground">Logs & records</h2>
               <p className="text-sm text-muted-foreground mt-1">
                 Create and review official Customer App compliance records. Source fallback remains available while native records are proven.
               </p>
@@ -258,7 +268,7 @@ export default function ComplianceOps() {
         </div>
       </div>
 
-      <div className="space-y-3 border-b border-border bg-card p-3 md:hidden">
+      <div className="nv-compliance-compact space-y-3 border-b border-border bg-card p-3 md:hidden">
         {(criticalAlerts.length > 0 || incompleteChecklistCount > 0) && (
           <div className="space-y-2">
             {criticalAlerts.length > 0 && <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-xs font-semibold text-red-900 dark:border-red-900 dark:bg-red-950/30 dark:text-red-100">{criticalAlerts.length} critical alert{criticalAlerts.length === 1 ? '' : 's'}: {criticalAlerts[0].message}</div>}
@@ -268,7 +278,7 @@ export default function ComplianceOps() {
         <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
           <div className="min-w-0">
             <p className="text-xs font-semibold text-foreground">Compliance records</p>
-            <p className="truncate text-[10px] text-muted-foreground">{complianceSummaryFetching ? 'Refreshing current status' : complianceSummaryError ? 'Summary unavailable; forms remain available' : `${nativeCompliance.summary?.production_batches || 0} batches · ${nativeCompliance.summary?.daily_checklists || 0} checklists · ${nativeCompliance.summary?.temperature || 0} temp logs`}</p>
+            <p className="text-[10px] text-muted-foreground">{complianceSummaryFetching ? 'Refreshing current status' : complianceSummaryError || !complianceSummary ? 'Summary unavailable; forms remain available' : `${nativeCompliance.summary?.production_batches || 0} batches · ${nativeCompliance.summary?.daily_checklists || 0} checklists · ${nativeCompliance.summary?.temperature || 0} temp logs`}</p>
           </div>
           <ComplianceMonitor compact />
         </div>
@@ -287,6 +297,9 @@ export default function ComplianceOps() {
       <div className="mx-auto max-w-7xl p-3 md:p-4">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full [&_[role=tabpanel]_h2]:text-xl md:[&_[role=tabpanel]_h2]:text-2xl">
           <div className="mb-3 md:mb-6">
+            {browserAdmin && <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Compliance categories">
+              {complianceGroups.map(group => <Button key={group.label} variant={group === activeGroup ? 'default' : 'outline'} aria-pressed={group === activeGroup} onClick={() => setActiveTab(group.views[0])}>{group.label}</Button>)}
+            </div>}
             <label className="block md:hidden">
               <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Open compliance view</span>
               <select value={activeTab} onChange={event => setActiveTab(event.target.value)} className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground">
@@ -294,7 +307,7 @@ export default function ComplianceOps() {
               </select>
             </label>
             <TabsList className="hidden h-auto w-full flex-wrap justify-start gap-1 bg-muted/70 p-1 md:flex">
-              {complianceTabs.map(({ value, label, Icon }) => (
+              {complianceTabs.filter(tab => !browserAdmin || activeGroup.views.includes(tab.value)).map(({ value, label, Icon }) => (
                 <TabsTrigger
                   key={value}
                   value={value}
@@ -308,7 +321,7 @@ export default function ComplianceOps() {
           </div>
 
           <TabsContent value="dashboard">
-            <ComplianceDashboard summary={complianceSummary} />
+            {complianceSummaryError || !complianceSummary ? <AdminQueryState loading={complianceSummaryFetching && !complianceSummaryError} error={complianceSummaryError} retry={refetchComplianceSummary} /> : <ComplianceDashboard summary={complianceSummary} />}
           </TabsContent>
 
           <TabsContent value="hub-parity">

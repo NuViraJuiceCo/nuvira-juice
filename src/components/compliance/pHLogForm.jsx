@@ -1,3 +1,5 @@
+import { requireConfirmedAdminWrite } from '@/lib/confirmedAdminWrite';
+import { businessDateTime } from '@/lib/businessDate';
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,8 +11,8 @@ import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 export default function PHLogForm({ onClose }) {
   const [, setUser] = useState(null);
   const [formData, setFormData] = useState({
-    log_date: new Date().toISOString().split('T')[0],
-    log_time: new Date().toTimeString().slice(0, 5),
+    log_date: businessDateTime().date,
+    log_time: businessDateTime().time,
     staff_member: '',
     batch_id: '',
     product_name: 'Green Glow Juice',
@@ -21,6 +23,7 @@ export default function PHLogForm({ onClose }) {
   });
   const [warning, setWarning] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -48,24 +51,27 @@ export default function PHLogForm({ onClose }) {
     if (!formData.ph_value || !formData.batch_id) return;
 
     setIsSubmitting(true);
+    setSaveError('');
     try {
       const ph = parseFloat(formData.ph_value);
       const isInRange = ph >= formData.min_ph && ph <= formData.max_ph;
 
-      await base44.functions.invoke('saveAdminComplianceRecord', {
+      requireConfirmedAdminWrite(await base44.functions.invoke('saveAdminComplianceRecord', {
         record_type: 'ph',
         data: {
           ...formData,
           ph_value: ph,
           within_range: isInRange,
         },
-      });
+      }));
 
       queryClient.invalidateQueries({ queryKey: ['pH_logs'] });
       queryClient.invalidateQueries({ queryKey: ['pH_logs_today'] });
       queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
       queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
       onClose?.();
+    } catch {
+      setSaveError('The save could not be confirmed. Your entries are still here. Check the records before retrying to avoid a duplicate.');
     } finally {
       setIsSubmitting(false);
     }
@@ -81,10 +87,12 @@ export default function PHLogForm({ onClose }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {saveError && <p role="alert" className="nv-admin-form-error">{saveError}</p>}
+          <p className="nv-admin-form-timezone">Dates and times: America/Chicago</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Date</label>
-              <input
+              <label htmlFor="pHLogForm-field-3264" className="text-sm font-medium">Date</label>
+              <input aria-label="log date" id="pHLogForm-field-3264"
                 type="date"
                 value={formData.log_date}
                 onChange={(e) => handleChange('log_date', e.target.value)}
@@ -92,8 +100,8 @@ export default function PHLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Time</label>
-              <input
+              <label htmlFor="pHLogForm-field-3642" className="text-sm font-medium">Time</label>
+              <input aria-label="log time" id="pHLogForm-field-3642"
                 type="time"
                 value={formData.log_time}
                 onChange={(e) => handleChange('log_time', e.target.value)}
@@ -110,8 +118,8 @@ export default function PHLogForm({ onClose }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Batch ID</label>
-              <input
+              <label htmlFor="pHLogForm-field-4296" className="text-sm font-medium">Batch ID</label>
+              <input aria-label="batch id" id="pHLogForm-field-4296"
                 type="text"
                 value={formData.batch_id}
                 onChange={(e) => handleChange('batch_id', e.target.value)}
@@ -121,8 +129,8 @@ export default function PHLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Product</label>
-              <select
+              <label htmlFor="pHLogForm-field-4743" className="text-sm font-medium">Product</label>
+              <select aria-label="product name" id="pHLogForm-field-4743"
                 value={formData.product_name}
                 onChange={(e) => handleChange('product_name', e.target.value)}
                 className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
@@ -135,8 +143,8 @@ export default function PHLogForm({ onClose }) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">pH Value</label>
-            <input
+            <label htmlFor="pHLogForm-field-5294" className="text-sm font-medium">pH Value</label>
+            <input aria-label="ph value" id="pHLogForm-field-5294"
               type="number"
               step="0.1"
               value={formData.ph_value}
@@ -160,8 +168,8 @@ export default function PHLogForm({ onClose }) {
           )}
 
           <div>
-            <label className="text-sm font-medium">Notes (Optional)</label>
-            <textarea
+            <label htmlFor="pHLogForm-field-6449" className="text-sm font-medium">Notes (Optional)</label>
+            <textarea aria-label="notes" id="pHLogForm-field-6449"
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
               placeholder="Any additional observations..."

@@ -1,3 +1,5 @@
+import AdminQueryState from '@/components/admin/AdminQueryState';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -115,6 +117,11 @@ function formatStatusReason(reason) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function requirePreview(response) {
+  const data = unwrapBase44Data(response, null);
+  if (!data || data.error || data.success === false) throw new Error('Notification status could not be loaded.');
+  return data;
+}
 export default function NotificationCampaigns() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -179,13 +186,13 @@ export default function NotificationCampaigns() {
     };
   }, [user?.role]);
 
-  const { data: campaigns = [], isLoading } = useQuery({
+  const { data: campaigns = [], isLoading, error: campaignError, refetch: refreshCampaigns } = useQuery({
     queryKey: ['notification-campaigns'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminResourcesSummary', {
         resource: 'notification_campaigns',
       });
-      const payload = unwrapBase44Data(res, {});
+      const payload = requirePreview(res);
       return Array.isArray(payload?.rows) ? payload.rows : [];
     },
     enabled: isAdminUser(user),
@@ -194,10 +201,11 @@ export default function NotificationCampaigns() {
   const {
     data: journeyPreview,
     isLoading: isJourneyLoading,
+    error: journeyError,
     refetch: refreshJourneyPreview,
   } = useQuery({
     queryKey: ['customer-journey-automation-preview'],
-    queryFn: async () => unwrapBase44Data(
+    queryFn: async () => requirePreview(
       await base44.functions.invoke('customerJourneyAutomation', { action: 'preview' }),
       {},
     ),
@@ -209,10 +217,11 @@ export default function NotificationCampaigns() {
   const {
     data: transactionalPreview,
     isLoading: isTransactionalLoading,
+    error: transactionalError,
     refetch: refreshTransactionalPreview,
   } = useQuery({
     queryKey: ['customer-transactional-communications-preview'],
-    queryFn: async () => unwrapBase44Data(
+    queryFn: async () => requirePreview(
       await base44.functions.invoke('sendOrderStatusNotification', { action: 'elevated_preview' }),
       {},
     ),
@@ -224,10 +233,11 @@ export default function NotificationCampaigns() {
   const {
     data: rewardsEmailPreview,
     isLoading: isRewardsEmailLoading,
+    error: rewardsEmailError,
     refetch: refreshRewardsEmailPreview,
   } = useQuery({
     queryKey: ['rewards-email-campaign-preview'],
-    queryFn: async () => unwrapBase44Data(
+    queryFn: async () => requirePreview(
       await base44.functions.invoke('customerJourneyAutomation', { action: 'preview_rewards_email_campaign' }),
       {},
     ),
@@ -385,7 +395,13 @@ export default function NotificationCampaigns() {
         actions={<Bell className="h-4 w-4 text-muted-foreground" />}
       />
 
-      <div className="px-4 mt-5">
+      <Tabs defaultValue="campaigns" className="px-4 mt-5">
+        <TabsList className="mb-5 flex flex-wrap h-auto gap-1">
+          <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
+          <TabsTrigger value="automations">Automations</TabsTrigger>
+          <TabsTrigger value="device">Admin alerts</TabsTrigger>
+        </TabsList>
+        <TabsContent value="automations">
         <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
@@ -398,11 +414,11 @@ export default function NotificationCampaigns() {
               </div>
             </div>
             <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-secondary text-muted-foreground shrink-0">
-              {journeyPreview?.policy?.customer_sends_enabled ? 'Live' : 'Sends locked'}
+              {isJourneyLoading || journeyError ? 'Unknown' : journeyPreview?.policy?.customer_sends_enabled ? 'Live' : 'Sends locked'}
             </span>
           </div>
-          {isJourneyLoading ? (
-            <div className="h-24 mt-4 rounded-xl bg-secondary/40 animate-pulse" />
+          {isJourneyLoading || journeyError ? (
+            <AdminQueryState loading={isJourneyLoading} error={journeyError} retry={refreshJourneyPreview} />
           ) : (
             <>
               <div className="grid grid-cols-3 gap-2 mt-4">
@@ -422,9 +438,9 @@ export default function NotificationCampaigns() {
               <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><Smartphone className="w-5 h-5" /></div>
               <div><h2 className="font-semibold text-sm">Order Email + Push Experience</h2><p className="text-xs text-muted-foreground mt-1">Coordinated transactional milestones with channel deduplication and quiet hours.</p></div>
             </div>
-            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-secondary text-muted-foreground shrink-0">{transactionalPreview?.readiness?.production_sends_enabled ? 'Live' : 'Sends locked'}</span>
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-secondary text-muted-foreground shrink-0">{isTransactionalLoading || transactionalError ? 'Unknown' : transactionalPreview?.readiness?.production_sends_enabled ? 'Live' : 'Sends locked'}</span>
           </div>
-          {isTransactionalLoading ? <div className="h-24 mt-4 rounded-xl bg-secondary/40 animate-pulse" /> : (
+          {isTransactionalLoading || transactionalError ? <AdminQueryState loading={isTransactionalLoading} error={transactionalError} retry={refreshTransactionalPreview} /> : (
             <>
               <div className="grid grid-cols-3 gap-2 mt-4">
                 <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Milestones</p><p className="text-sm font-semibold">{transactionalPreview?.policy?.length || 0}</p></div>
@@ -441,9 +457,9 @@ export default function NotificationCampaigns() {
         <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3"><div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><Send className="w-5 h-5" /></div><div><h2 className="font-semibold text-sm">POS Rewards Email</h2><p className="text-xs text-muted-foreground mt-1">Consent-frozen campaign with signed unsubscribe and exact audience gates.</p></div></div>
-            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-secondary text-muted-foreground shrink-0">{rewardsEmailPreview?.production_send_enabled ? 'Send armed' : 'Send locked'}</span>
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-secondary text-muted-foreground shrink-0">{isRewardsEmailLoading || rewardsEmailError ? 'Unknown' : rewardsEmailPreview?.production_send_enabled ? 'Send armed' : 'Send locked'}</span>
           </div>
-          {isRewardsEmailLoading ? <div className="h-20 mt-4 rounded-xl bg-secondary/40 animate-pulse" /> : (
+          {isRewardsEmailLoading || rewardsEmailError ? <AdminQueryState loading={isRewardsEmailLoading} error={rewardsEmailError} retry={refreshRewardsEmailPreview} /> : (
             <>
               <div className="grid grid-cols-3 gap-2 mt-4">
                 <div className="rounded-xl border border-border/50 bg-secondary/30 px-3 py-2"><p className="text-[10px] text-muted-foreground">Eligible</p><p className="text-sm font-semibold">{rewardsEmailPreview?.summary?.eligible_count || 0}</p></div>
@@ -456,6 +472,8 @@ export default function NotificationCampaigns() {
           )}
         </div>
 
+</TabsContent>
+<TabsContent value="device">
         <div className="bg-card border border-border/50 rounded-2xl p-4 mb-6">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
@@ -582,6 +600,8 @@ export default function NotificationCampaigns() {
           </div>
         </div>
 
+</TabsContent>
+<TabsContent value="campaigns">
         <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 mb-6 flex items-start gap-3">
           <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
           <div>
@@ -599,12 +619,13 @@ export default function NotificationCampaigns() {
           </h2>
           <div className="space-y-3">
             <div>
-              <UiLabel className="text-xs text-muted-foreground">Title *</UiLabel>
-              <UiInput value={form.title} onChange={e => setField('title', e.target.value)} placeholder="e.g. Fresh Summer Drop 🌿" className="rounded-xl h-10 mt-1" maxLength={60} />
+              <UiLabel htmlFor="campaign-title" className="text-xs text-muted-foreground">Title *</UiLabel>
+              <UiInput id="campaign-title" value={form.title} onChange={e => setField('title', e.target.value)} placeholder="e.g. Fresh Summer Drop 🌿" className="rounded-xl h-10 mt-1" maxLength={60} />
             </div>
             <div>
-              <UiLabel className="text-xs text-muted-foreground">Message *</UiLabel>
+              <UiLabel htmlFor="campaign-message" className="text-xs text-muted-foreground">Message *</UiLabel>
               <textarea
+                id="campaign-message"
                 value={form.message}
                 onChange={e => setField('message', e.target.value)}
                 placeholder="e.g. New seasonal flavors just dropped. Grab yours before they're gone."
@@ -616,8 +637,9 @@ export default function NotificationCampaigns() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <UiLabel className="text-xs text-muted-foreground">Audience</UiLabel>
+                <UiLabel htmlFor="campaign-audience" className="text-xs text-muted-foreground">Audience</UiLabel>
                 <select
+                  id="campaign-audience"
                   value={form.audience}
                   onChange={e => setField('audience', e.target.value)}
                   className="w-full mt-1 h-10 rounded-xl border border-input bg-background px-3 text-sm"
@@ -628,8 +650,9 @@ export default function NotificationCampaigns() {
                 </select>
               </div>
               <div>
-                <UiLabel className="text-xs text-muted-foreground">Type</UiLabel>
+                <UiLabel htmlFor="campaign-type" className="text-xs text-muted-foreground">Type</UiLabel>
                 <select
+                  id="campaign-type"
                   value={form.notification_type}
                   onChange={e => setField('notification_type', e.target.value)}
                   className="w-full mt-1 h-10 rounded-xl border border-input bg-background px-3 text-sm"
@@ -641,8 +664,9 @@ export default function NotificationCampaigns() {
               </div>
             </div>
             <div>
-              <UiLabel className="text-xs text-muted-foreground">Deep Link (opens when tapped)</UiLabel>
+              <UiLabel htmlFor="campaign-link" className="text-xs text-muted-foreground">Deep Link (opens when tapped)</UiLabel>
               <select
+                id="campaign-link"
                 value={form.deep_link}
                 onChange={e => setField('deep_link', e.target.value)}
                 className="w-full mt-1 h-10 rounded-xl border border-input bg-background px-3 text-sm"
@@ -699,8 +723,8 @@ export default function NotificationCampaigns() {
         <h2 className="font-semibold text-sm mb-3 flex items-center gap-2">
           <Bell className="w-4 h-4 text-primary" /> Campaign History
         </h2>
-        {isLoading ? (
-          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 bg-secondary/50 rounded-xl animate-pulse" />)}</div>
+        {isLoading || campaignError ? (
+          <AdminQueryState loading={isLoading} error={campaignError} retry={refreshCampaigns} />
         ) : campaigns.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">No campaigns yet.</p>
         ) : (
@@ -726,7 +750,8 @@ export default function NotificationCampaigns() {
             ))}
           </div>
         )}
-      </div>
+      </TabsContent>
+      </Tabs>
 
     </div>
   );

@@ -61,6 +61,7 @@ const harnesses = [
   'scripts/migration/run-auth-startup-performance-tests.mjs',
   'scripts/migration/run-public-storefront-startup-tests.mjs',
   'scripts/migration/run-public-route-shell-tests.mjs',
+  'scripts/migration/run-browser-admin-refresh-tests.mjs',
   'scripts/migration/run-desktop-brand-tests.mjs',
   'scripts/migration/run-cart-preview-tests.mjs',
   'scripts/migration/run-customer-website-motion-continuity-tests.mjs',

@@ -423,7 +423,7 @@ export default function POSOrders() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 lg:grid-cols-4 gap-2">
             <SummaryCard icon={Store} label="POS Orders" value={summary.total} isRefreshing={isFetching} />
             <SummaryCard icon={CheckCircle} label="Paid" value={summary.paid} tone="success" />
             <SummaryCard label="Fulfilled" value={summary.fulfilled} tone="success" />
@@ -434,7 +434,7 @@ export default function POSOrders() {
               tone={operationalFlagCount ? 'danger' : 'default'}
               sublabel={`D ${formatNumber(summary.requires_delivery)} · P ${formatNumber(summary.requires_production)} · T ${formatNumber(summary.requires_fulfillment_task)}`}
             />
-          </div>
+          </div>}
         </section>
 
         <section className="rounded-xl border border-border/50 bg-card p-4 space-y-4">
@@ -585,7 +585,7 @@ export default function POSOrders() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-bold text-foreground">Orders</h2>
-              <p className="text-xs text-muted-foreground">{orders.length} source POS orders shown</p>
+              <p className="text-xs text-muted-foreground">{isLoading || isError ? 'Order count unavailable' : orders.length + ' source POS orders shown'}</p>
             </div>
             {isFetching && <RefreshCw className="w-4 h-4 text-primary animate-spin" />}
           </div>
@@ -596,7 +596,7 @@ export default function POSOrders() {
                 <div key={index} className="h-32 rounded-xl border border-border/50 bg-muted/40 animate-pulse" />
               ))}
             </div>
-          ) : orders.length === 0 ? (
+          ) : isError && orders.length === 0 ? null : orders.length === 0 ? (
             <div className="rounded-xl border border-border/50 bg-card p-6 text-center">
               <Store className="w-7 h-7 text-muted-foreground mx-auto mb-2" />
               <p className="text-sm font-semibold text-foreground">No POS orders found for this range.</p>

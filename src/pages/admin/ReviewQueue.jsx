@@ -162,12 +162,12 @@ export default function ReviewQueue() {
       <AdminOpsHeader title="Review Queue" subtitle="Read-only order review inbox" badge="Read-only" />
 
       <main className="mx-auto mt-4 w-full max-w-[1180px] space-y-4 px-4">
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 gap-2 lg:grid-cols-4">
           <StatCard icon={ShieldCheck} label="Total Items" value={stats.total} isRefreshing={isFetching} />
           <StatCard icon={Clock3} label="Open" value={stats.open} />
           <StatCard icon={CheckCircle2} label="Resolved" value={stats.resolved} />
           <StatCard icon={AlertTriangle} label="Refund Related" value={stats.refund} />
-        </div>
+        </div>}
 
         <section className="rounded-xl border border-border bg-card p-4">
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_180px]">
@@ -212,7 +212,7 @@ export default function ReviewQueue() {
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border border-border/50 bg-card p-8 text-center">
             <p className="text-sm font-semibold text-foreground">No review items found</p>
-            <p className="mt-1 text-xs text-muted-foreground">Adjust filters or check Sync Health for current bridge diagnostics.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Adjust filters or check Sync Status for supported diagnostics.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">

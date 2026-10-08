@@ -214,7 +214,7 @@ export default function RouteOps() {
           <p className="mt-3 text-xs text-muted-foreground">Route snapshot for {formatDate(deliveryDate)}. Use Delivery Queue for driver assignment, proof upload, customer-notification-gated delivery actions, and Delivered completion.</p>
         </section>
 
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+        {!isLoading && !isError && data && <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
           <StatCard icon={Truck} label="Total Stops" value={summary.total_stops} isRefreshing={isFetching} />
           <StatCard icon={Clock} label="Active" value={summary.active} />
           <StatCard icon={CheckCircle2} label="Completed" value={summary.completed} tone="success" />
@@ -225,9 +225,9 @@ export default function RouteOps() {
             value={summary.bag_returns}
             sublabel={summary.bag_returns === null || summary.bag_returns === undefined ? 'No count recorded' : ''}
           />
-        </div>
+        </div>}
 
-        <RouteReadiness summary={summary} data={data} />
+        {!isLoading && !isError && data && <RouteReadiness summary={summary} data={data} />}
 
         {suppressedNativeRows.length > 0 && (
           <section className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 space-y-2 dark:border-cyan-900/60 dark:bg-cyan-950/30">

@@ -32,7 +32,7 @@ export default function SyncStatus() {
             <div>
               <h2 className="text-sm font-bold text-cyan-900 dark:text-cyan-100">Legacy recovery actions stay controlled</h2>
               <p className="text-xs text-cyan-800 mt-1 leading-relaxed dark:text-cyan-200">
-                Stuck-order recovery can write sync logs and retry source sync. Use Sync Health for current visibility, and only run an exact paid-order recovery when that order is explicitly approved.
+                Stuck-order recovery can write sync logs and retry source sync. Recovery remains locked here. Review the affected order first; an exact paid-order recovery needs explicit approval.
               </p>
             </div>
           </div>
@@ -42,13 +42,14 @@ export default function SyncStatus() {
           <div className="flex items-start gap-3">
             <ShieldCheck className="w-5 h-5 text-primary mt-0.5 shrink-0" />
             <div>
-              <h2 className="text-sm font-bold text-foreground">Use read-only bridge visibility</h2>
+              <h2 className="text-sm font-bold text-foreground">Review current source records</h2>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Sync Health shows sanitized source bridge status without broad sync, retry, recover, replay, repair, export, or raw-log actions.
+                Shopify shows source orders and alerts. The review queue lists operational exceptions. Neither link starts synchronization or recovery.
               </p>
               <Button asChild className="mt-4 rounded-xl">
-                <Link to="/admin/sync-health">Open Sync Health</Link>
+                <Link to="/admin/shopify">Review Shopify records</Link>
               </Button>
+              <Button asChild variant="outline" className="mt-4 ml-2"><Link to="/admin/review-queue">Review exceptions</Link></Button>
             </div>
           </div>
         </section>

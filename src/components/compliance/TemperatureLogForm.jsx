@@ -1,3 +1,5 @@
+import { requireConfirmedAdminWrite } from '@/lib/confirmedAdminWrite';
+import { businessDateTime } from '@/lib/businessDate';
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,8 +11,8 @@ import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 export default function TemperatureLogForm({ onClose }) {
   const [, setUser] = useState(null);
   const [formData, setFormData] = useState({
-    log_date: new Date().toISOString().split('T')[0],
-    log_time: new Date().toTimeString().slice(0, 5),
+    log_date: businessDateTime().date,
+    log_time: businessDateTime().time,
     staff_member: '',
     location: 'Cold Room 1',
     temperature: '',
@@ -19,10 +21,11 @@ export default function TemperatureLogForm({ onClose }) {
     unit: 'F',
     shift: 'Morning',
     notes: '',
-    production_date: new Date().toISOString().split('T')[0],
+    production_date: businessDateTime().date,
   });
   const [warning, setWarning] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -53,11 +56,12 @@ export default function TemperatureLogForm({ onClose }) {
     if (!formData.temperature) return;
 
     setIsSubmitting(true);
+    setSaveError('');
     try {
       const temp = parseFloat(formData.temperature);
       const isInRange = temp >= formData.min_range && temp <= formData.max_range;
 
-      await base44.functions.invoke('saveAdminComplianceRecord', {
+      requireConfirmedAdminWrite(await base44.functions.invoke('saveAdminComplianceRecord', {
         record_type: 'temperature',
         data: {
           ...formData,
@@ -65,13 +69,15 @@ export default function TemperatureLogForm({ onClose }) {
           within_range: isInRange,
           production_date: formData.log_date,
         },
-      });
+      }));
 
       queryClient.invalidateQueries({ queryKey: ['temperature_logs'] });
       queryClient.invalidateQueries({ queryKey: ['temp_logs_today'] });
       queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
       queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
       onClose?.();
+    } catch {
+      setSaveError('The save could not be confirmed. Your entries are still here. Check the records before retrying to avoid a duplicate.');
     } finally {
       setIsSubmitting(false);
     }
@@ -87,10 +93,12 @@ export default function TemperatureLogForm({ onClose }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {saveError && <p role="alert" className="nv-admin-form-error">{saveError}</p>}
+          <p className="nv-admin-form-timezone">Dates and times: America/Chicago</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Date</label>
-              <input
+              <label htmlFor="TemperatureLogForm-field-3604" className="text-sm font-medium">Date</label>
+              <input aria-label="log date" id="TemperatureLogForm-field-3604"
                 type="date"
                 value={formData.log_date}
                 onChange={(e) => handleChange('log_date', e.target.value)}
@@ -98,8 +106,8 @@ export default function TemperatureLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Time</label>
-              <input
+              <label htmlFor="TemperatureLogForm-field-3982" className="text-sm font-medium">Time</label>
+              <input aria-label="log time" id="TemperatureLogForm-field-3982"
                 type="time"
                 value={formData.log_time}
                 onChange={(e) => handleChange('log_time', e.target.value)}
@@ -116,8 +124,8 @@ export default function TemperatureLogForm({ onClose }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Location</label>
-              <select
+              <label htmlFor="TemperatureLogForm-field-4636" className="text-sm font-medium">Location</label>
+              <select aria-label="location" id="TemperatureLogForm-field-4636"
                 value={formData.location}
                 onChange={(e) => handleChange('location', e.target.value)}
                 className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
@@ -129,8 +137,8 @@ export default function TemperatureLogForm({ onClose }) {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium">Shift</label>
-              <select
+              <label htmlFor="TemperatureLogForm-field-5190" className="text-sm font-medium">Shift</label>
+              <select aria-label="shift" id="TemperatureLogForm-field-5190"
                 value={formData.shift}
                 onChange={(e) => handleChange('shift', e.target.value)}
                 className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
@@ -143,8 +151,8 @@ export default function TemperatureLogForm({ onClose }) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">Temperature (°F)</label>
-            <input
+            <label htmlFor="TemperatureLogForm-field-5705" className="text-sm font-medium">Temperature (°F)</label>
+            <input aria-label="temperature" id="TemperatureLogForm-field-5705"
               type="number"
               step="0.1"
               value={formData.temperature}
@@ -168,8 +176,8 @@ export default function TemperatureLogForm({ onClose }) {
           )}
 
           <div>
-            <label className="text-sm font-medium">Notes (Optional)</label>
-            <textarea
+            <label htmlFor="TemperatureLogForm-field-6888" className="text-sm font-medium">Notes (Optional)</label>
+            <textarea aria-label="notes" id="TemperatureLogForm-field-6888"
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
               placeholder="Any additional observations..."

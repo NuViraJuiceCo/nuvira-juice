@@ -120,12 +120,12 @@ export default function Suppliers() {
       <AdminOpsHeader title="Suppliers" subtitle="Read-only supplier directory" badge="Read-only" />
 
       <main className="mx-auto mt-4 w-full max-w-[1180px] space-y-4 px-4">
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 gap-2 lg:grid-cols-4">
           <StatCard icon={Store} label="Suppliers" value={formatNumber(stats.total)} isRefreshing={isFetching} />
           <StatCard label="Active" value={formatNumber(stats.active)} />
           <StatCard icon={Star} label="Negotiating" value={formatNumber(stats.negotiating)} />
           <StatCard icon={Truck} label="Avg Lead Time" value={stats.avgLeadTime ? `${stats.avgLeadTime}d` : '-'} />
-        </div>
+        </div>}
 
         <section className="rounded-xl border border-border bg-card p-4">
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_170px_190px]">
