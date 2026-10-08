@@ -84,4 +84,36 @@ assert.equal(declarations(`${controlSelector} [role="tab"][data-state="active"]`
 assert.ok(declarations(`${controlSelector} [role="tab"]:focus-visible`).outline);
 checks.push('Equal-width day segments keep matching inset corners, 44px targets, program accents and visible keyboard focus');
 
+const discoveryResult = await build({
+  entryPoints: ['src/components/program/BrowserProgramDiscovery.jsx'], bundle: true,
+  write: false, platform: 'node', format: 'cjs', external: ['react', 'react-dom', 'react-router-dom'],
+  alias: { '@': `${process.cwd()}/src` }, loader: { '.css': 'empty' },
+});
+const discoveryModule = { exports: {} };
+const require = createRequire(import.meta.url);
+vm.runInNewContext(discoveryResult.outputFiles[0].text, {
+  module: discoveryModule, exports: discoveryModule.exports,
+  require: name => name === 'react-router-dom'
+    ? { Link: ({ to, children, ...props }) => React.createElement('a', { href: to, ...props }, children) }
+    : require(name),
+});
+for (const current of PROGRAMS) for (const option of current.durationOptions) {
+  const markup = render(discoveryModule.exports.default, { programKey: current.key, days: option.days });
+  assert.ok(!markup.includes(`href="/program/${current.key}`));
+  assert.equal((markup.match(/class="nv-program-discovery-link"/g) || []).length, PROGRAMS.length - 1);
+  for (const other of PROGRAMS.filter(program => program.key !== current.key)) {
+    const matchingOption = other.durationOptions.find(candidate => candidate.days === option.days) || other.durationOptions[0];
+    assert.ok(markup.includes(`href="/program/${other.key}?days=${matchingOption.days}"`));
+    assert.ok(markup.includes(`aria-label="Explore ${other.name}"`));
+    assert.ok(markup.includes(matchingOption.composition));
+    assert.ok(markup.includes(`$${matchingOption.price}`));
+    const media = approvedProductMedia({ title: matchingOption.bundleComposition[0].product_name });
+    assert.ok(markup.includes(media.primary));
+    assert.ok(fs.existsSync(`public${media.primary}`));
+  }
+}
+assert.match(page, /desktop && <BrowserProgramDiscovery programKey=\{program.key\} days=\{selectedOption.days\}/);
+assert.ok(page.indexOf('<BrowserProgramDiscovery') > page.indexOf('</main>'));
+checks.push('Bottom-of-page discovery excludes the current program, preserves supported durations and uses real catalog prices, quantities and approved product imagery without native changes');
+
 console.log(JSON.stringify({ ok: true, suite: 'browser-consumption-guide', checks, productionWrites: false, providerCalls: false }, null, 2));
