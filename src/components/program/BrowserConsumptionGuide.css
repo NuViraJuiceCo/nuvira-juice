@@ -3,10 +3,12 @@
 [data-desktop-brand="true"] .nv-guide-eyebrow { color: var(--nv-program-accent); font-size: 12px; font-weight: 600; }
 [data-desktop-brand="true"] .nv-guide-heading > p:last-child { max-width: 65ch; color: #506056; font-size: 14px; line-height: 1.6; }
 [data-desktop-brand="true"] .nv-guide-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin-top: 22px; padding-bottom: 16px; border-bottom: 1px solid #d5e1db; }
-[data-desktop-brand="true"] .nv-guide-day-tabs { height: auto; padding: 4px; gap: 4px; border-radius: 8px; background: #eff3f0; }
-[data-desktop-brand="true"] .nv-guide-day-tabs [role="tab"] { min-height: 40px; min-width: 68px; padding: 8px 14px; border-radius: 5px; color: #506056; font-size: 14px; box-shadow: none; }
-[data-desktop-brand="true"] .nv-guide-day-tabs [role="tab"][data-state="active"] { background: var(--nv-program-accent); color: #fff; }
-[data-desktop-brand="true"] .nv-guide-day-tabs [role="tab"]:focus-visible { outline: 2px solid var(--nv-program-accent); outline-offset: 3px; }
+/* Keep the track and segments together; shared storefront pills must not reshape this control. */
+[data-desktop-brand="true"] .nv-consumption-guide .nv-guide-day-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(76px,1fr); width: max-content; max-width: 100%; height: 52px; padding: 4px; gap: 4px; border-radius: 8px; background: #eff3f0; }
+[data-desktop-brand="true"] .nv-consumption-guide .nv-guide-day-tabs [role="tab"] { height: 44px; min-height: 44px; min-width: 0; padding: 10px 18px; border: 0; border-radius: 4px; color: #506056; background: transparent; font-size: 14px; line-height: 24px; font-weight: 600; box-shadow: none; transition: background-color 160ms ease,color 160ms ease; }
+[data-desktop-brand="true"] .nv-consumption-guide .nv-guide-day-tabs [role="tab"][data-state="inactive"]:hover { background: #fff; }
+[data-desktop-brand="true"] .nv-consumption-guide .nv-guide-day-tabs [role="tab"][data-state="active"] { background: var(--nv-program-accent); color: #fff; }
+[data-desktop-brand="true"] .nv-consumption-guide .nv-guide-day-tabs [role="tab"]:focus-visible { outline: 2px solid var(--nv-program-accent); outline-offset: 3px; box-shadow: none; }
 [data-desktop-brand="true"] .nv-guide-toolbar > p { color: #506056; font-size: 13px; }
 [data-desktop-brand="true"] .nv-guide-toolbar > p span { margin-inline: 5px; }
 [data-desktop-brand="true"] .nv-guide-day { margin: 0; }

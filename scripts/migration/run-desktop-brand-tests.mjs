@@ -387,7 +387,7 @@ function contrast(a, b) {
 const programStyles = postcss.parse(css);
 for (const [key, ink, title, accent, stops] of [
   ['radiance', '66300c', '6e2b07', '8d370d', ['ff991f', 'ffb544', 'ffd477']],
-  ['hydration', 'fff2f1', 'ffe7dc', '882a43', ['74263d', '9b354c', '6f294b']],
+  ['hydration', 'fff5f2', 'fff4ed', 'a12622', ['a91f25', 'c73532', 'b52a27']],
   ['reset', 'effaf2', 'e0f4d6', '245b43', ['164e48', '27634c', '33543f']],
 ]) {
   const declarations = {};
@@ -404,6 +404,18 @@ for (const [key, ink, title, accent, stops] of [
     assert.ok(contrast(title, background) >= 4.5, `Program display text contrast: ${title}/${background}`);
   }
 }
+const hydrationPageStyles = {};
+programStyles.walkRules('[data-desktop-brand="true"] .nv-program-page[data-program="hydration"]', rule => {
+  rule.walkDecls(decl => { hydrationPageStyles[decl.prop] = decl.value; });
+});
+assert.equal(hydrationPageStyles['--nv-program-accent'], '#b52a27');
+assert.equal(hydrationPageStyles['--nv-program-title'], '#8f2721');
+for (const background of ['b52a27', 'bf302b', '9f2421']) assert.ok(contrast('ffffff', background) >= 4.5);
+for (const background of ['f8bbb0', 'f4cec5', 'fae4dc']) {
+  assert.ok(hydrationPageStyles['--nv-program-wash'].includes(`#${background}`));
+  assert.ok(contrast('8f2721', background) >= 4.5);
+}
+checks.push('Hydration uses warm red on the homepage and product page with readable text and control contrast');
 assert.match(programSelector, /Your Flavor Pairing/);
 assert.match(read('src/components/program/ProgramBottleMix.jsx'), /count === 1 \? 'bottle' : 'bottles'/);
 for (const program of PROGRAMS) {

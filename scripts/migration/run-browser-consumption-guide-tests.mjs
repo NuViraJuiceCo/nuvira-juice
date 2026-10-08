@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import postcss from 'postcss';
 import { PROGRAMS, DAILY_PROGRAM_SCHEDULES } from '../../src/lib/program-catalog.js';
 import { approvedProductMedia } from '../../src/lib/approved-product-media.js';
 
@@ -60,5 +61,27 @@ assert.match(page, /desktop \? <BrowserConsumptionGuide[\s\S]*?: <ConsumptionSch
 assert.match(page, /<BrowserConsumptionGuide[\s\S]*?shotNames=\{selectedShotNames\}/);
 assert.ok(fs.readFileSync('src/components/program/BrowserConsumptionGuide.jsx', 'utf8').includes('key={`${programKey}-${option.days}`}'));
 checks.push('Flexible timing and storage guidance remain; day selection resets for duration changes; native layout stays separate');
+
+const guideStyles = postcss.parse(fs.readFileSync('src/components/program/BrowserConsumptionGuide.css', 'utf8'));
+const controlSelector = '[data-desktop-brand="true"] .nv-consumption-guide .nv-guide-day-tabs';
+function declarations(selector) {
+  const values = {};
+  guideStyles.walkRules(selector, rule => rule.walkDecls(decl => { values[decl.prop] = decl.value; }));
+  return values;
+}
+// The component scope outranks the shared main[data-storefront-page] pill rule.
+const track = declarations(controlSelector);
+const segment = declarations(`${controlSelector} [role="tab"]`);
+assert.equal(track.display, 'grid');
+assert.equal(track['grid-auto-columns'], 'minmax(76px,1fr)');
+assert.equal(track['max-width'], '100%');
+assert.equal(track['border-radius'], '8px');
+assert.equal(segment['border-radius'], '4px');
+assert.equal(parseInt(track['border-radius']), parseInt(segment['border-radius']) + parseInt(track.padding));
+assert.equal(parseInt(track.height), parseInt(segment.height) + 2 * parseInt(track.padding));
+assert.ok(parseInt(segment['min-height']) >= 44);
+assert.equal(declarations(`${controlSelector} [role="tab"][data-state="active"]`).background, 'var(--nv-program-accent)');
+assert.ok(declarations(`${controlSelector} [role="tab"]:focus-visible`).outline);
+checks.push('Equal-width day segments keep matching inset corners, 44px targets, program accents and visible keyboard focus');
 
 console.log(JSON.stringify({ ok: true, suite: 'browser-consumption-guide', checks, productionWrites: false, providerCalls: false }, null, 2));
