@@ -444,14 +444,32 @@ for (const isNative of [false, true]) for (const isDesktop of [false, true]) {
   assert.match(html, /Complete your mix above/);
 }
 checks.push('Cart summary is in-flow only on desktop web; native/tablet/mobile retain the existing portal and safe-area footer, with identical children');
-const Experience = load('src/components/checkout/CheckoutExperience.jsx', {
+const { default: Experience, CheckoutRewardNotice } = load('src/components/checkout/CheckoutExperience.jsx', {
   react: { ...React, default: React },
-  'lucide-react': Object.fromEntries(['ArrowLeft', 'Check', 'ChevronDown', 'Gift', 'LockKeyhole', 'MapPin', 'Pencil'].map(name => [name, empty])),
+  'lucide-react': Object.fromEntries(['ArrowLeft', 'Check', 'ChevronDown', 'Gift', 'LockKeyhole', 'MapPin', 'Pencil', 'RotateCcw', 'X'].map(name => [name, empty])),
   '@/components/orders/OrderItemThumbnail': { default: empty },
   '@/hooks/useDesktopStorefront': { default: () => desktop && !native },
   '@/lib/brandImages': { BRAND_IMAGES: { wordmark: '/existing-wordmark.webp' } },
   './checkout-experience.css': {},
-}).default;
+});
+assert.equal(renderToStaticMarkup(React.createElement(CheckoutRewardNotice, {})), '');
+for (const locked of [false, true]) {
+  const html = renderToStaticMarkup(React.createElement(CheckoutRewardNotice, { reward: { title: 'Free Bottle' },
+    error: 'Choose the missing reward bottle or remove the reward.', locked, hasRewardItems: true,
+    onRemove: empty, onReview: empty, onRetry: empty }));
+  assert.match(html, /Free Bottle/);
+  assert.match(html, /role="alert"/);
+  assert.match(html, /regular-price items stay/);
+  assert.equal((html.match(/disabled=""/g) || []).length, locked ? 3 : 0);
+  assert.match(html, /Remove reward from this order/);
+  assert.match(html, /Try again/);
+  const prepared = renderToStaticMarkup(React.createElement(CheckoutRewardNotice, { reward: { title: 'Free Bottle' },
+    locked: true, onEdit: empty, editingLocked: locked }));
+  assert.match(prepared, /Edit reward selection/);
+  assert.doesNotMatch(prepared, /Remove reward from this order/);
+  assert.equal(prepared.includes('disabled=""'), locked);
+}
+checks.push('Selected reward stays visible outside offers; missing-bottle recovery exposes direct removal and retry, while prepared payments require the existing safe edit flow');
 const AuthLayout = load('src/components/AuthLayout.jsx', {
   react: { ...React, default: React },
   'react-router-dom': { Link: ({ children, to, ...props }) => React.createElement('a', { href: to, ...props }, children) },
