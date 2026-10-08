@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import path from 'node:path';
 import os from 'node:os';
 import { transformSync } from 'esbuild';
+import postcss from 'postcss';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { assertDesktopGeometry } from '../qa/desktop-geometry-contract.mjs';
@@ -379,17 +380,28 @@ for (const [foreground, background] of [['073c29', 'a7d6bd'], ['ffffff', '18734b
   assert.ok((values[0] + .05) / (values[1] + .05) >= 4.5, `Text contrast: ${foreground}/${background}`);
 }
 checks.push('Title Case primary navigation, short-height hero treatment and brand text contrast retained');
-for (const [ink, title, accent, stops] of [
-  ['fff5ed', 'fff1da', '24503b', ['123c32', '285541', '4c6347']],
-  ['fff2f1', 'ffe7dc', '882a43', ['74263d', '9b354c', '6f294b']],
-  ['effaf2', 'e0f4d6', '245b43', ['164e48', '27634c', '33543f']],
+function contrast(a, b) {
+  const values = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (values[0] + .05) / (values[1] + .05);
+}
+const programStyles = postcss.parse(css);
+for (const [key, ink, title, accent, stops] of [
+  ['radiance', '66300c', '6e2b07', '8d370d', ['ff991f', 'ffb544', 'ffd477']],
+  ['hydration', 'fff2f1', 'ffe7dc', '882a43', ['74263d', '9b354c', '6f294b']],
+  ['reset', 'effaf2', 'e0f4d6', '245b43', ['164e48', '27634c', '33543f']],
 ]) {
-  assert.ok(css.includes(`--nv-program-ink: #${ink}`));
-  assert.ok(css.includes(`--nv-program-title: #${title}`));
-  assert.ok((luminance('fff5ed') + .05) / (luminance(accent) + .05) >= 4.5, 'Selected program tab and CTA contrast');
+  const declarations = {};
+  programStyles.walkRules(`[data-desktop-brand="true"] .nv-brand-program-band[data-program="${key}"]`, rule => {
+    rule.walkDecls(decl => { declarations[decl.prop] = decl.value; });
+  });
+  assert.equal(declarations['--nv-program-ink'], `#${ink}`, `${key} must have an explicit color identity`);
+  assert.equal(declarations['--nv-program-title'], `#${title}`);
+  assert.equal(declarations['--nv-program-color'], `#${accent}`);
+  assert.ok(contrast('fff5ed', accent) >= 4.5, 'Selected program tab and CTA contrast');
   for (const background of stops) {
-    assert.ok((luminance(ink) + .05) / (luminance(background) + .05) >= 4.5, `Program small text contrast: ${ink}/${background}`);
-    assert.ok((luminance(title) + .05) / (luminance(background) + .05) >= 4.5, `Program display text contrast: ${title}/${background}`);
+    assert.ok(declarations.background.includes(`#${background}`));
+    assert.ok(contrast(ink, background) >= 4.5, `Program small text contrast: ${ink}/${background}`);
+    assert.ok(contrast(title, background) >= 4.5, `Program display text contrast: ${title}/${background}`);
   }
 }
 assert.match(programSelector, /Your Flavor Pairing/);
@@ -421,7 +433,7 @@ assert.match(css, /\.nv-program-schedule \{ grid-column: 1; grid-row: 3/);
 assert.match(css, /\.nv-brand-program-tabs \{ display: flex; max-width: 50%; overflow-x: auto/);
 assert.match(read('src/components/program/ProgramBottleMix.jsx'), /Math.min\(components.length, 3\)/);
 checks.push('Shared product-led program imagery preserves every duration bottle count and adapts to future catalog options');
-checks.push('Warm light program typography and flavor-colored controls pass contrast checks against every rich gradient stop');
+checks.push('Explicit Radiance orange, Hydration red and Reset green themes preserve readable text and controls against every gradient stop');
 assert.doesNotMatch(css, /#(?:c2ef62|bbed59|d3f280|d0fa85)/i);
 assert.match(css, /\.nv-brand-logo img \{ width: 104px; height: 40px/);
 assert.match(css, /\.nv-brand-logo \{ width: 104px; min-height: 44px; display: flex; align-items: center/);

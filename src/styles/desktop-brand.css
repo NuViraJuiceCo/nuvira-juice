@@ -102,6 +102,9 @@
   [data-desktop-brand="true"] .nv-brand-minimum-note p { color: #59665a; flex: 1; }
   [data-desktop-brand="true"] .nv-brand-minimum-note a { display: flex; align-items: center; gap: 8px; min-height: 44px; }
   [data-desktop-brand="true"] .nv-brand-program-band { --nv-program-ink: #fff5ed; --nv-program-title: #fff1da; --nv-program-color: #24503b; background: linear-gradient(115deg,#123c32 0%,#285541 58%,#4c6347 100%); color: var(--nv-program-ink); scroll-margin-top: 24px; }
+  [data-desktop-brand="true"] .nv-brand-program-band[data-program="radiance"] { --nv-program-ink: #66300c; --nv-program-title: #6e2b07; --nv-program-color: #8d370d; background: linear-gradient(115deg,#ff991f 0%,#ffb544 58%,#ffd477 100%); }
+  [data-desktop-brand="true"] main[data-storefront-page] .nv-brand-program-band[data-program="radiance"] :is(.nv-brand-program-tabs,.nv-brand-program-length-options button:not([aria-pressed="true"]),.nv-brand-program-choose) { border-color: #8d370d66; }
+  [data-desktop-brand="true"] .nv-brand-program-band[data-program="radiance"] :is(a,button):focus-visible { outline-color: #66300c; }
   [data-desktop-brand="true"] .nv-brand-program-band[data-program="hydration"] { --nv-program-ink: #fff2f1; --nv-program-title: #ffe7dc; --nv-program-color: #882a43; background: linear-gradient(115deg,#74263d 0%,#9b354c 54%,#6f294b 100%); }
   [data-desktop-brand="true"] .nv-brand-program-band[data-program="reset"] { --nv-program-ink: #effaf2; --nv-program-title: #e0f4d6; --nv-program-color: #245b43; background: linear-gradient(115deg,#164e48 0%,#27634c 54%,#33543f 100%); }
   [data-desktop-brand="true"] .nv-brand-program-band :is(h2,h3,.nv-brand-program-price strong) { color: var(--nv-program-title); }
@@ -152,6 +155,8 @@
   [data-desktop-brand="true"] [data-display="showcase"] .nv-program-blend figcaption p { font-size: 13px; }
   [data-desktop-brand="true"] .nv-program-bottle-unit { font-family: var(--font-body); font-size: 14px; font-weight: 500; }
   [data-desktop-brand="true"] .nv-program-blend figcaption .nv-program-daily-quantity { margin: 0; color: #24503b; font-size: 13px; line-height: 1.4; }
+  [data-desktop-brand="true"] .nv-brand-program-band[data-program="radiance"] .nv-program-blend figcaption { color: var(--nv-program-color); background: #fff8efed; }
+  [data-desktop-brand="true"] .nv-brand-program-band[data-program="radiance"] .nv-program-blend figcaption p { color: #66300c; }
   [data-desktop-brand="true"] .nv-program-daily-quantity strong { font-weight: 700; }
   [data-desktop-brand="true"] .nv-brand-delivery { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
   [data-desktop-brand="true"] .nv-brand-delivery h2 { margin: 16px 0 22px; }
