@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { orderMinimumStatus } from '../../src/lib/orderMinimums.js';
-import { rewardDeliveryMinimumSubtotal } from '../../src/lib/rewardDeliveryMinimum.js';
+import { rewardDeliveryMinimumSubtotal, rewardDeliveryErrorMessage } from '../../src/lib/rewardDeliveryMinimum.js';
+import { replaceEarnedRewardItems } from '../../src/lib/rewardSelection.js';
+import { quoteRewardCheckout } from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
 
 const juice = (quantity, extra = {}) => ({ category: 'juice', quantity, price: 13, ...extra });
 const shot = (quantity, extra = {}) => ({ category: 'shot', quantity, price: 6, ...extra });
@@ -63,8 +65,9 @@ const previewInput = { subtotal: 0, items: [rewardBundle(6)], activeReward: { id
   preview: async payload => { previewCalls++; assert.equal(payload.mode, 'preview_reward_checkout');
     assert.deepEqual(payload.active_reward, { id: 'vip' }); return { data: approvedQuote }; } };
 assert.equal(await rewardDeliveryMinimumSubtotal(previewInput), 78);
-assert.equal(await rewardDeliveryMinimumSubtotal({ ...previewInput, activeReward: null, subtotal: 39 }), 39);
+assert.equal(await rewardDeliveryMinimumSubtotal({ ...previewInput, items: [juice(3)], activeReward: null, subtotal: 39 }), 39);
 assert.equal(previewCalls, 1);
+await assert.rejects(rewardDeliveryMinimumSubtotal({ ...previewInput, activeReward: null }), { code: 'REWARD_SELECTION_REQUIRED' });
 for (const value of [null, -1, '78', NaN, Infinity]) {
   await assert.rejects(rewardDeliveryMinimumSubtotal({ ...previewInput,
     preview: async () => ({ data: { ...approvedQuote, quote: { ...approvedQuote.quote, catalog_subtotal: value } } }) }));
@@ -75,6 +78,72 @@ for (const patch of [{ ok: false }, { preview_only: false }, { writes_performed:
 }
 assert.match(checkout, /cart_subtotal: qualifyingSubtotal/);
 assert.match(checkout, /rewardDeliveryMinimumSubtotal\(\{ subtotal, items, activeReward/);
+
+// The reported paid-only cart must not be trapped by a hidden saved bottle reward.
+const paid = { ...juice(3), product_id: 'aura', title: 'AURA' };
+const savedReward = { id: 'saved-bottle', title: 'Free Bottle', reward_type: 'free_bottle', points_required: 1000, is_active: true };
+let rewardRejection;
+try {
+  quoteRewardCheckout({ items: [paid], products: [{ ...paid, id: 'aura', is_available: true, size: '12oz' }],
+    reward: savedReward, requestedReward: savedReward, availablePoints: 1500 });
+} catch (error) { rewardRejection = error; }
+assert.equal(rewardRejection?.code, 'REWARD_QUANTITY_MISMATCH');
+assert.match(rewardDeliveryErrorMessage(rewardRejection), /own product selection/);
+assert.match(rewardDeliveryErrorMessage({ response: { data: { error_code: 'INSUFFICIENT_REWARD_POINTS' } } }), /not enough available points/);
+assert.doesNotMatch(rewardDeliveryErrorMessage({ message: 'private server details', response: { data: { error: 'private server details' } } }), /private/);
+assert.match(rewardDeliveryErrorMessage(new Error('offline')), /Try again/);
+
+const recoverySource = checkout.slice(checkout.indexOf('  const resetRewardDeliveryValidation ='), checkout.indexOf('  const {\n    data: scheduleOptionsPayload'));
+assert.ok(recoverySource.includes('handleRemoveCheckoutReward'));
+for (const blockedBy of [null, 'rewardSelectionLocked', 'checkoutAttemptInFlightRef', 'checkoutStartLockedRef', 'storage']) {
+  const effects = [];
+  let cart = [paid, { ...juice(1), product_id: 'aura', reward_id: savedReward.id, isFreeReward: true, price: 0 }];
+  let revision = 0;
+  const context = { user: { email: 'synthetic@example.invalid' }, rewardSelectionLocked: blockedBy === 'rewardSelectionLocked',
+    checkoutAttemptInFlightRef: { current: blockedBy === 'checkoutAttemptInFlightRef' },
+    checkoutStartLockedRef: { current: blockedBy === 'checkoutStartLockedRef' },
+    addressValidationRequestRef: { current: 3 }, addressDebounceRef: { current: 2 },
+    clearTimeout: () => effects.push('cancel-timer'),
+    localStorage: { removeItem(key) { if (blockedBy === 'storage') throw new Error('blocked'); effects.push(key); } },
+    clearEarnedRewardItems: () => { cart = replaceEarnedRewardItems(cart); },
+    setRewardSelectionRevision: fn => { revision = fn(revision); },
+    requestAnimationFrame: () => {}, toast: { success: () => effects.push('success'), error: () => effects.push('error') },
+  };
+  for (const setter of ['setAddressValidated', 'setZoneEligibility', 'setDeliveryZone', 'setAddressValidationError', 'setRewardValidationError', 'setUsePoints', 'setUseCredits', 'setAppliedDiscountCode']) {
+    context[setter] = value => effects.push([setter, value]);
+  }
+  vm.runInNewContext(recoverySource + 'this.remove = handleRemoveCheckoutReward; this.retry = handleRetryCheckoutReward;', context);
+  context.remove();
+  if (!blockedBy) {
+    assert.deepEqual(cart, [paid], 'Paid AURA line is retained, even when the reward uses the same product ID');
+    assert.equal(revision, 1);
+    assert.equal(context.addressValidationRequestRef.current, 4, 'Stale async response invalidated synchronously');
+    assert.ok(effects.includes('activeReward_synthetic@example.invalid'));
+    assert.ok(effects.some(effect => Array.isArray(effect) && effect[0] === 'setAddressValidated' && effect[1] === false));
+    assert.equal(await rewardDeliveryMinimumSubtotal({ items: cart, subtotal: 39, activeReward: null,
+      preview: () => { throw new Error('Paid cart must not call reward preview'); } }), 39);
+    assert.equal(orderMinimumStatus(cart).meetsMinimum, true);
+    effects.length = 0;
+    context.retry();
+    assert.equal(revision, 2);
+    assert.equal(context.addressValidationRequestRef.current, 5);
+    assert.ok(!effects.some(effect => typeof effect === 'string' && effect.startsWith('activeReward_')), 'Retry never removes a reward');
+  } else {
+    assert.equal(cart.length, 2);
+    assert.equal(revision, 0);
+    assert.equal(context.addressValidationRequestRef.current, 3);
+    assert.deepEqual(effects, blockedBy === 'storage' ? ['error'] : []);
+  }
+}
+assert.match(checkout, /const rewardSelectionLocked = Boolean\(isSubmitting \|\| checkoutStartLocked \|\| clientSecret \|\| rewardCheckoutSessionId \|\| rewardCheckoutRecovery \|\| paidAttemptRef.current\)/);
+assert.match(checkout, /user\?\.email, rewardSelectionRevision/);
+assert.match(checkout, /addressValidationRequestRef.current === validationRequestId\) addressValidationRequestRef.current \+= 1/);
+const deliveryReadySource = checkout.match(/const deliveryReady = (.*);/)[1];
+for (const quantity of [2, 3]) {
+  const context = { checkoutMinimum: orderMinimumStatus([juice(quantity)]), routeReview: false,
+    addressValidated: true, zoneEligibility: { checkout_allowed: true }, selectedDeliveryOption: { option_id: 'synthetic' } };
+  assert.equal(vm.runInNewContext(deliveryReadySource, context), quantity === 3, 'Removing an earned bottle cannot bypass the remaining cart minimum');
+}
 // Both retained route entrypoints delegate unchanged benefit selections to the
 // authoritative root. Runtime qualification/hold/decision cases are exercised
 // in run-checkout-record-persistence-tests.mjs.
@@ -92,5 +161,6 @@ for (const file of routeFiles) {
 console.log(JSON.stringify({ ok: true, suite: 'reward-order-minimum', policy_cases: cases.length,
   checkout_preflight_cases: cases.length - 1, price_independence_cases: 4,
   retail_preview_cases: 12, route_guard_cases: routeGuardCases,
+  checkout_reward_recovery_cases: 5,
   provider_calls: false, production_writes: false,
   limitation: 'Synthetic count/retail-preview and shared route entrypoint contracts. Runtime integration is tested separately; this is not live provider evidence.' }, null, 2));

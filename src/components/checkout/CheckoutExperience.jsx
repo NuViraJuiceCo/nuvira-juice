@@ -1,11 +1,31 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, ChevronDown, Gift, LockKeyhole, MapPin, Pencil } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Gift, LockKeyhole, MapPin, Pencil, RotateCcw, X } from 'lucide-react';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import useDesktopStorefront from '@/hooks/useDesktopStorefront';
 import { BRAND_IMAGES } from '@/lib/brandImages';
 import './checkout-experience.css';
 
 const CheckoutDockContext = createContext(null);
+
+export function CheckoutRewardNotice({ reward, error, hasRewardItems, locked, checking, onRemove, onReview, onRetry, onEdit, editingLocked }) {
+  if (!reward && !hasRewardItems && !error) return null;
+  return <section className="nv-checkout-reward-notice" aria-label="Selected reward">
+    <Gift size={20} aria-hidden="true" />
+    <div className="nv-checkout-reward-copy">
+      <strong>{reward?.title || 'Saved reward selection'}</strong>
+      <p role={error ? 'alert' : 'status'}>{error || 'Selected for this order. You can remove this reward before paying without spending points.'}</p>
+      {hasRewardItems && <p>Removing the reward also removes its reward items. Your regular-price items stay in your cart.</p>}
+      {onEdit && <p>To change your selection, first return to order details. We will check that your current payment can be safely closed.</p>}
+    </div>
+    <div className="nv-checkout-reward-actions">
+      {onEdit ? <button type="button" disabled={editingLocked} onClick={onEdit}><Pencil size={15} aria-hidden="true" />Edit reward selection</button> : <>
+        <button type="button" disabled={locked} onClick={onRemove}><X size={15} aria-hidden="true" />Remove reward from this order</button>
+        <button type="button" disabled={locked} onClick={onReview}>Review rewards</button>
+        {error && <button type="button" disabled={locked || checking} onClick={onRetry}><RotateCcw size={15} aria-hidden="true" />Try again</button>}
+      </>}
+    </div>
+  </section>;
+}
 
 export function CheckoutAddress({ address, saved, children }) {
   const [editing, setEditing] = useState(true);
@@ -41,7 +61,7 @@ export function CheckoutAction({ children }) {
 export default function CheckoutExperience({
   children, items, total, paymentReady, rewardOnly = false, locked, memberReady, contactReady,
   contactSummary, deliverySummary, deliveryReady, deliveryMessage,
-  onBack, onEditBenefits, summary, benefits, benefitsLabel, guest, contact, delivery, payment,
+  onBack, onEditBenefits, summary, benefits, benefitsLabel, guest, contact, delivery, payment, rewardNotice,
 }) {
   const desktop = useDesktopStorefront();
   const [step, setStep] = useState(0);
@@ -111,6 +131,7 @@ export default function CheckoutExperience({
             {desktop ? <img className="nv-checkout-wordmark" src={BRAND_IMAGES.wordmark} alt="NuVira Juice Company" /> : <span>NUVIRA JUICE CO.</span>}<LockKeyhole size={17} aria-label="Secure checkout" />
           </header>
           <div className="nv-checkout-intro"><h1>Checkout</h1><p>A little goodness, delivered.</p></div>
+          {rewardNotice}
           <div className="nv-checkout-layout">
           <aside className="nv-checkout-sidebar" aria-label="Order and offers">
           <section className="nv-checkout-order" aria-label="Your order">

@@ -30,6 +30,20 @@
 .nv-checkout-intro {padding:23px 0 24px}
 .nv-checkout-intro h1 {font:500 36px/1.2 'Playfair Display',Georgia,serif;letter-spacing:-.03em;margin:0 0 8px}
 .nv-checkout-intro p {font-size:13px;color:var(--nv-muted)}
+.nv-checkout-reward-notice {display:flex;align-items:flex-start;gap:14px;padding:20px 0;margin-bottom:20px;border-block:1px solid var(--nv-line);color:var(--nv-text)}
+.nv-checkout-reward-notice>svg {flex-shrink:0;margin-top:2px;color:var(--nv-accent)}
+.nv-checkout-reward-copy {flex:1;min-width:0}
+.nv-checkout-reward-copy strong {font-size:16px;font-weight:600}
+.nv-checkout-reward-copy p {font-size:13px;line-height:1.6;color:var(--nv-muted);margin-top:6px;max-width:68ch;overflow-wrap:anywhere}
+.nv-checkout-reward-copy p[role="alert"] {color:var(--nv-error)}
+.nv-checkout-reward-actions {display:flex;flex-wrap:wrap;gap:8px;max-width:330px}
+.nv-checkout-reward-actions button {display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:10px 12px;border:1px solid var(--nv-line);border-radius:6px;background:var(--nv-surface);color:var(--nv-accent);font-size:13px;font-weight:600}
+.nv-checkout-reward-actions button:first-child {flex-basis:100%}
+@media (max-width:700px) {
+  .nv-checkout-reward-notice {flex-wrap:wrap}
+  .nv-checkout-reward-copy {flex-basis:calc(100% - 34px)}
+  .nv-checkout-reward-actions {max-width:none;width:100%}
+}
 .nv-checkout-order {border:1px solid var(--nv-line);border-radius:20px;overflow:hidden;background:linear-gradient(130deg,var(--nv-raised),var(--nv-surface) 75%);box-shadow:inset 0 1px 0 var(--nv-edge),0 12px 28px var(--nv-shadow);margin-bottom:20px}
 .nv-checkout-page summary {list-style:none;cursor:pointer}
 .nv-checkout-page summary::-webkit-details-marker {display:none}

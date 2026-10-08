@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { availableCreditBalance } from '@/lib/creditBalance';
 import SEO from '@/components/SEO';
-import CheckoutExperience, { CheckoutAction, CheckoutAddress } from '@/components/checkout/CheckoutExperience';
+import CheckoutExperience, { CheckoutAction, CheckoutAddress, CheckoutRewardNotice } from '@/components/checkout/CheckoutExperience';
 import OrderItemThumbnail from '@/components/orders/OrderItemThumbnail';
 import FirstOrderOffer from '@/components/shop/FirstOrderOffer';
 import EmbeddedPayment from '@/components/checkout/EmbeddedPayment';
@@ -10,7 +10,8 @@ import PaidCheckoutRecovery from '@/components/checkout/PaidCheckoutRecovery';
 import { readPaidCheckoutAttempt, savePaidCheckoutAttempt, clearPaidCheckoutAttempt } from '@/lib/paidCheckoutAttempt';
 import { readRewardCheckoutRecovery, cancelRewardCheckoutRecovery } from '@/lib/rewardCheckoutRecovery';
 import { readRewardCheckoutAttempt, saveRewardCheckoutAttempt, clearRewardCheckoutAttempt } from '@/lib/rewardCheckoutAttempt';
-import { rewardDeliveryMinimumSubtotal } from '@/lib/rewardDeliveryMinimum';
+import { rewardDeliveryMinimumSubtotal, rewardDeliveryErrorMessage } from '@/lib/rewardDeliveryMinimum';
+import { isEarnedRewardItem } from '@/lib/rewardSelection';
 import { verifyCheckoutCatalog } from '@/lib/checkoutCatalogPreflight';
 import { useCheckoutReceiptHandoff } from '@/lib/useCheckoutReceiptHandoff';
 import { Navigate, useNavigate } from 'react-router-dom';
@@ -112,7 +113,7 @@ export default function Checkout() {
 
 function CheckoutFlow() {
   const navigate = useNavigate();
-  const { items, subtotal, clearCart, trackCheckoutStarted } = useCart();
+  const { items, subtotal, clearCart, clearEarnedRewardItems, trackCheckoutStarted } = useCart();
   const { receiptHandoff, handoffToReceipt } = useCheckoutReceiptHandoff({ clearCart, navigate });
 
   // Safety net 1: if Stripe redirected back to /checkout with session_id in URL
@@ -192,6 +193,8 @@ function CheckoutFlow() {
   const [addressValidated, setAddressValidated] = useState(false);
   const [validatingAddress, setValidatingAddress] = useState(false);
   const [addressValidationError, setAddressValidationError] = useState('');
+  const [rewardValidationError, setRewardValidationError] = useState('');
+  const [rewardSelectionRevision, setRewardSelectionRevision] = useState(0);
   const [deliveryZone, setDeliveryZone] = useState(null);
   // Full eligibility result from validateDeliveryEligibility
   const [zoneEligibility, setZoneEligibility] = useState(null);
@@ -233,7 +236,7 @@ function CheckoutFlow() {
   const activeReward = React.useMemo(() => {
     if (!user?.email) return null;
     try { return JSON.parse(localStorage.getItem(`activeReward_${user.email}`)) || null; } catch { return null; }
-  }, [user?.email]);
+  }, [user?.email, rewardSelectionRevision]);
 
   const { data: userProfile, isFetched: userProfileFetched } = useQuery({
     queryKey: ['user-profile-checkout', user?.email],
@@ -267,6 +270,7 @@ function CheckoutFlow() {
 
   React.useEffect(() => {
     const validationRequestId = ++addressValidationRequestRef.current;
+    setRewardValidationError('');
     if (addressDebounceRef.current) {
       clearTimeout(addressDebounceRef.current);
       addressDebounceRef.current = null;
@@ -302,7 +306,8 @@ function CheckoutFlow() {
     setAddressValidated(false);
 
     addressDebounceRef.current = setTimeout(async () => {
-      let rewardValueUnconfirmed = Boolean(activeReward) || items.some(item => item.isBirthdayReward || item.birthday_product_id);
+      const hasEarnedReward = Boolean(activeReward) || items.some(isEarnedRewardItem);
+      let rewardValueUnconfirmed = hasEarnedReward || items.some(item => item.isBirthdayReward || item.birthday_product_id);
       try {
         const qualifyingSubtotal = await rewardDeliveryMinimumSubtotal({ subtotal, items, activeReward,
           preview: payload => base44.functions.invoke('createPaymentIntent', payload) });
@@ -342,9 +347,14 @@ function CheckoutFlow() {
         setAddressValidated(false);
         setZoneEligibility(null);
         setDeliveryZone(null);
-        setAddressValidationError(rewardValueUnconfirmed
-          ? 'We could not verify your earned reward. Review your reward selection before continuing.'
-          : 'We could not verify this delivery address. Re-enter it and select a Google-verified suggestion.');
+        if (rewardValueUnconfirmed && hasEarnedReward) {
+          setRewardValidationError(rewardDeliveryErrorMessage(err));
+          setAddressValidationError('');
+        } else {
+          setAddressValidationError(rewardValueUnconfirmed
+            ? 'We could not verify your birthday reward. Return to your cart to review it before continuing.'
+            : 'We could not verify this delivery address. Re-enter it and select a Google-verified suggestion.');
+        }
       } finally {
         if (addressValidationRequestRef.current === validationRequestId) {
           setValidatingAddress(false);
@@ -352,8 +362,45 @@ function CheckoutFlow() {
       }
     }, 800);
 
-    return () => clearTimeout(addressDebounceRef.current);
-  }, [address, fulfillmentType, subtotal, items, activeReward, hasShownOutOfAreaModal]);
+    return () => {
+      clearTimeout(addressDebounceRef.current);
+      if (addressValidationRequestRef.current === validationRequestId) addressValidationRequestRef.current += 1;
+    };
+  }, [address, fulfillmentType, subtotal, items, activeReward, hasShownOutOfAreaModal, rewardSelectionRevision]);
+
+  const rewardSelectionLocked = Boolean(isSubmitting || checkoutStartLocked || clientSecret || rewardCheckoutSessionId || rewardCheckoutRecovery || paidAttemptRef.current);
+  const resetRewardDeliveryValidation = () => {
+    // Invalidate an in-flight quote before local selection changes can rerender.
+    addressValidationRequestRef.current += 1;
+    clearTimeout(addressDebounceRef.current);
+    setAddressValidated(false);
+    setZoneEligibility(null);
+    setDeliveryZone(null);
+    setAddressValidationError('');
+    setRewardValidationError('');
+    setRewardSelectionRevision(value => value + 1);
+  };
+  const handleRemoveCheckoutReward = () => {
+    if (rewardSelectionLocked || checkoutAttemptInFlightRef.current || checkoutStartLockedRef.current) return;
+    try {
+      if (user?.email) localStorage.removeItem(`activeReward_${user.email}`);
+    } catch {
+      toast.error('We could not remove the saved selection. Please try again.');
+      return;
+    }
+    resetRewardDeliveryValidation();
+    clearEarnedRewardItems();
+    // Do not automatically spend a larger points/credit amount after removal.
+    setUsePoints(false);
+    setUseCredits(false);
+    setAppliedDiscountCode(null);
+    toast.success('Reward removed from this order. Your points have not been spent.');
+    requestAnimationFrame(() => document.querySelector('.nv-checkout-active h2')?.focus());
+  };
+  const handleRetryCheckoutReward = () => {
+    if (rewardSelectionLocked || checkoutAttemptInFlightRef.current || checkoutStartLockedRef.current) return;
+    resetRewardDeliveryValidation();
+  };
 
   const {
     data: scheduleOptionsPayload,
@@ -1161,7 +1208,8 @@ function CheckoutFlow() {
 
   const contactReady = isValidCheckoutEmail(normalizedCustomerEmail) && Boolean(normalizeNamePart(firstName) && normalizeNamePart(lastName) && phone.trim());
   const routeReview = zoneEligibility?.zone_type === 'route_review' && zoneEligibility?.checkout_allowed;
-  const deliveryReady = Boolean(routeReview || (addressValidated && zoneEligibility?.checkout_allowed && selectedDeliveryOption?.option_id));
+  const checkoutMinimum = orderMinimumStatus(items);
+  const deliveryReady = checkoutMinimum.meetsMinimum && Boolean(routeReview || (addressValidated && zoneEligibility?.checkout_allowed && selectedDeliveryOption?.option_id));
 
   return (
     <CheckoutExperience
@@ -1175,7 +1223,13 @@ function CheckoutFlow() {
       contactSummary={contactReady ? [buildCustomerName(firstName, lastName), normalizedCustomerEmail].join(' · ') : ''}
       deliverySummary={selectedDeliveryOption ? selectedDeliveryLabel : ''}
       deliveryReady={deliveryReady}
-      deliveryMessage={validatingAddress ? 'Checking your delivery address…' : addressValidationError || zoneEligibility?.customer_message || 'Enter your address and choose an available delivery window to continue.'}
+      deliveryMessage={!checkoutMinimum.meetsMinimum ? checkoutMinimum.error : validatingAddress ? 'Checking your delivery address…' : rewardValidationError ? 'Review the selected reward above to continue with delivery.' : addressValidationError || zoneEligibility?.customer_message || 'Enter your address and choose an available delivery window to continue.'}
+      rewardNotice={<CheckoutRewardNotice reward={activeReward} error={rewardValidationError} hasRewardItems={items.some(isEarnedRewardItem)}
+        locked={rewardSelectionLocked} checking={validatingAddress} onRemove={handleRemoveCheckoutReward}
+        onEdit={clientSecret ? handleEditOrderDetails : undefined} editingLocked={isSubmitting || checkoutStartLocked}
+        onRetry={handleRetryCheckoutReward} onReview={() => {
+          if (!rewardSelectionLocked && !checkoutAttemptInFlightRef.current && !checkoutStartLockedRef.current) navigate('/rewards');
+        }} />}
       onBack={() => navigate('/cart')}
       onEditBenefits={handleEditOrderDetails}
       benefitsLabel={user?.email && availablePoints >= 100 ? `Save up to $${maxDiscount.toFixed(2)} with points · Offers` : 'Rewards & discount code'}

@@ -16,10 +16,14 @@ import { deliveryContinuation } from '../../src/lib/deliveryContinuation';
 import { Switch } from '../../src/components/ui/switch';
 import { Button } from '../../src/components/ui/button';
 import { BRAND_IMAGES } from '../../src/lib/brandImages';
+import Checkout from '../../src/pages/Checkout';
 
 const fixtureItem = { product_id: 'fixture-reset', title: 'Reset Program (3-Day)', quantity: 1, price: 144, category: 'bundle' };
 const fixtureParams = new URLSearchParams(location.search);
 document.documentElement.classList.toggle('dark', fixtureParams.get('theme') === 'dark');
+if (location.pathname === '/checkout-reward-recovery') {
+  localStorage.setItem('activeReward_browser-qa@example.invalid', JSON.stringify({ id: 'fixture-bottle', title: 'Free Bottle', reward_type: 'free_bottle', points_required: 1000 }));
+}
 
 function CheckoutFixture() {
   const [ready, setReady] = useState(fixtureParams.get('ready') !== '0');
@@ -61,6 +65,7 @@ function Fixtures() {
   const rewardTriggerRef = useRef(null);
   const select = async () => { if (reject) throw new Error('Fixture selection rejected. Please try again.'); setResult('Fixture selection complete. No live account changed.'); };
   if (location.pathname === '/checkout') return <CheckoutFixture />;
+  if (location.pathname === '/checkout-reward-recovery') return <Checkout />;
   if (location.pathname === '/returning-member') return <MemberFixture />;
   if (location.pathname === '/delivery-flow') return <DeliveryFlowFixture />;
   if (location.pathname === '/delivery-result') return <DeliveryResultFixture />;
