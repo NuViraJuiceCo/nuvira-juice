@@ -25,7 +25,7 @@ const compiled = await build({
          const dashboard={all_subscriptions:[{id:'fixture-sub',plan_id:'fixture-plan',status:'active',created_date:'2026-09-01',next_delivery_date:'2026-10-10'}]};
          const blocked=async()=>{throw new Error('Fixture: provider actions are disabled');};
          export const invokeCustomerGateway=blocked;
-         export const base44={functions:{invoke:async(name)=>{if(name==='getCustomerAccountDashboardData')return{data:dashboard};return blocked();}},entities:new Proxy({}, {get:(_,entity)=>({filter:async(filter={})=>entity==='Product'?products.filter(p=>Object.entries(filter).every(([key,value])=>p[key]===value)):entity==='SubscriptionPlan'?[{id:'fixture-plan',name:'QA Subscription',bottle_count:12,frequency:'monthly'}]:[],create:blocked,update:blocked,delete:blocked})})};`
+         export const base44={functions:{invoke:async(name,input)=>{if(name==='getCustomerAccountDashboardData')return{data:dashboard};if(name==='validateDeliveryEligibility' && input?.zip_only_check)return{data:input.address_postal_code==='00000'?{zone_type:'waitlist_only',checkout_allowed:false,reason_code:'WAITLIST_ONLY'}:{zone_type:'core',checkout_allowed:false,reason_code:'MINIMUM_ORDER_NOT_MET',minimum_order:50}};return blocked();}},entities:new Proxy({}, {get:(_,entity)=>({filter:async(filter={})=>entity==='Product'?products.filter(p=>Object.entries(filter).every(([key,value])=>p[key]===value)):entity==='SubscriptionPlan'?[{id:'fixture-plan',name:'QA Subscription',bottle_count:12,frequency:'monthly'}]:[],create:blocked,update:blocked,delete:blocked})})};`
     }));
     builder.onResolve({ filter: /^@\// }, async args => {
       const candidate = path.join(REPO_ROOT, 'src', args.path.slice(2));
@@ -50,7 +50,7 @@ const server = http.createServer((req, res) => {
   if (req.url.startsWith('/api')) { res.writeHead(403); res.end('No network in fixtures'); return; }
   if (req.url === '/fixture.js') { res.setHeader('Content-Type', 'text/javascript'); res.end(javascript); return; }
   if (req.url === '/checkout-fixture.css') { res.setHeader('Content-Type', 'text/css'); res.end(checkoutCss); return; }
-  if (['/', '/subscriptions', '/pickers', '/journey', '/checkout', '/returning-member', '/delivery-flow'].includes(req.url.split('?')[0])) { res.setHeader('Content-Type', 'text/html'); res.end(html); return; }
+  if (['/', '/subscriptions', '/pickers', '/journey', '/checkout', '/returning-member', '/delivery-flow', '/delivery-result'].includes(req.url.split('?')[0])) { res.setHeader('Content-Type', 'text/html'); res.end(html); return; }
   return handler(req, res);
 });
 server.listen(port, '127.0.0.1', () => console.log(`Isolated browser component QA: http://127.0.0.1:${port}/subscriptions`));

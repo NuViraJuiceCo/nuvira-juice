@@ -11,6 +11,7 @@ import ProgramJourney from '../../src/pages/ProgramJourney';
 import CheckoutExperience, { CheckoutAction } from '../../src/components/checkout/CheckoutExperience';
 import QuickReorder from '../../src/components/home/QuickReorder';
 import DesktopPrograms from '../../src/components/desktop/DesktopPrograms';
+import DeliveryAvailabilityCard from '../../src/components/delivery/DeliveryAvailabilityCard';
 import { deliveryContinuation } from '../../src/lib/deliveryContinuation';
 import { Switch } from '../../src/components/ui/switch';
 import { Button } from '../../src/components/ui/button';
@@ -46,6 +47,10 @@ function DeliveryFlowFixture() {
   return <div data-desktop-brand="true"><DesktopPrograms onSelectionChange={setProgram} /><div style={{ padding: 32 }}><p>Successful ZIP result (synthetic)</p><a href={continuation.to}>{continuation.label}</a></div></div>;
 }
 
+function DeliveryResultFixture() {
+  return <div data-desktop-brand="true" data-desktop-storefront="true" className="nv-brand-home"><section className="nv-brand-delivery nv-brand-section nv-brand-width"><div><p className="nv-brand-eyebrow">From Wentzville, With Care</p><h2>Fresh juice.<br />Closer to home.</h2></div><div className="nv-brand-delivery-tool"><div className="nv-brand-delivery-location">Wentzville &amp; Greater St. Louis</div><DeliveryAvailabilityCard programSelection={{ key: 'reset', days: 3 }} /></div></section></div>;
+}
+
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 function Fixtures() {
   const [free, setFree] = useState(false);
@@ -58,6 +63,7 @@ function Fixtures() {
   if (location.pathname === '/checkout') return <CheckoutFixture />;
   if (location.pathname === '/returning-member') return <MemberFixture />;
   if (location.pathname === '/delivery-flow') return <DeliveryFlowFixture />;
+  if (location.pathname === '/delivery-result') return <DeliveryResultFixture />;
   return <div data-desktop-brand="true" data-desktop-storefront="true">
     <header style={{ padding: 20, borderBottom: '1px solid #ccc' }}><h1>Browser Component QA</h1><p>Synthetic data only. No network or provider actions.</p><nav style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}><a href="/subscriptions">Subscriptions</a><a href="/pickers">Reward Pickers</a><a href="/journey?state=in_progress">Active Journey</a><a href="/journey?state=completed&celebration=complete">Completed Journey</a></nav></header>
     {location.pathname === '/subscriptions' ? <SubscriptionManagement /> : location.pathname === '/journey' ? <ProgramJourney previewMode /> : <main style={{ padding: 24 }}>

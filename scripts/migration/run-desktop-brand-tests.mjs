@@ -503,6 +503,9 @@ for (const [input, route, label] of [
   assert.deepEqual(deliveryContinuation(input), { to: route, label });
 }
 checks.push('ZIP continuation preserves chosen program and duration, existing carts, and item-count minimums');
+assert.match(css, /\.nv-brand-delivery-tool \.nv-home-delivery-result \{[^}]*grid-template-columns: minmax\(0,1fr\)/);
+assert.match(css, /\.nv-brand-delivery-tool \.nv-home-delivery-result-actions \{[^}]*max-width: none; flex-wrap: wrap/);
+checks.push('Homepage ZIP results stack full-width copy above wrapping actions without changing cart or native layouts');
 
 let orderDismissed = false;
 const Reorder = load('src/components/home/QuickReorder.jsx', {
@@ -528,6 +531,10 @@ assert.throws(() => assertDesktopGeometry({ ...geometry, cartCards: [geometry.ca
 assert.throws(() => assertDesktopGeometry({ ...geometry, eventMargins: ['16px'] }), /stacking margins/);
 assert.throws(() => assertDesktopGeometry({ ...geometry, documentWidth: 1450 }), /overflow/);
 assert.throws(() => assertDesktopGeometry({ ...geometry, clippedFields: ['Email'] }), /Fields/);
+const homeResult = { width: 450, right: 1200, copy: { width: 450, bottom: 200 }, actions: { top: 220, right: 1200 } };
+assert.doesNotThrow(() => assertDesktopGeometry({ ...geometry, homeDeliveryResults: [homeResult] }));
+assert.throws(() => assertDesktopGeometry({ ...geometry, homeDeliveryResults: [{ ...homeResult, copy: { width: 130, bottom: 200 } }] }), /full column/);
+assert.throws(() => assertDesktopGeometry({ ...geometry, homeDeliveryResults: [{ ...homeResult, actions: { top: 100, right: 1200 } }] }), /follow the confirmation/);
 assert.throws(() => assertDesktopGeometry({ ...geometry, productCards: [{ width: 410 }] }), /Shop cards/);
 assert.throws(() => assertDesktopGeometry({ ...geometry, featuredCards: [{ width: 300, top: 0, bottom: 450, children: [{ top: 410, bottom: 480 }] }] }), /inside its frame/);
 checks.push('Geometry contract rejects staggered cards, leftover event margins, page overflow and clipped fields');
