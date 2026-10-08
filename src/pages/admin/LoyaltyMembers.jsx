@@ -120,7 +120,7 @@ export default function LoyaltyMembers() {
       />
 
       <main className="mx-auto max-w-6xl space-y-5 p-4 md:p-6">
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {!isLoading && !error && <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {[
             ['Members', summary.member_count || 0, Sparkles],
             ['Outstanding points', Number(summary.total_outstanding_points || 0).toLocaleString(), SlidersHorizontal],
@@ -133,7 +133,7 @@ export default function LoyaltyMembers() {
               <p className="mt-3 text-2xl font-black text-foreground">{value}</p>
             </div>
           ))}
-        </section>
+        </section>}
 
         <section className="rounded-2xl border border-border/60 bg-card p-3 shadow-sm">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">

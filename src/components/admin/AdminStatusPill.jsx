@@ -36,6 +36,7 @@ export function adminStatusTone(value, context = 'status') {
   const ctx = (context || '').toString().trim().toLowerCase();
 
   if (!key) return 'neutral';
+  if (['unpaid', 'unverified', 'not ready', 'not_ready', 'inactive', 'unknown', 'unavailable'].includes(key)) return 'warning';
   if (ctx.includes('source')) {
     if (key.includes('native') || key.includes('customer app')) return 'native';
     if (key.includes('hub')) return 'hub';
@@ -127,7 +128,7 @@ export function AdminStatusPill({
 }) {
   const resolvedTone = tone || adminStatusTone(value ?? label, context);
   return (
-    <span className={`inline-flex items-center rounded-full border font-bold tracking-wide whitespace-nowrap ${sizeClasses[size] || sizeClasses.sm} ${toneClasses[resolvedTone] || toneClasses.neutral} ${className}`}>
+    <span data-admin-tone={resolvedTone} className={`inline-flex items-center rounded-full border font-bold tracking-wide whitespace-nowrap ${sizeClasses[size] || sizeClasses.sm} ${toneClasses[resolvedTone] || toneClasses.neutral} ${className}`}>
       {label || formatAdminLabel(value)}
     </span>
   );

@@ -1278,7 +1278,7 @@ export default function AdminOrders() {
   const totalOrderCount = Number(ordersData.order_count ?? ordersData.total ?? orders.length);
   const returnedOrderCount = Number(ordersData.orders_returned ?? primaryOrders.length);
   const orderListWindowed = ordersData.compact_order_windowed === true;
-  const headerSubtitle = orderListWindowed
+  const headerSubtitle = ordersError ? 'Order count unavailable' : ordersLoading ? 'Loading orders' : orderListWindowed
     ? `${returnedOrderCount} recent of ${totalOrderCount} orders`
     : `${orders.length} total orders`;
 
@@ -1486,7 +1486,7 @@ export default function AdminOrders() {
               filter === tab.key ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
             }`}
           >
-            {tab.label}
+            {ordersError || ordersLoading ? tab.label.replace(/ \(.*$/, '') : tab.label}
           </button>
         ))}
         <Link
@@ -1503,7 +1503,7 @@ export default function AdminOrders() {
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : ordersError && filtered.length === 0 ? null : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-muted-foreground text-sm">{search ? 'No orders match your search' : `No ${filter} orders`}</p>
           </div>

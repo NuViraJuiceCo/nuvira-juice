@@ -38,8 +38,8 @@
   [data-desktop-brand="true"] .nv-brand-announcement a { display: inline-flex; align-items: center; gap: 7px; }
   [data-desktop-brand="true"] .nv-brand-navigation { height: 72px; width: calc(100% - 48px); max-width: 1536px; padding: 0 24px; margin: 18px auto; display: grid; grid-template-columns: 144px 1fr auto; align-items: center; gap: 24px; border: 1px solid #ffffff40; border-radius: 24px; background: #082d20; color: #fff; }
   [data-desktop-brand="true"] .nv-brand-header[data-home="true"] .nv-brand-navigation { box-shadow: 0 8px 32px #001c1726, inset 0 1px 0 #ffffff26; }
-  [data-desktop-brand="true"] .nv-brand-logo { width: 116px; display: block; }
-  [data-desktop-brand="true"] .nv-brand-logo img { width: 116px; height: 46px; object-fit: contain; }
+  [data-desktop-brand="true"] .nv-brand-logo { width: 104px; min-height: 44px; display: flex; align-items: center; }
+  [data-desktop-brand="true"] .nv-brand-logo img { width: 104px; height: 40px; object-fit: contain; }
   [data-desktop-brand="true"] .nv-brand-navigation nav { display: flex; align-items: center; justify-content: center; gap: 30px; }
   [data-desktop-brand="true"] .nv-brand-navigation nav a { display: flex; align-items: center; min-height: 48px; font-size: 14px; font-weight: 600; text-decoration-color: transparent; text-underline-offset: 7px; text-decoration-thickness: 2px; }
   [data-desktop-brand="true"] .nv-brand-navigation nav a:is(:hover,[aria-current="page"]) { color: #a7d6bd; text-decoration-line: underline; text-decoration-color: currentColor; }
@@ -886,7 +886,8 @@ body:has([data-desktop-brand="true"]) > [data-purchase-placement="mobile-dock"] 
   [data-desktop-brand="true"] .nv-brand-announcement { padding: 8px 20px; font-size: 10px; }
   [data-desktop-brand="true"] .nv-brand-announcement p { max-width: 27ch; }
   [data-desktop-brand="true"] .nv-brand-navigation { width: calc(100% - 24px); margin: 12px auto; padding: 10px 14px; min-height: 68px; gap: 8px; border-radius: 20px; }
-  [data-desktop-brand="true"] .nv-brand-logo, [data-desktop-brand="true"] .nv-brand-logo img { width: 94px; }
+  [data-desktop-brand="true"] .nv-brand-logo, [data-desktop-brand="true"] .nv-brand-logo img { width: 88px; }
+  [data-desktop-brand="true"] .nv-brand-logo img { height: 34px; }
   [data-desktop-brand="true"] .nv-brand-navigation nav { display: none; }
   [data-desktop-brand="true"] .nv-brand-utilities { gap: 2px; }
   [data-desktop-brand="true"] .nv-brand-utilities .nv-brand-compact-menu { display: grid; }

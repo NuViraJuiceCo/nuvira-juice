@@ -7,6 +7,8 @@ import { base44 } from '@/api/base44Client';
 import { ArrowLeft, RefreshCw, Package, ShoppingCart, BarChart3, Settings, Bell, CheckCircle, AlertTriangle, XCircle, Zap } from 'lucide-react';
 import { format } from 'date-fns';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import AdminQueryState from '@/components/admin/AdminQueryState';
+import { unwrapBase44Result } from '@/lib/base44-result';
 import { usePageVisibility } from '@/lib/usePageVisibility';
 
 const NAV_TABS = [
@@ -25,7 +27,9 @@ function useShopifyOpsSummary({ refetchInterval = 30000 } = {}) {
     queryKey: ['admin-shopify-ops-summary'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminShopifyOpsSummary', {});
-      return res.data || {};
+      const result = unwrapBase44Result(res);
+      if (result?.error || result?.success === false) throw new Error('Shopify data unavailable');
+      return result;
     },
     enabled: canRead && isPageVisible,
     refetchInterval: canRead && isPageVisible ? refetchInterval : false,
@@ -38,6 +42,7 @@ export default function ShopifyDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('orders');
+  const summaryQuery = useShopifyOpsSummary();
 
   if (!isAdminUser(user)) {
     return <div className="min-h-screen flex items-center justify-center"><p className="text-muted-foreground">Access denied.</p></div>;
@@ -74,11 +79,13 @@ export default function ShopifyDashboard() {
 
       {/* Tab Content */}
       <div className="p-4">
+        {summaryQuery.isLoading || summaryQuery.error ? <AdminQueryState loading={summaryQuery.isLoading} error={summaryQuery.error} retry={summaryQuery.refetch} title="Shopify data unavailable" /> : <>
         {activeTab === 'orders' && <ShopifyOrdersTab />}
         {activeTab === 'alerts' && <AlertsTab />}
         {activeTab === 'products' && <ProductsTab />}
         {activeTab === 'reports' && <ReportsTab />}
         {activeTab === 'settings' && <SettingsTab />}
+        </>}
       </div>
     </div>
   );
@@ -482,7 +489,7 @@ function ProductsTab() {
               </div>
             </div>
           ))}
-          {products.length === 0 && <p className="text-center text-muted-foreground text-sm py-10">No products synced yet. Use Settings → Sync Products.</p>}
+          {products.length === 0 && <p className="text-center text-muted-foreground text-sm py-10">No product records are available. Broad sync remains locked. Review the source catalog with an authorized operator.</p>}
         </div>
       )}
     </div>

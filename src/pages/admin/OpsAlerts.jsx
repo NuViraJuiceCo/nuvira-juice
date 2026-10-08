@@ -328,12 +328,12 @@ export default function OpsAlerts() {
       />
 
       <div className="px-4 mt-4 space-y-4">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 lg:grid-cols-4 gap-2">
           <StatCard icon={Bell} label="Active" value={summary.total_active ?? 0} />
           <StatCard icon={ShieldAlert} label="Critical" value={summary.critical ?? 0} />
           <StatCard icon={AlertTriangle} label="Warning" value={summary.warning ?? 0} />
           <StatCard icon={Info} label="Info" value={summary.info ?? 0} isRefreshing={isFetching} />
-        </div>
+        </div>}
 
         <div className="bg-card border border-border rounded-xl p-4 space-y-3">
           <div className="relative">

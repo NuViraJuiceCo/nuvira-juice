@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import AdminQueryState from '@/components/admin/AdminQueryState';
 import { base44 } from '@/api/base44Client';
 import { unwrapBase44Result } from '@/lib/base44-result';
 import { isAdminUser } from '@/lib/admin-access';
@@ -87,7 +88,8 @@ function backendReadinessTone(classification) {
   return 'warning';
 }
 
-function BackendPreflightCard({ readiness, isFetching }) {
+function BackendPreflightCard({ readiness, isFetching, isLoading, error, retry }) {
+  if (isLoading || error || !readiness?.classification) return <AdminQueryState loading={isLoading} error={error || !isLoading} retry={retry} title="Readiness unavailable" />;
   const classification = readiness?.classification || 'backend_preflight_pending';
   const tone = backendReadinessTone(classification);
   const blockers = Number(readiness?.summary?.blocker_count || 0);
@@ -110,7 +112,7 @@ function BackendPreflightCard({ readiness, isFetching }) {
             <h2 className="mt-1 text-base font-black">
               {blockers > 0
                 ? `${blockers} blocker${blockers === 1 ? '' : 's'} before live test`
-                : warnings > 0 ? `${warnings} warning${warnings === 1 ? '' : 's'} to review` : 'No backend blockers detected'}
+                : warnings > 0 ? `${warnings} warning${warnings === 1 ? '' : 's'} to review` : tone === 'success' ? 'No backend blockers detected' : 'Readiness needs review'}
             </h2>
             <p className="mt-1 text-xs font-semibold opacity-80">
               Read-only reconciliation across production, compliance, fulfillment, order sync, command logs, and notification campaigns.
@@ -157,7 +159,7 @@ export default function Reporting() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: backendReadiness, isFetching: isBackendReadinessFetching } = useQuery({
+  const { data: backendReadiness, isFetching: isBackendReadinessFetching, isLoading: isReadinessLoading, error: readinessError, refetch: retryReadiness } = useQuery({
     queryKey: ['admin-reporting-backend-readiness-preflight'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminOperationsDashboardSummary', {
@@ -225,7 +227,7 @@ export default function Reporting() {
           </div>
         </section>
 
-        <BackendPreflightCard readiness={backendReadiness} isFetching={isBackendReadinessFetching} />
+        <BackendPreflightCard readiness={backendReadiness} isFetching={isBackendReadinessFetching} isLoading={isReadinessLoading} error={readinessError} retry={retryReadiness} />
 
         {isLoading ? (
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
@@ -255,7 +257,7 @@ export default function Reporting() {
             <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
               <ReadinessCard icon={ShieldCheck} title="Compliance Packet" detail="Batch-linked logs, retroactive records, and audit packet visibility live in Compliance Ops." route="/admin/compliance-ops" />
               <ReadinessCard icon={CalendarDays} title="Schedule Context" detail="Calendar combines event, production, delivery, and compliance day summaries." route="/admin/calendar" />
-              <ReadinessCard icon={BarChart3} title="Bridge Health" detail="Use Sync Health for sanitized source bridge status and migration diagnostics." route="/admin/sync-health" />
+              <ReadinessCard icon={BarChart3} title="Sync Status" detail="Review supported diagnostics and current recovery restrictions." route="/admin/sync-status" />
             </section>
           </>
         )}

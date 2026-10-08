@@ -145,12 +145,12 @@ export default function PurchaseOrders() {
       <AdminOpsHeader title="Purchase Orders" subtitle="Read-only procurement context" badge="Read-only" />
 
       <main className="mx-auto mt-4 w-full max-w-[1180px] space-y-4 px-4">
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 gap-2 lg:grid-cols-4">
           <StatCard icon={ClipboardList} label="PO Count" value={stats.total.toLocaleString()} isRefreshing={isFetching} />
           <StatCard icon={ShoppingCart} label="Open" value={stats.open.toLocaleString()} />
           <StatCard icon={Package} label="Delivered" value={stats.delivered.toLocaleString()} />
           <StatCard icon={DollarSign} label="Recorded Value" value={formatMoney(stats.totalAmount)} />
-        </div>
+        </div>}
 
         <section className="rounded-xl border border-border bg-card p-4">
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-[1fr_180px]">

@@ -2406,13 +2406,13 @@ export default function DeliveryQueue() {
         </section>
 
         <div className="grid grid-cols-4 divide-x divide-border/60 rounded-lg border border-border/60 bg-card md:hidden" aria-label="Delivery summary">
-          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{summary.active ?? 0}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Active</p></div>
-          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{summary.completed ?? 0}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Done</p></div>
-          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{summary.unscheduled ?? 0}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Review</p></div>
-          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold"><BagReturnsValue value={summary.bag_returns} /></p><p className="text-[9px] font-bold uppercase text-muted-foreground">Returns</p></div>
+          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{isLoading || isError ? '-' : summary.active ?? 0}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Active</p></div>
+          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{isLoading || isError ? '-' : summary.completed ?? 0}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Done</p></div>
+          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{isLoading || isError ? '-' : summary.unscheduled ?? 0}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Review</p></div>
+          <div className="px-1 py-2.5 text-center"><p className="text-lg font-bold">{isLoading || isError ? '-' : <BagReturnsValue value={summary.bag_returns} />}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Returns</p></div>
         </div>
 
-        <div className="hidden grid-cols-2 gap-2 md:grid lg:grid-cols-5">
+        {!isLoading && !isError && <div className="nv-admin-metrics hidden grid-cols-2 gap-2 md:grid lg:grid-cols-5">
           <StatCard icon={Truck} label="Total Stops" value={summary.total_stops ?? 0} />
           <StatCard icon={Clock} label="Active" value={summary.active ?? 0} />
           <StatCard icon={CheckCircle2} label="Completed" value={summary.completed ?? 0} />
@@ -2423,7 +2423,7 @@ export default function DeliveryQueue() {
             value={<BagReturnsValue value={summary.bag_returns} />}
             sublabel={summary.bag_returns === null || summary.bag_returns === undefined ? 'Return + Reward' : null}
           />
-        </div>
+        </div>}
 
         <div className="hidden rounded-xl border border-border/50 bg-card p-3 items-center justify-between gap-3 md:flex">
           <div>
@@ -2472,7 +2472,7 @@ export default function DeliveryQueue() {
           </div>
         )}
 
-        {testTaskMode !== 'only' && (
+        {!isLoading && !isError && testTaskMode !== 'only' && (
           <RouteOptimizationPanel deliveryDate={deliveryDate} stops={deliveryStops} />
         )}
 

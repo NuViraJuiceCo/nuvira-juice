@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BadgePercent, CheckCircle2, Loader2, Pencil, Plus, Save, X, XCircle } from 'lucide-react';
+import { CheckCircle2, Loader2, Pencil, Plus, Save, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import AdminQueryState from '@/components/admin/AdminQueryState';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -77,8 +79,10 @@ export default function DiscountCodes() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const editorOpener = useRef(null);
 
-  const { data: codes = [], isLoading } = useQuery({
+  const { data: codes = [], isLoading, error, refetch } = useQuery({
     queryKey: ['admin-discount-codes'],
     queryFn: async () => {
       const payload = resultData(await base44.functions.invoke('manageAdminDiscountCode', { action: 'list' }));
@@ -100,9 +104,11 @@ export default function DiscountCodes() {
   const resetForm = () => {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setEditorOpen(false);
   };
 
   const editCode = (code) => {
+    editorOpener.current = document.activeElement;
     setEditingId(code.id);
     setForm({
       code: code.code || '',
@@ -119,7 +125,7 @@ export default function DiscountCodes() {
       active: code.active === true,
       internal_notes: code.internal_notes || '',
     });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setEditorOpen(true);
   };
 
   const saveCode = async () => {
@@ -224,18 +230,14 @@ export default function DiscountCodes() {
         onBack={() => navigate('/admin/operations')}
       />
 
-      <main className="mx-auto grid w-full max-w-[1440px] gap-5 px-4 py-5 lg:grid-cols-[minmax(320px,430px)_minmax(0,1fr)]">
-        <section className="h-fit rounded-lg border border-border bg-card p-4 lg:sticky lg:top-4">
+      <main className="mx-auto w-full max-w-[1440px] px-4 py-5">
+        <Dialog open={editorOpen} onOpenChange={(open) => { if (!saving) setEditorOpen(open); }}>
+        <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); editorOpener.current?.focus(); }} className="max-w-2xl" onEscapeKeyDown={(event) => { if (saving) event.preventDefault(); }} onInteractOutside={(event) => event.preventDefault()}>
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-foreground">{editingId ? 'Edit code' : 'New code'}</h2>
-              <p className="text-xs text-muted-foreground">Changes become available without a store release.</p>
+              <DialogTitle>{editingId ? 'Edit code' : 'New code'}</DialogTitle>
+              <DialogDescription>Changes become available without a store release. Dates use {Intl.DateTimeFormat().resolvedOptions().timeZone}.</DialogDescription>
             </div>
-            {editingId && (
-              <Button type="button" variant="ghost" size="icon" onClick={resetForm} title="Cancel editing">
-                <X className="h-4 w-4" />
-              </Button>
-            )}
           </div>
 
           <div className="space-y-4">
@@ -303,7 +305,7 @@ export default function DiscountCodes() {
                 <p className="text-sm font-medium text-foreground">Active</p>
                 <p className="text-xs text-muted-foreground">Dates still control the usable window.</p>
               </div>
-              <Switch checked={form.active} onCheckedChange={(active) => setForm((prev) => ({ ...prev, active }))} />
+              <Switch aria-label="Active" checked={form.active} onCheckedChange={(active) => setForm((prev) => ({ ...prev, active }))} />
             </div>
 
             <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2.5">
@@ -327,19 +329,20 @@ export default function DiscountCodes() {
               {editingId ? 'Save changes' : 'Create code'}
             </Button>
           </div>
-        </section>
+        </DialogContent>
+        </Dialog>
 
         <section>
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-foreground">Configured codes</h2>
-              <p className="text-xs text-muted-foreground">{codes.filter((code) => lifecycleLabel(code).label === 'Active').length} active now</p>
+              {!isLoading && !error && <p className="text-xs text-muted-foreground">{codes.filter((code) => lifecycleLabel(code).label === 'Active').length} active now</p>}
             </div>
-            <BadgePercent className="h-5 w-5 text-primary" />
+            <Button disabled={isLoading || !!error} onClick={(event) => { editorOpener.current = event.currentTarget; resetForm(); setEditorOpen(true); }}><Plus className="mr-2 h-4 w-4" />New code</Button>
           </div>
 
-          {isLoading ? (
-            <div className="flex min-h-48 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+          {isLoading || error ? (
+            <AdminQueryState loading={isLoading} error={error} retry={refetch} title="Discount codes unavailable" />
           ) : sortedCodes.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No discount codes configured.</div>
           ) : (

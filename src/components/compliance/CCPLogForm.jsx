@@ -1,3 +1,5 @@
+import { requireConfirmedAdminWrite } from '@/lib/confirmedAdminWrite';
+import { businessDateTime } from '@/lib/businessDate';
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,8 +11,8 @@ import StaffMemberPicker from '@/components/admin/StaffMemberPicker';
 export default function CCPLogForm({ onClose }) {
   const [, setUser] = useState(null);
   const [formData, setFormData] = useState({
-    log_date: new Date().toISOString().split('T')[0],
-    log_time: new Date().toTimeString().slice(0, 5),
+    log_date: businessDateTime().date,
+    log_time: businessDateTime().time,
     staff_member: '',
     ccp_point: 'Pasteurization',
     batch_id: '',
@@ -21,6 +23,7 @@ export default function CCPLogForm({ onClose }) {
   });
   const [isCritical, setIsCritical] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -45,17 +48,20 @@ export default function CCPLogForm({ onClose }) {
     if (!formData.batch_id || !formData.measurement) return;
 
     setIsSubmitting(true);
+    setSaveError('');
     try {
-      await base44.functions.invoke('saveAdminComplianceRecord', {
+      requireConfirmedAdminWrite(await base44.functions.invoke('saveAdminComplianceRecord', {
         record_type: 'ccp',
         data: formData,
-      });
+      }));
 
       queryClient.invalidateQueries({ queryKey: ['CCP_logs'] });
       queryClient.invalidateQueries({ queryKey: ['CCP_logs_today'] });
       queryClient.invalidateQueries({ queryKey: ['admin_compliance_ops_summary'] });
       queryClient.invalidateQueries({ queryKey: ['compliance_logs_parity_summary'] });
       onClose?.();
+    } catch {
+      setSaveError('The save could not be confirmed. Your entries are still here. Check the records before retrying to avoid a duplicate.');
     } finally {
       setIsSubmitting(false);
     }
@@ -71,10 +77,12 @@ export default function CCPLogForm({ onClose }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {saveError && <p role="alert" className="nv-admin-form-error">{saveError}</p>}
+          <p className="nv-admin-form-timezone">Dates and times: America/Chicago</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Date</label>
-              <input
+              <label htmlFor="CCPLogForm-field-2958" className="text-sm font-medium">Date</label>
+              <input aria-label="log date" id="CCPLogForm-field-2958"
                 type="date"
                 value={formData.log_date}
                 onChange={(e) => handleChange('log_date', e.target.value)}
@@ -82,8 +90,8 @@ export default function CCPLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Time</label>
-              <input
+              <label htmlFor="CCPLogForm-field-3336" className="text-sm font-medium">Time</label>
+              <input aria-label="log time" id="CCPLogForm-field-3336"
                 type="time"
                 value={formData.log_time}
                 onChange={(e) => handleChange('log_time', e.target.value)}
@@ -100,8 +108,8 @@ export default function CCPLogForm({ onClose }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">CCP Point</label>
-              <select
+              <label htmlFor="CCPLogForm-field-3991" className="text-sm font-medium">CCP Point</label>
+              <select aria-label="ccp point" id="CCPLogForm-field-3991"
                 value={formData.ccp_point}
                 onChange={(e) => handleChange('ccp_point', e.target.value)}
                 className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
@@ -113,8 +121,8 @@ export default function CCPLogForm({ onClose }) {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium">Batch ID</label>
-              <input
+              <label htmlFor="CCPLogForm-field-4552" className="text-sm font-medium">Batch ID</label>
+              <input aria-label="batch id" id="CCPLogForm-field-4552"
                 type="text"
                 value={formData.batch_id}
                 onChange={(e) => handleChange('batch_id', e.target.value)}
@@ -127,8 +135,8 @@ export default function CCPLogForm({ onClose }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Measurement</label>
-              <input
+              <label htmlFor="CCPLogForm-field-5087" className="text-sm font-medium">Measurement</label>
+              <input aria-label="measurement" id="CCPLogForm-field-5087"
                 type="text"
                 value={formData.measurement}
                 onChange={(e) => handleChange('measurement', e.target.value)}
@@ -138,8 +146,8 @@ export default function CCPLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Critical Limit</label>
-              <input
+              <label htmlFor="CCPLogForm-field-5558" className="text-sm font-medium">Critical Limit</label>
+              <input aria-label="critical limit" id="CCPLogForm-field-5558"
                 type="text"
                 value={formData.critical_limit}
                 onChange={(e) => handleChange('critical_limit', e.target.value)}
@@ -150,8 +158,8 @@ export default function CCPLogForm({ onClose }) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">Result</label>
-            <select
+            <label htmlFor="CCPLogForm-field-6014" className="text-sm font-medium">Result</label>
+            <select aria-label="result" id="CCPLogForm-field-6014"
               value={formData.result}
               onChange={(e) => handleChange('result', e.target.value)}
               className="w-full border rounded-md p-2 mt-1 bg-background text-foreground"
@@ -172,8 +180,8 @@ export default function CCPLogForm({ onClose }) {
           )}
 
           <div>
-            <label className="text-sm font-medium">Notes</label>
-            <textarea
+            <label htmlFor="CCPLogForm-field-7007" className="text-sm font-medium">Notes</label>
+            <textarea aria-label="notes" id="CCPLogForm-field-7007"
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
               placeholder="Additional observations..."

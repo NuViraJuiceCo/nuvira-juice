@@ -675,13 +675,13 @@ export default function Calendar() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+        {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 lg:grid-cols-5 gap-2">
           <StatCard icon={ClipboardList} label="Total Items" value={summary.total_items} isRefreshing={isFetching} />
           <StatCard icon={CalendarDays} label="Events" value={summary.events} />
           <StatCard icon={Package} label="Production Days" value={summary.production_days} />
           <StatCard icon={Truck} label="Delivery Days" value={summary.delivery_days} />
           <StatCard icon={ShieldCheck} label="Compliance Items" value={summary.compliance_items} />
-        </div>
+        </div>}
 
         <div className="rounded-xl border border-border/50 bg-card p-3 flex flex-wrap items-center justify-between gap-3">
           <div>

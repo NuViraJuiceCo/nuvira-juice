@@ -1,3 +1,4 @@
+import AdminQueryState from '@/components/admin/AdminQueryState';
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -202,13 +203,14 @@ export default function BagReturnAdmin() {
   const [filter, setFilter] = useState('pending');
   const [search, setSearch] = useState('');
 
-  const { data: returns = [], isLoading } = useQuery({
+  const { data: returns = [], isLoading, error, refetch } = useQuery({
     queryKey: ['admin-bag-returns'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminResourcesSummary', {
         resource: 'bag_returns',
       });
       const payload = res?.data || res;
+      if (payload?.error || payload?.success === false) throw new Error('Bag returns unavailable');
       return Array.isArray(payload?.rows) ? payload.rows : [];
     },
     enabled: isAdminUser(user),
@@ -258,7 +260,7 @@ export default function BagReturnAdmin() {
       </div>
 
       {/* Analytics */}
-      <div className="px-4 mt-5">
+      {!isLoading && !error && <div className="px-4 mt-5">
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Program Analytics</p>
         <div className="grid grid-cols-3 gap-2">
           {analytics.map(({ label, value }) => (
@@ -268,7 +270,7 @@ export default function BagReturnAdmin() {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Search */}
       <div className="px-4 mt-4">
@@ -286,7 +288,7 @@ export default function BagReturnAdmin() {
       {/* Tabs */}
       <div className="flex gap-2 px-4 mt-3 mb-4">
         {[
-          { key: 'pending', label: `Pending (${returns.filter(r => r.verification_status === 'requested').length})` },
+          { key: 'pending', label: isLoading || error ? 'Pending' : `Pending (${returns.filter(r => r.verification_status === 'requested').length})` },
           { key: 'verified', label: 'Verified' },
         ].map(tab => (
           <button
@@ -301,7 +303,7 @@ export default function BagReturnAdmin() {
 
       {/* List */}
       <div className="px-4 space-y-2">
-        {isLoading ? (
+        {error ? <AdminQueryState error={error} retry={refetch} title="Bag returns unavailable" /> : isLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>

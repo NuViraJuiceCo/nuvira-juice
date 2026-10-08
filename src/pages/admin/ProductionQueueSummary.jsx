@@ -2470,26 +2470,26 @@ export default function ProductionQueueSummary() {
         </section>
 
         <div className="grid grid-cols-3 divide-x divide-border/60 rounded-lg border border-border/60 bg-card md:hidden" aria-label="Production summary">
-          <div className="px-2 py-2.5 text-center"><p className="text-lg font-bold">{filteredBatches.length}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Batches</p></div>
-          <div className="px-2 py-2.5 text-center"><p className="text-lg font-bold">{totalNeeded}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Units</p></div>
-          <div className="px-2 py-2.5 text-center"><p className="text-xs font-bold">{isFetching ? 'Refreshing' : data?.truncated ? 'Partial' : 'Current'}</p><p className="mt-1 text-[9px] font-bold uppercase text-muted-foreground">Sync</p></div>
+          <div className="px-2 py-2.5 text-center"><p className="text-lg font-bold">{isLoading || isError ? '-' : filteredBatches.length}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Batches</p></div>
+          <div className="px-2 py-2.5 text-center"><p className="text-lg font-bold">{isLoading || isError ? '-' : totalNeeded}</p><p className="text-[9px] font-bold uppercase text-muted-foreground">Units</p></div>
+          <div className="px-2 py-2.5 text-center"><p className="text-xs font-bold">{isError ? 'Unavailable' : isLoading ? 'Loading' : isFetching ? 'Refreshing' : data?.truncated ? 'Partial' : 'Current'}</p><p className="mt-1 text-[9px] font-bold uppercase text-muted-foreground">Sync</p></div>
         </div>
 
         <div className="hidden grid-cols-3 gap-2 md:grid">
           <div className="rounded-xl border border-border/50 bg-card p-3">
             <Package className="w-4 h-4 text-primary mb-1" />
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Batches</p>
-            <p className="text-lg font-bold">{filteredBatches.length}</p>
+            <p className="text-lg font-bold">{isLoading || isError ? '-' : filteredBatches.length}</p>
           </div>
           <div className="rounded-xl border border-border/50 bg-card p-3">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Needed</p>
-            <p className="text-lg font-bold">{totalNeeded}</p>
+            <p className="text-lg font-bold">{isLoading || isError ? '-' : totalNeeded}</p>
             <p className="text-[10px] text-muted-foreground">units</p>
           </div>
           <div className="rounded-xl border border-border/50 bg-card p-3">
             <RefreshCw className={`w-4 h-4 text-primary mb-1 ${isFetching ? 'animate-spin' : ''}`} />
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Status</p>
-            <p className="text-xs font-semibold">{isFetching ? 'Refreshing' : data?.truncated ? 'Truncated' : 'Current'}</p>
+            <p className="text-xs font-semibold">{isError ? 'Unavailable' : isLoading ? 'Loading' : isFetching ? 'Refreshing' : data?.truncated ? 'Truncated' : 'Current'}</p>
           </div>
         </div>
 

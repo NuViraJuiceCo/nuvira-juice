@@ -72,6 +72,11 @@ let desktop = true;
 const empty = () => null;
 const Layout = load('src/components/layout/AppLayout.jsx', {
   '@/styles/browser-audit.css': {},
+  '@/styles/browser-admin.css': {},
+  '@/components/admin/BrowserAdminNav': {
+    default: () => React.createElement('nav', { 'data-test-browser-admin': true }),
+    BrowserAdminSectionNav: empty,
+  },
   react: { ...React, default: React },
   'react-router-dom': { useLocation: () => ({ pathname: route, search: '', hash: '' }), Outlet: () => React.createElement('p', null, 'Page') },
   'framer-motion': { AnimatePresence: ({ children }) => children, motion: { div: ({ children }) => React.createElement('div', null, children) } },
@@ -94,8 +99,10 @@ for (const path of ['/', '/shop', '/product/oasis.html', '/account', '/admin/ope
     assert.equal(html.includes('data-desktop-brand="true"'), expected);
     assert.equal(html.includes('data-test-brand-header'), expected);
     assert.equal(html.includes('data-test-brand-footer'), expected);
-    assert.equal(html.includes('data-test-sidebar'), !expected);
-    assert.equal(html.includes('data-test-app-nav'), !expected);
+    const browserAdmin = !isNative && path.startsWith('/admin');
+    assert.equal(html.includes('data-test-browser-admin'), browserAdmin);
+    assert.equal(html.includes('data-test-sidebar'), !expected && !browserAdmin);
+    assert.equal(html.includes('data-test-app-nav'), !expected && !browserAdmin);
   }
 }
 checks.push('Website uses one brand header and no app bottom navigation; native and admin retain their separate navigation');
@@ -416,7 +423,9 @@ assert.match(read('src/components/program/ProgramBottleMix.jsx'), /Math.min\(com
 checks.push('Shared product-led program imagery preserves every duration bottle count and adapts to future catalog options');
 checks.push('Warm light program typography and flavor-colored controls pass contrast checks against every rich gradient stop');
 assert.doesNotMatch(css, /#(?:c2ef62|bbed59|d3f280|d0fa85)/i);
-assert.match(css, /\.nv-brand-logo img \{ width: 116px; height: 46px/);
+assert.match(css, /\.nv-brand-logo img \{ width: 104px; height: 40px/);
+assert.match(css, /\.nv-brand-logo \{ width: 104px; min-height: 44px; display: flex; align-items: center/);
+assert.match(header, /width="104" height="40" alt="NuVira Juice Company"/);
 assert.match(css, /\.storefront-product-grid \{ grid-template-columns: repeat\(4/);
 assert.match(css, /max-width: 1279px/);
 assert.match(css, /\.storefront-product-card \{ height: auto/);

@@ -1,3 +1,4 @@
+import { businessDateTime } from '@/lib/businessDate';
 import React, { useEffect, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -32,7 +33,7 @@ function parseIngredientRows(value) {
 
 export default function BatchComplianceLogForm({ onClose }) {
   const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: businessDateTime().date,
     batch_id: '',
     juice_flavor: '',
     quantity_produced: '',
@@ -117,8 +118,8 @@ export default function BatchComplianceLogForm({ onClose }) {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <label className="text-sm font-medium">Date</label>
-              <input
+              <label htmlFor="BatchComplianceLogForm-field-4151" className="text-sm font-medium">Date</label>
+              <input aria-label="date" id="BatchComplianceLogForm-field-4151"
                 type="date"
                 value={formData.date}
                 onChange={(e) => handleChange('date', e.target.value)}
@@ -126,8 +127,8 @@ export default function BatchComplianceLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Batch ID</label>
-              <input
+              <label htmlFor="BatchComplianceLogForm-field-4525" className="text-sm font-medium">Batch ID</label>
+              <input aria-label="batch id" id="BatchComplianceLogForm-field-4525"
                 type="text"
                 value={formData.batch_id}
                 onChange={(e) => handleChange('batch_id', e.target.value)}
@@ -136,8 +137,8 @@ export default function BatchComplianceLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Product / Flavor</label>
-              <input
+              <label htmlFor="BatchComplianceLogForm-field-4967" className="text-sm font-medium">Product / Flavor</label>
+              <input aria-label="juice flavor" id="BatchComplianceLogForm-field-4967"
                 type="text"
                 value={formData.juice_flavor}
                 onChange={(e) => handleChange('juice_flavor', e.target.value)}
@@ -149,8 +150,8 @@ export default function BatchComplianceLogForm({ onClose }) {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             <div>
-              <label className="text-sm font-medium">Quantity Produced</label>
-              <input
+              <label htmlFor="BatchComplianceLogForm-field-5486" className="text-sm font-medium">Quantity Produced</label>
+              <input aria-label="quantity produced" id="BatchComplianceLogForm-field-5486"
                 type="number"
                 min="1"
                 step="1"
@@ -160,8 +161,8 @@ export default function BatchComplianceLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">pH Result</label>
-              <input
+              <label htmlFor="BatchComplianceLogForm-field-5938" className="text-sm font-medium">pH Result</label>
+              <input aria-label="pH result" id="BatchComplianceLogForm-field-5938"
                 type="number"
                 step="0.01"
                 value={formData.pH_result}
@@ -170,8 +171,8 @@ export default function BatchComplianceLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Start Time</label>
-              <input
+              <label htmlFor="BatchComplianceLogForm-field-6354" className="text-sm font-medium">Start Time</label>
+              <input aria-label="start time" id="BatchComplianceLogForm-field-6354"
                 type="time"
                 value={formData.start_time}
                 onChange={(e) => handleChange('start_time', e.target.value)}
@@ -179,8 +180,8 @@ export default function BatchComplianceLogForm({ onClose }) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">End Time</label>
-              <input
+              <label htmlFor="BatchComplianceLogForm-field-6740" className="text-sm font-medium">End Time</label>
+              <input aria-label="end time" id="BatchComplianceLogForm-field-6740"
                 type="time"
                 value={formData.end_time}
                 onChange={(e) => handleChange('end_time', e.target.value)}
@@ -191,8 +192,8 @@ export default function BatchComplianceLogForm({ onClose }) {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-sm font-medium">Result</label>
-              <select
+              <label htmlFor="BatchComplianceLogForm-field-7204" className="text-sm font-medium">Result</label>
+              <select aria-label="passed failed" id="BatchComplianceLogForm-field-7204"
                 value={formData.passed_failed}
                 onChange={(e) => handleChange('passed_failed', e.target.value)}
                 className="mt-1 w-full rounded-md border bg-background p-2 text-foreground"
@@ -213,8 +214,8 @@ export default function BatchComplianceLogForm({ onClose }) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">Ingredients / Lots</label>
-            <textarea
+            <label htmlFor="BatchComplianceLogForm-field-8099" className="text-sm font-medium">Ingredients / Lots</label>
+            <textarea aria-label="ingredients text" id="BatchComplianceLogForm-field-8099"
               value={formData.ingredients_text}
               onChange={(e) => handleChange('ingredients_text', e.target.value)}
               placeholder="One per line: ingredient, quantity, unit, lot number"
@@ -224,8 +225,8 @@ export default function BatchComplianceLogForm({ onClose }) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">Notes</label>
-            <textarea
+            <label htmlFor="BatchComplianceLogForm-field-8558" className="text-sm font-medium">Notes</label>
+            <textarea aria-label="notes" id="BatchComplianceLogForm-field-8558"
               value={formData.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
               rows={3}

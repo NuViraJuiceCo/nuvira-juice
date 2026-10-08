@@ -39,7 +39,7 @@ export default function DesktopHeader() {
       </div>
       <div className="nv-brand-navigation">
         <Link to="/" {...navigationIntent('/')} aria-label="NuVira Juice Company home" className="nv-brand-logo">
-          <img src={BRAND_IMAGES.wordmark} width="123" height="48" alt="NuVira Juice Company" />
+          <img src={BRAND_IMAGES.wordmark} width="104" height="40" alt="NuVira Juice Company" />
         </Link>
         <nav aria-label="Main navigation">
           {navigation.map(({ to, label, matches }) => <Link key={to} to={to} {...navigationIntent(to, Boolean(user?.email))} aria-current={matches(pathname) ? 'page' : undefined}>{label}</Link>)}

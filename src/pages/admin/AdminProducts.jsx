@@ -1,3 +1,4 @@
+import AdminQueryState from '@/components/admin/AdminQueryState';
 import React, { useState, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -7,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { ImagePlus, Check, X, Loader2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import AdminOpsHeader from '@/components/admin/AdminOpsHeader';
+import { requireConfirmedAdminWrite } from '@/lib/confirmedAdminWrite';
 
 function ProductImageUploader({ product, onUpdated }) {
   const [uploading, setUploading] = useState(false);
@@ -18,10 +20,11 @@ function ProductImageUploader({ product, onUpdated }) {
     setUploading(true);
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      await base44.functions.invoke('updateAdminProductCatalogItem', {
+      if (!file_url) throw new Error('Upload was not confirmed');
+      requireConfirmedAdminWrite(await base44.functions.invoke('updateAdminProductCatalogItem', {
         product_id: product.id,
         image_url: file_url,
-      });
+      }));
       onUpdated();
       toast.success('Image updated!');
     } catch {
@@ -33,8 +36,9 @@ function ProductImageUploader({ product, onUpdated }) {
   };
 
   return (
-    <div className="relative group cursor-pointer" onClick={() => inputRef.current?.click()}>
+    <div className="relative group">
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      <button type="button" aria-label={`Change image for ${product.title}`} title="Change product image" disabled={uploading} onClick={() => inputRef.current?.click()}>
       <div className="w-16 h-16 rounded-xl overflow-hidden bg-secondary/50 border border-border shrink-0">
         {product.image_url ? (
           <img src={product.image_url} alt={product.title} className="w-full h-full object-cover" />
@@ -49,6 +53,7 @@ function ProductImageUploader({ product, onUpdated }) {
           <ImagePlus className="w-4 h-4 text-white" />
         )}
       </div>
+      </button>
     </div>
   );
 }
@@ -58,18 +63,25 @@ function ProductRow({ product, onUpdated }) {
   const [title, setTitle] = useState(product.title);
   const [price, setPrice] = useState(product.price);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const handleSave = async () => {
     setSaving(true);
-    await base44.functions.invoke('updateAdminProductCatalogItem', {
-      product_id: product.id,
-      title,
-      price,
-    });
-    setSaving(false);
-    setEditing(false);
-    onUpdated();
-    toast.success('Product updated');
+    setSaveError('');
+    try {
+      requireConfirmedAdminWrite(await base44.functions.invoke('updateAdminProductCatalogItem', {
+        product_id: product.id,
+        title,
+        price,
+      }));
+      setEditing(false);
+      onUpdated();
+      toast.success('Product updated');
+    } catch {
+      setSaveError('Could not save this product. Your changes are still here; try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -80,6 +92,7 @@ function ProductRow({ product, onUpdated }) {
         {editing ? (
           <div className="space-y-1.5">
             <input
+              aria-label="Product title"
               className="w-full text-sm font-semibold bg-secondary rounded-lg px-2 py-1 border border-border outline-none"
               value={title}
               onChange={e => setTitle(e.target.value)}
@@ -87,13 +100,16 @@ function ProductRow({ product, onUpdated }) {
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground">$</span>
               <input
+                aria-label="Product price"
                 type="number"
                 step="0.01"
+                min="0"
                 className="w-24 text-xs bg-secondary rounded-lg px-2 py-1 border border-border outline-none"
                 value={price}
                 onChange={e => setPrice(e.target.value)}
               />
             </div>
+            {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
           </div>
         ) : (
           <>
@@ -110,6 +126,9 @@ function ProductRow({ product, onUpdated }) {
         {editing ? (
           <>
             <button
+              type="button"
+              aria-label="Save product"
+              title="Save product"
               onClick={handleSave}
               disabled={saving}
               className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center"
@@ -117,7 +136,11 @@ function ProductRow({ product, onUpdated }) {
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
             </button>
             <button
-              onClick={() => { setEditing(false); setTitle(product.title); setPrice(product.price); }}
+              type="button"
+              aria-label="Cancel editing"
+              title="Cancel editing"
+              disabled={saving}
+              onClick={() => { setEditing(false); setSaveError(''); setTitle(product.title); setPrice(product.price); }}
               className="w-8 h-8 bg-secondary text-secondary-foreground rounded-full flex items-center justify-center"
             >
               <X className="w-3.5 h-3.5" />
@@ -125,6 +148,9 @@ function ProductRow({ product, onUpdated }) {
           </>
         ) : (
           <button
+            type="button"
+            aria-label={`Edit ${product.title}`}
+            title="Edit product"
             onClick={() => setEditing(true)}
             className="w-8 h-8 bg-secondary text-secondary-foreground rounded-full flex items-center justify-center"
           >
@@ -142,13 +168,14 @@ export default function AdminProducts() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
 
-  const { data: products = [], isLoading } = useQuery({
+  const { data: products = [], isLoading, error, refetch } = useQuery({
     queryKey: ['admin-products'],
     queryFn: async () => {
       const res = await base44.functions.invoke('getAdminResourcesSummary', {
         resource: 'product_catalog',
       });
       const payload = res?.data || res;
+      if (payload?.error || payload?.success === false) throw new Error('Catalog unavailable');
       return Array.isArray(payload?.rows) ? payload.rows : [];
     },
     enabled: isAdminUser(user),
@@ -183,8 +210,8 @@ export default function AdminProducts() {
   return (
     <div className="min-h-screen bg-background pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-10">
       <AdminOpsHeader
-        title="Product Images"
-        subtitle="Tap an image to upload a new one"
+        title="Product Catalog"
+        subtitle="Product details and photography"
         badge="Admin"
         badgeTone="native"
         onBack={() => navigate('/admin/operations')}
@@ -202,7 +229,7 @@ export default function AdminProducts() {
 
       {/* List */}
       <div className="px-4 space-y-2.5">
-        {isLoading ? (
+        {error ? <AdminQueryState error={error} retry={refetch} title="Catalog unavailable" /> : isLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>

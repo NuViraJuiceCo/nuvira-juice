@@ -717,7 +717,7 @@ export default function ProductionPlanning() {
           )}
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
+        {!isLoading && !isError && <div className="nv-admin-metrics grid grid-cols-2 lg:grid-cols-6 gap-2">
           <StatCard icon={CalendarDays} label="Production Dates" value={formatNumber(summary.production_date_count, 0)} isRefreshing={isFetching} />
           <StatCard icon={Package} label="Batches" value={formatNumber(summary.batch_count, 0)} />
           <StatCard label="Planned Units" value={formatNumber(summary.planned_units, 0)} />
@@ -734,7 +734,7 @@ export default function ProductionPlanning() {
             value={formatNumber((Number(summary.missing_recipe_count) || 0) + (Number(summary.missing_yield_count) || 0), 0)}
             sublabel={`${formatNumber(summary.missing_recipe_count, 0)} recipes · ${formatNumber(summary.missing_yield_count, 0)} yields`}
           />
-        </div>
+        </div>}
 
         <div className="rounded-xl border border-border/50 bg-card p-3 flex items-center justify-between gap-3">
           <div>
@@ -786,7 +786,7 @@ export default function ProductionPlanning() {
           </div>
 
           {materializationPreview && (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="nv-admin-metrics grid grid-cols-2 gap-2 sm:grid-cols-3">
               <StatCard icon={CheckCircle2} label="Ready" value={formatNumber(materializationPreview.ready_count, 0)} tone="success" />
               <StatCard icon={AlertTriangle} label="Blocked" value={formatNumber(materializationPreview.blocked_count, 0)} tone={Number(materializationPreview.blocked_count || 0) > 0 ? 'danger' : 'default'} />
               <StatCard icon={Package} label="Drafts" value={formatNumber(materializationPreview.drafts?.length, 0)} />
