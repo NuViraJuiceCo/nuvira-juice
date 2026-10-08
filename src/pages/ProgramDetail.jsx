@@ -11,6 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import SEO from '@/components/SEO';
 import ConsumptionSchedule from '@/components/program/ConsumptionSchedule';
 import BrowserConsumptionGuide from '@/components/program/BrowserConsumptionGuide';
+import BrowserProgramDiscovery from '@/components/program/BrowserProgramDiscovery';
 import {
   PROGRAMS,
   PROGRAM_SCHEDULE_VERSION,
@@ -627,6 +628,8 @@ export default function ProgramDetail() {
         </div>
         </div>
       </main>
+
+      {desktop && <BrowserProgramDiscovery programKey={program.key} days={selectedOption.days} />}
 
       {typeof document !== 'undefined' ? createPortal(purchaseTray, document.body) : purchaseTray}
     </div>
