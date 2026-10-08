@@ -20,6 +20,7 @@ export function readDesktopGeometry(root) {
     logos: boxes('.nv-brand-logo img'),
     fullWidthHeroes: boxes('.nv-brand-hero,.nv-local-hero,.nv-difference-hero,.nv-delivery-close,.nuvira-about-page > section:first-of-type picture img'),
     deliveryWindows: boxes('.nv-delivery-window'),
+    homeDeliveryResults: [...root.querySelectorAll('.nv-brand-delivery-tool .nv-home-delivery-result')].map(element => ({ ...box(element), copy: box(element.firstElementChild), actions: box(element.querySelector('.nv-home-delivery-result-actions')) })),
     differenceSteps: [...root.querySelectorAll('.nv-difference-process li')].map(element => ({ ...box(element), detail: box(element.querySelector('p')) })),
     goodsPhotos: [...root.querySelectorAll('.nv-goods-photo img')].map(element => ({ ...box(element), fit: getComputedStyle(element).objectFit, loaded: element.complete && element.naturalWidth > 0 })),
     informationPages: boxes('.nv-information-page'),
@@ -97,6 +98,11 @@ export function assertDesktopGeometry(snapshot) {
   for (const window of snapshot.deliveryWindows || []) {
     near(window.top, snapshot.deliveryWindows[0].top, 'Delivery windows align');
     near(window.bottom, snapshot.deliveryWindows[0].bottom, 'Delivery window heights match');
+  }
+  for (const result of snapshot.homeDeliveryResults || []) {
+    near(result.copy.width, result.width, 'Delivery result copy uses its full column');
+    assert.ok(result.actions.top >= result.copy.bottom, 'Delivery result actions follow the confirmation copy');
+    assert.ok(result.actions.right <= result.right + 1, 'Delivery result actions stay inside the panel');
   }
   for (const step of snapshot.differenceSteps || []) {
     near(step.top, snapshot.differenceSteps[0].top, 'Freshness process steps align');

@@ -166,8 +166,10 @@
   [data-desktop-brand="true"] .nv-brand-delivery-tool .nv-home-delivery-heading p:first-child { font-family: var(--font-body); font-size: 21px; font-weight: 600; }
   [data-desktop-brand="true"] .nv-brand-delivery-tool .nv-home-delivery-heading p + p { font-size: 12px; }
   [data-desktop-brand="true"] .nv-brand-delivery-tool .nv-home-delivery-footer { padding: 14px 0 0; }
-  [data-desktop-brand="true"] .nv-brand-delivery-tool .nv-home-delivery-result { padding: 0; }
-  [data-desktop-brand="true"] .nv-brand-delivery-tool .nv-home-delivery-result-actions { margin-left: 0; }
+  [data-desktop-brand="true"] .nv-brand-delivery-tool .nv-home-delivery-result { padding: 0; grid-template-columns: minmax(0,1fr); align-items: stretch; }
+  [data-desktop-brand="true"] .nv-brand-delivery-tool .nv-home-delivery-result-actions { margin-left: 0; max-width: none; flex-wrap: wrap; }
+  [data-desktop-brand="true"] .nv-brand-delivery-tool .nv-home-delivery-result-actions > :first-child { flex-basis: 180px; }
+  [data-desktop-brand="true"] .nv-brand-delivery-tool .nv-home-delivery-result-actions > button { flex-shrink: 0; min-height: 48px; }
   [data-desktop-brand="true"] .nv-home-delivery-card { background: transparent !important; border-color: #cdded6 !important; box-shadow: none; }
   [data-desktop-brand="true"] .nv-home-delivery .bg-nuvira-gradient { background: #18734b; }
   [data-desktop-brand="true"] .nv-home-delivery-controls button { min-height: 48px; border-radius: 999px; }
