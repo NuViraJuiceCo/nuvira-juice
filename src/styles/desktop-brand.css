@@ -427,7 +427,7 @@
   [data-desktop-brand="true"] .nuvira-contact-details > div { background: transparent; box-shadow: none; border: 0; border-bottom: 1px solid #dce5df; border-radius: 0; padding: 24px 0; }
   [data-desktop-brand="true"] .nuvira-contact-details .text-sm { font-size: 17px; }
   [data-desktop-brand="true"] .nuvira-contact-details .text-xs { font-size: 13px; line-height: 1.8; }
-  [data-desktop-brand="true"] main:is([data-storefront-page="/legal"],[data-storefront-page="/delivery"],[data-storefront-page="/delivery.html"],[data-storefront-page="/returns"],[data-storefront-page="/returns.html"]) { max-width: 1040px; }
+  [data-desktop-brand="true"] main:is([data-storefront-page="/delivery"],[data-storefront-page="/delivery.html"],[data-storefront-page="/returns"],[data-storefront-page="/returns.html"]) { max-width: 1040px; }
   [data-desktop-brand="true"] main[data-storefront-page="/legal"] h1 { font-size: 40px; line-height: 1.2; }
   [data-desktop-brand="true"] main[data-storefront-page="/legal"] .text-xs { font-size: 15px; line-height: 1.85; }
   [data-desktop-brand="true"] main[data-storefront-page="/legal"] .text-sm { font-size: 17px; }

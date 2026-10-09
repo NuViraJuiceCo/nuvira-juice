@@ -64,6 +64,7 @@ const harnesses = [
   'scripts/migration/run-browser-admin-refresh-tests.mjs',
   'scripts/migration/run-admin-postlaunch-reliability-tests.mjs',
   'scripts/migration/run-browser-consumption-guide-tests.mjs',
+  'scripts/migration/run-browser-licensing-tests.mjs',
   'scripts/migration/run-g53-admin-visibility-refresh-and-compliance-readiness-tests.mjs',
   'scripts/migration/run-g53-admin-review-queue-summary-tests.mjs',
   'scripts/migration/run-desktop-brand-tests.mjs',
