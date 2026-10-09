@@ -5,20 +5,20 @@ import { PROGRAMS, programOptionForDays } from '@/lib/program-catalog';
 import { approvedProductMedia } from '@/lib/approved-product-media';
 import './BrowserProgramDiscovery.css';
 
-export default function BrowserProgramDiscovery({ programKey, days }) {
+export default function BrowserProgramDiscovery({ programKey, days, collection = false }) {
   const alternatives = PROGRAMS.filter(program => program.key !== programKey);
   if (!alternatives.length) return null;
 
   return (
-    <section className="nv-program-discovery" aria-labelledby="nv-discovery-heading">
+    <section className="nv-program-discovery" data-collection={collection || undefined} aria-labelledby="nv-discovery-heading">
       <div className="nv-program-discovery-inner">
         <header className="nv-program-discovery-heading">
-          <div><p>More ways to make it your daily ritual</p><h2 id="nv-discovery-heading">Explore another pairing.</h2></div>
-          <p>A different flavor focus. The same four-juice daily routine.</p>
+          <div><p>{collection ? 'Your daily juice routine, already paired.' : 'More ways to make it your daily ritual'}</p><h2 id="nv-discovery-heading">{collection ? 'Juice Programs' : 'Explore another pairing.'}</h2></div>
+          <p>{collection ? 'Two or three days. Four juices each day. A simple daily guide, included.' : 'A different flavor focus. The same four-juice daily routine.'}</p>
         </header>
         <div className="nv-program-discovery-grid">
           {alternatives.map(program => {
-            const option = programOptionForDays(program, days);
+            const option = collection ? program.durationOptions[0] : programOptionForDays(program, days);
             if (!option) return null;
             const leadJuice = option.bundleComposition[0]?.product_name;
             const media = approvedProductMedia({ title: leadJuice });
@@ -31,8 +31,8 @@ export default function BrowserProgramDiscovery({ programKey, days }) {
                 <div className="nv-program-discovery-copy">
                   <div className="nv-program-discovery-name"><h3>{program.name}</h3><ArrowUpRight aria-hidden="true" /></div>
                   <p className="nv-program-discovery-tagline">{program.tagline}</p>
-                  <p className="nv-program-discovery-mix">{option.composition}</p>
-                  <div className="nv-program-discovery-price"><span>{option.days} days <span aria-hidden="true">·</span> {option.bottles} bottles</span><strong>${option.price}</strong></div>
+                  <p className="nv-program-discovery-mix">{collection ? `${option.bundleComposition.map(item => `${item.quantity / option.days} ${item.product_name}`).join(' + ')} each day` : option.composition}</p>
+                  <div className="nv-program-discovery-price"><span>{collection ? program.durationOptions.map(item => item.days).join(' or ') : option.days} days <span aria-hidden="true">·</span> {collection ? program.durationOptions.map(item => item.bottles).join(' or ') : option.bottles} bottles</span><strong>{collection && program.durationOptions.length > 1 ? 'From ' : ''}${option.price}</strong></div>
                   <span className="nv-program-discovery-cta">Explore {program.name}<ArrowRight aria-hidden="true" /></span>
                 </div>
               </Link>

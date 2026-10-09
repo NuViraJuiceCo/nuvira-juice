@@ -244,7 +244,6 @@
   [data-desktop-brand="true"] .storefront-shop-filters button { border-radius: 999px; background: transparent; box-shadow: none; border-color: transparent; color: #3c5140; font-size: 12px; }
   [data-desktop-brand="true"] .storefront-shop-filters .nuvira-filter-pill-active { background: #143b2b; color: #fff; }
   [data-desktop-brand="true"] .storefront-shop-programs { order: 2; border-top: 1px solid #dce3da; padding-top: 40px; margin-top: 24px; }
-  [data-desktop-brand="true"] .storefront-shop-programs > :last-child { display: none; }
   [data-desktop-brand="true"] .storefront-shop-results { padding-inline: 0; }
   [data-desktop-brand="true"] .storefront-product-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 28px 24px; }
   [data-desktop-brand="true"] .storefront-shop > section { order: 3; }

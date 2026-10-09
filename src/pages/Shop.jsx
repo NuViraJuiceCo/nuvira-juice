@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProductCard from '@/components/shop/ProductCard';
 import ProgramCards from '@/components/home/ProgramCards';
+import BrowserProgramDiscovery from '@/components/program/BrowserProgramDiscovery';
 import { programCollectionSummary } from '@/lib/program-catalog';
 import { absoluteUrl, productPath } from '@/lib/seo-slugs';
 import { PUBLIC_PRODUCT_FALLBACKS } from '@/lib/public-products';
@@ -290,6 +291,7 @@ export default function Shop({ seoActive = true }) {
       {/* Programs — show when not searching/filtering */}
       {!search.trim() && category === 'all' && !filterParam && (
         <div className="storefront-shop-programs mb-6">
+          {!isNative ? <BrowserProgramDiscovery collection /> : <>
           <div className="px-5 mb-3">
             <h2 className="font-heading text-base font-bold">Juice Programs</h2>
             <p className="text-[11px] text-muted-foreground">{programCollectionSummary()}</p>
@@ -299,6 +301,7 @@ export default function Shop({ seoActive = true }) {
             <h2 className="font-heading text-base font-bold">Quick Options</h2>
             <p className="text-[11px] text-muted-foreground">Build your own mix. Order minimums apply.</p>
           </div>
+          </>}
         </div>
       )}
 

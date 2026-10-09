@@ -116,4 +116,23 @@ assert.match(page, /desktop && <BrowserProgramDiscovery programKey=\{program.key
 assert.ok(page.indexOf('<BrowserProgramDiscovery') > page.indexOf('</main>'));
 checks.push('Bottom-of-page discovery excludes the current program, preserves supported durations and uses real catalog prices, quantities and approved product imagery without native changes');
 
+const collectionMarkup = render(discoveryModule.exports.default, { collection: true });
+assert.match(collectionMarkup, /data-collection="true"/);
+assert.equal((collectionMarkup.match(/class="nv-program-discovery-link"/g) || []).length, PROGRAMS.length);
+for (const program of PROGRAMS) {
+  const option = program.durationOptions[0];
+  assert.ok(collectionMarkup.includes(`href="/program/${program.key}?days=${option.days}"`));
+  assert.ok(collectionMarkup.includes(`${program.durationOptions.map(item => item.days).join(' or ')} days`));
+  assert.ok(collectionMarkup.includes(`${program.durationOptions.map(item => item.bottles).join(' or ')} bottles`));
+  assert.ok(collectionMarkup.includes(`${option.bundleComposition.map(item => `${item.quantity / option.days} ${item.product_name}`).join(' + ')} each day`));
+  assert.ok(collectionMarkup.includes(`$${option.price}`));
+  assert.ok(collectionMarkup.includes(approvedProductMedia({ title: option.bundleComposition[0].product_name }).primary));
+  assert.ok(!collectionMarkup.includes(program.image), 'Do not reuse older lifestyle program photos');
+}
+const shop = fs.readFileSync('src/pages/Shop.jsx', 'utf8');
+assert.match(shop, /!isNative \? <BrowserProgramDiscovery collection \/> : <>/);
+assert.match(shop, /<ProgramCards \/>/);
+assert.doesNotMatch(fs.readFileSync('src/styles/desktop-brand.css', 'utf8'), /\.storefront-shop-programs > :last-child/);
+checks.push('Browser Shop uses product-led program cards with daily pairings, valid length options, catalog prices and correct links; native keeps existing cards');
+
 console.log(JSON.stringify({ ok: true, suite: 'browser-consumption-guide', checks, productionWrites: false, providerCalls: false }, null, 2));
