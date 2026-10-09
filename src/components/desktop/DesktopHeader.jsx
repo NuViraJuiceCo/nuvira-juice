@@ -34,8 +34,10 @@ export default function DesktopHeader() {
   return (
     <header className="nv-brand-header" data-home={pathname === '/'}>
       <div className="nv-brand-announcement">
-        <p>Freshly pressed in Wentzville. Delivered across greater St. Louis.</p>
-        <Link to="/delivery.html">Delivery Details <ArrowUpRight size={13} aria-hidden="true" /></Link>
+        <div className="nv-brand-announcement-inner nv-brand-width">
+          <p>Freshly pressed in Wentzville. Delivered across greater St. Louis.</p>
+          <Link to="/delivery.html">Delivery Details <ArrowUpRight size={13} aria-hidden="true" /></Link>
+        </div>
       </div>
       <div className="nv-brand-navigation">
         <Link to="/" {...navigationIntent('/')} aria-label="NuVira Juice Company home" className="nv-brand-logo">

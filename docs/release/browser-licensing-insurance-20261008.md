@@ -14,6 +14,7 @@ Prepared October 8, 2026. Owner approved the wording and requested publication a
 
 - Browser-only licensing and insurance summary above the policy accordions, directly linked from the site footer.
 - Legal page uses the shared 1536px site container instead of its older 1040px cap, with aligned responsive gutters and bounded policy paragraph width.
+- The owner also requested homepage top-bar alignment. The announcement message and Delivery Details link now share the homepage content container instead of fixed edge padding, including wide screens and smaller browser widths. The green bar remains full-width.
 - Corrects the older food-handler-license description to the owner's operating-license statement and removes unsupported blanket inspection/standards claims.
 - Keeps privacy, terms, refunds, product disclaimers, allergens, and measurement consent behavior unchanged. Disclosure update date is separate from the privacy/terms update date.
 - Native legal text receives the same factual correction; native layout is retained. No native release is made.

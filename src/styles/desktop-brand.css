@@ -34,7 +34,8 @@
   [data-desktop-brand="true"] .nv-brand-width { width: calc(100% - 96px); max-width: 1440px; margin-inline: auto; }
   [data-desktop-brand="true"] .nv-brand-header { position: relative; z-index: 30; width: 100%; background: #fff; }
   [data-desktop-brand="true"] .nv-brand-header[data-home="true"] { margin-bottom: -108px; background: transparent; }
-  [data-desktop-brand="true"] .nv-brand-announcement { min-height: 34px; padding: 7px 48px; background: #082d20; color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 24px; font-size: 11px; font-weight: 500; line-height: 1.5; }
+  [data-desktop-brand="true"] .nv-brand-announcement { background: #082d20; color: #fff; font-size: 11px; font-weight: 500; line-height: 1.5; }
+  [data-desktop-brand="true"] .nv-brand-announcement-inner { min-height: 34px; padding-block: 7px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
   [data-desktop-brand="true"] .nv-brand-announcement a { display: inline-flex; align-items: center; gap: 7px; }
   [data-desktop-brand="true"] .nv-brand-navigation { height: 72px; width: calc(100% - 48px); max-width: 1536px; padding: 0 24px; margin: 18px auto; display: grid; grid-template-columns: 144px 1fr auto; align-items: center; gap: 24px; border: 1px solid #ffffff40; border-radius: 24px; background: #082d20; color: #fff; }
   [data-desktop-brand="true"] .nv-brand-header[data-home="true"] .nv-brand-navigation { box-shadow: 0 8px 32px #001c1726, inset 0 1px 0 #ffffff26; }
@@ -792,7 +793,7 @@ body:has([data-desktop-brand="true"]) > [data-purchase-placement="mobile-dock"] 
   [data-desktop-brand="true"] main[data-storefront-page] { padding: 24px 28px 48px; }
   [data-desktop-brand="true"] main[data-storefront-page="/"] { padding: 0; }
   [data-desktop-brand="true"] :is(.nv-brand-width,.nv-brand-footer-inner,.nv-brand-footer-base,.nv-program-hero,.nv-program-content,.nv-program-page > .sticky) { width: calc(100% - 56px); }
-  [data-desktop-brand="true"] .nv-brand-announcement { padding-inline: 28px; gap: 16px; }
+  [data-desktop-brand="true"] .nv-brand-announcement-inner { gap: 16px; }
   [data-desktop-brand="true"] .nv-brand-announcement a { flex-shrink: 0; }
   [data-desktop-brand="true"] .nv-brand-home h2 { font-size: 34px; }
   [data-desktop-brand="true"] .nv-brand-section { padding-block: 44px; }
@@ -884,7 +885,8 @@ body:has([data-desktop-brand="true"]) > [data-purchase-placement="mobile-dock"] 
   [data-desktop-brand="true"] main[data-storefront-page] { padding: 20px 20px 40px; }
   [data-desktop-brand="true"] main[data-storefront-page="/"] { padding: 0; }
   [data-desktop-brand="true"] :is(.nv-brand-width,.nv-brand-footer-inner,.nv-brand-footer-base,.nv-program-hero,.nv-program-content,.nv-program-page > .sticky) { width: calc(100% - 40px); }
-  [data-desktop-brand="true"] .nv-brand-announcement { padding: 8px 20px; font-size: 10px; }
+  [data-desktop-brand="true"] .nv-brand-announcement { font-size: 10px; }
+  [data-desktop-brand="true"] .nv-brand-announcement-inner { padding-block: 8px; }
   [data-desktop-brand="true"] .nv-brand-announcement p { max-width: 27ch; }
   [data-desktop-brand="true"] .nv-brand-navigation { width: calc(100% - 24px); margin: 12px auto; padding: 10px 14px; min-height: 68px; gap: 8px; border-radius: 20px; }
   [data-desktop-brand="true"] .nv-brand-logo, [data-desktop-brand="true"] .nv-brand-logo img { width: 88px; }
