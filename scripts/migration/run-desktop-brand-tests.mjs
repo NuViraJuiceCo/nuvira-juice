@@ -112,6 +112,17 @@ const home = read('src/components/desktop/DesktopHome.jsx');
 const programSelector = read('src/components/desktop/DesktopPrograms.jsx');
 const header = read('src/components/desktop/DesktopHeader.jsx');
 const css = read('src/styles/desktop-brand.css');
+assert.match(header, /className="nv-brand-announcement-inner nv-brand-width"/);
+assert.match(home, /className="nv-brand-hero-content nv-brand-width"/);
+const announcementRules = [];
+postcss.parse(css).walkRules(rule => {
+  if (/\.nv-brand-announcement(?:-inner)?$/.test(rule.selector)) announcementRules.push(rule);
+});
+for (const rule of announcementRules) {
+  rule.walkDecls(decl => assert.ok(!['width', 'max-width', 'padding', 'padding-inline', 'padding-left', 'padding-right', 'margin-inline'].includes(decl.prop), 'Announcement must inherit shared responsive content edges without extra horizontal gutters'));
+}
+assert.ok(announcementRules.length >= 4);
+checks.push('Announcement bar and homepage hero share the site content width at every breakpoint, without duplicate horizontal gutters');
 const simpleLink = ({ to, children, ...props }) => React.createElement('a', { ...props, href: to }, children);
 const DesktopDelivery = load('src/components/desktop/DesktopDelivery.jsx', {
   react: { ...React, default: React }, 'react-router-dom': { Link: simpleLink },

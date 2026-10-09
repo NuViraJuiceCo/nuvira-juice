@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import SEO from '@/components/SEO';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, ShieldCheck, FileText, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { isNativeAppRuntime } from '@/lib/nativeRuntime';
 import { resetAnalyticsConsent, resetGoogleAdsMeasurementConsent } from '@/lib/googleAnalytics';
 import { resetMarketingConsent } from '@/lib/metaPixel';
+import DesktopLicensing from '@/components/desktop/DesktopLicensing';
+import useDesktopStorefront from '@/hooks/useDesktopStorefront';
 
 const LAST_UPDATED = 'September 10, 2026';
 
@@ -119,27 +121,35 @@ If you have a known food allergy or sensitivity, please contact us before placin
   },
   {
     icon: ShieldCheck,
-    title: 'Health & Safety License',
-    content: `NuVira Juice Company operates under a valid food handler's license issued by the St. Charles County Health Department, located in Wentzville, Missouri. Our facility and production practices are inspected and approved in accordance with Missouri state food safety regulations.
+    title: 'Licensing & Insurance',
+    content: `Licensing and insurance information updated: October 8, 2026
 
-License Holder: NuVira Juice Company
-Jurisdiction: St. Charles County Health Department
-Home Base: Wentzville, MO
-Insurance: FLIP (Food Liability Insurance Program)
+NuVira Juice Company is licensed to operate through the St. Charles County Department of Public Health. We are based in Wentzville, Missouri.
 
-We maintain strict sanitation and food handling protocols to ensure every bottle meets or exceeds health department standards.`,
+The commercial general liability certificate issued to NuVira Juice Company LLC through FLIP (Food Liability Insurance Program) lists Accelerant National Insurance Company as the insurer, with a policy period of November 28, 2025 through November 28, 2026. It lists a $1,000,000 each-occurrence limit and a $2,000,000 products-completed operations aggregate.
+
+Coverage is subject to the actual policy terms, conditions, exclusions, and applicable limits. Licensing and insurance do not constitute a product endorsement or a guarantee of coverage for every claim.
+
+For licensing information or a certificate of insurance for your venue, event, or business, contact support@nuvirajuice.com.`,
   },
 ];
 
 export default function Legal() {
   const navigate = useNavigate();
+  const { hash, key } = useLocation();
+  const desktop = useDesktopStorefront();
   const [openIndex, setOpenIndex] = useState(0);
+  useEffect(() => {
+    if (!desktop || hash !== '#licensing-insurance') return undefined;
+    const frame = window.requestAnimationFrame(() => document.getElementById('licensing-insurance')?.scrollIntoView({ block: 'start' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [desktop, hash, key]);
 
   return (
-    <div className="pb-8">
+    <div className="nv-legal-page pb-8">
       <SEO title="Legal & Privacy" description="NuVira Juice Company privacy policy, terms of service, refund policy, licenses, disclaimers, and allergen information." />
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+      <div className="nv-legal-header flex items-center gap-3 px-4 pb-3" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
         <button type="button" aria-label="Go back" onClick={() => navigate(-1)} className="w-9 h-9 bg-secondary rounded-full flex items-center justify-center">
           <ArrowLeft className="w-4 h-4" />
         </button>
@@ -149,19 +159,20 @@ export default function Legal() {
         </div>
       </div>
 
-      {/* Compliance Badge */}
-      <div className="mx-4 mb-5 bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center gap-3">
+      {desktop ? <DesktopLicensing /> : (
+        <div className="mx-4 mb-5 bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center gap-3">
         <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
           <ShieldCheck className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <p className="text-sm font-semibold">Licensed & Insured</p>
-          <p className="text-xs text-muted-foreground">St. Charles County Health Dept · FLIP Insured · Wentzville, MO</p>
+          <p className="text-sm font-semibold">Licensing & Insurance</p>
+          <p className="text-xs text-muted-foreground">St. Charles County · FLIP · Details below</p>
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Sections */}
-      <div className="px-4 space-y-2">
+      <div className="nv-legal-sections px-4 space-y-2">
         {sections.map((section, i) => {
           const Icon = section.icon;
           return (
@@ -173,6 +184,10 @@ export default function Legal() {
               className="bg-card rounded-xl border border-border/50 overflow-hidden"
             >
               <button
+                type="button"
+                id={`legal-section-${i}-toggle`}
+                aria-expanded={openIndex === i}
+                aria-controls={openIndex === i ? `legal-section-${i}` : undefined}
                 onClick={() => setOpenIndex(openIndex === i ? null : i)}
                 className="w-full flex items-center justify-between p-4 text-left"
               >
@@ -188,6 +203,9 @@ export default function Legal() {
               <AnimatePresence>
                 {openIndex === i && (
                   <motion.div
+                    id={`legal-section-${i}`}
+                    role="region"
+                    aria-labelledby={`legal-section-${i}-toggle`}
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
@@ -230,7 +248,7 @@ export default function Legal() {
           <a href="mailto:support@nuvirajuice.com" className="text-primary underline">support@nuvirajuice.com</a>
         </p>
         <p className="text-[10px] text-muted-foreground">© {new Date().getFullYear()} NuVira Juice Company · Wentzville, MO</p>
-        <p className="text-[10px] text-muted-foreground">Last updated: {LAST_UPDATED}</p>
+        <p className="text-[10px] text-muted-foreground">Privacy & terms updated: {LAST_UPDATED} · Licensing & insurance updated: October 8, 2026</p>
       </div>
     </div>
   );
