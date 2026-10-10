@@ -1,24 +1,23 @@
 import assert from 'node:assert/strict';
 import * as creditReservation from '../../base44/shared/checkoutCredit.js';
 import * as birthdayCheckout from '../../base44/functions/createPaymentIntent/birthdayCheckout.js';
-import * as birthdayEntitlement from '../../base44/shared/birthdayEntitlement.js';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { transformSync, buildSync } from 'esbuild';
-import * as offers from '../../base44/functions/createPaymentIntent/firstOrderEligibility.js';
+import { buildSync } from 'esbuild';
 import * as rewards from '../../base44/functions/createPaymentIntent/rewardCheckout.js';
 import * as noPayment from '../../base44/functions/createPaymentIntent/noPaymentCheckout.js';
-import * as paidRecovery from '../../base44/functions/createPaymentIntent/paidCheckoutRecovery.js';
 import * as pointsLedger from '../../base44/functions/enrollNewCustomerInLoyalty/pointsAccount.js';
 import * as routeReview from '../../base44/shared/routeReview.js';
 import { decideRouteReview } from '../../base44/shared/routeReviewDecision.js';
 
 const source = fs.readFileSync('base44/functions/createPaymentIntent/entry.ts', 'utf8');
-const compiled = transformSync(source, { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
-const compiledLedger = transformSync(fs.readFileSync('base44/functions/enrollNewCustomerInLoyalty/entry.ts', 'utf8'),
-  { loader: 'ts', format: 'cjs', target: 'es2022' }).code;
-const compiledWebhook = buildSync({ entryPoints: ['base44/functions/stripeWebhook/entry.ts'], bundle: true,
-  write: false, platform: 'node', format: 'cjs', external: ['npm:*'] }).outputFiles[0].text;
+// Bundle local helpers into the same VM so every clock reads FixtureDate.
+// Host-imported helpers otherwise use today's date against September fixtures.
+const compileFixture = entry => buildSync({ entryPoints: [entry], bundle: true,
+  write: false, platform: 'node', format: 'cjs', target: 'es2022', external: ['npm:*'] }).outputFiles[0].text;
+const compiled = compileFixture('base44/functions/createPaymentIntent/entry.ts');
+const compiledLedger = compileFixture('base44/functions/enrollNewCustomerInLoyalty/entry.ts');
+const compiledWebhook = compileFixture('base44/functions/stripeWebhook/entry.ts');
 const email = 'buyer@example.test';
 const body = {
   items: [{ product_id: 'oasis-test', title: 'OASIS', price: 13, quantity: 3, category: 'juice', size: '12 oz' }],
@@ -137,15 +136,6 @@ function fixture({ guest = false, failOrder = false, failSession = false, failCa
     },
     require: name => {
       if (name.includes('@base44/sdk')) return { createClientFromRequest: () => db };
-      if (name.includes('firstOrderEligibility')) return offers;
-      if (name.includes('rewardCheckout')) return rewards;
-      if (name.includes('checkoutCredit')) return creditReservation;
-      if (name.includes('birthdayCheckout')) return birthdayCheckout;
-      if (name.includes('birthdayEntitlement')) return birthdayEntitlement;
-      if (name.includes('noPaymentCheckout')) return noPayment;
-      if (name.includes('paidCheckoutRecovery')) return paidRecovery;
-      if (name.includes('pointsAccount')) return pointsLedger;
-      if (name.includes('routeReview')) return routeReview;
       if (name.includes('stripe')) return class {
         webhooks = { constructEventAsync: async (raw, signature) => {
           if (signature !== 'SYNTHETIC_VALID_SIGNATURE') throw new Error('Synthetic signature rejected');
@@ -926,6 +916,8 @@ for (const credit of [0, 13, 70.2]) await test(`actual birthday root prepares ze
   assert.equal(result.checkoutKind, 'reward_no_payment'); assert.equal(ctx.intent(), undefined);
   assert.ok(Object.keys(ctx.session().metadata).length <= 50);
   assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].status, 'held');
+  assert.equal(ctx.rows.UserPoints[0].birthday_reservations[0].created_at, '2026-09-08T15:00:00.000Z',
+    'Transitive reward helpers must use the fixture clock, not the host date');
   assert.equal(ctx.rows.CheckoutSession[0].checkout_data.catalog_subtotal, 91);
   const retry = await ctx.handle(request); assert.equal(retry.status, 200, JSON.stringify(await retry.json()));
   const cancelled = await (await ctx.handle({ mode: 'cancel_reward_checkout', checkout_session_id: ctx.session().id })).json();

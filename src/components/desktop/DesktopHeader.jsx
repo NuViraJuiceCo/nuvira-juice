@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowUpRight, Bell, Menu, ShoppingBag, UserRound } from 'lucide-react';
+import { ArrowUpRight, Bell, ShoppingBag, UserRound } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { useCart } from '@/lib/cartContext';
 import { isAdminUser } from '@/lib/admin-access';
@@ -8,6 +8,7 @@ import { BRAND_IMAGES } from '@/lib/brandImages';
 import { isPublicNavigationPreloadRoute, preloadPublicNavigation } from '@/lib/startupPages';
 import { isMemberNavigationPreloadRoute, preloadMemberNavigation } from '@/lib/memberNavigationPreload';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import BrowserNavigationPanel from './BrowserNavigationPanel';
 
 const navigation = [
   { to: '/shop', label: 'Shop Juices', matches: path => path === '/shop' || path.startsWith('/product/') },
@@ -47,16 +48,9 @@ export default function DesktopHeader() {
           {navigation.map(({ to, label, matches }) => <Link key={to} to={to} {...navigationIntent(to, Boolean(user?.email))} aria-current={matches(pathname) ? 'page' : undefined}>{label}</Link>)}
         </nav>
         <div className="nv-brand-utilities">
+          <BrowserNavigationPanel navigation={navigation} user={user} navigationIntent={navigationIntent} />
           <DropdownMenu>
-            <DropdownMenuTrigger className="nv-brand-icon nv-brand-compact-menu" aria-label="Website navigation" title="Menu"><Menu size={21} aria-hidden="true" /></DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="nv-brand-account-menu">
-              {navigation.map(({ to, label }) => <DropdownMenuItem asChild key={to}><Link to={to}>{label}</Link></DropdownMenuItem>)}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild><Link to="/delivery.html">Delivery Details</Link></DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger {...navigationIntent('/account', Boolean(user?.email))} className="nv-brand-icon" aria-label={user ? 'Your account menu' : 'Account menu'} title="Account">
+            <DropdownMenuTrigger {...navigationIntent('/account', Boolean(user?.email))} className="nv-brand-icon nv-brand-desktop-account" aria-label={user ? 'Your account menu' : 'Account menu'} title="Account">
               <UserRound size={21} aria-hidden="true" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="nv-brand-account-menu">

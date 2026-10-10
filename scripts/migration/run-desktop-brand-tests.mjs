@@ -217,6 +217,9 @@ const Header = load('src/components/desktop/DesktopHeader.jsx', {
     DropdownMenuItem: menuContainer, DropdownMenuSeparator: empty,
     DropdownMenuTrigger: ({ children, ...props }) => React.createElement('button', props, children),
   },
+  './BrowserNavigationPanel': {
+    default: ({ navigation }) => React.createElement('nav', null, navigation.map(({ to, label }) => React.createElement('a', { key: to, href: to }, label))),
+  },
 }).default;
 function findHeaderElement(element, predicate) {
   if (!element || typeof element !== 'object') return null;

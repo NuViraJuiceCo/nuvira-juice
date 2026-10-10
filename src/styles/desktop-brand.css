@@ -52,9 +52,26 @@
   [data-desktop-brand="true"] .nv-brand-bag { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 5px 8px 5px 15px; border: 1px solid #ffffff40; border-radius: 999px; background: #ffffff0f; font-size: 12px; }
   [data-desktop-brand="true"] .nv-brand-bag:hover { background: #ffffff1f; }
   [data-desktop-brand="true"] .nv-brand-bag-count { display: grid; place-items: center; border-radius: 50%; background: #a7d6bd; min-width: 24px; height: 24px; font-size: 11px; color: #073c29; }
-  .nv-brand-account-menu { background: #fff; color: #163b2c; border: 1px solid #d7e1d8; min-width: 224px; border-radius: 20px; padding: 8px; box-shadow: 0 16px 48px #001c1726, inset 0 1px 0 #fff; }
+  .nv-brand-account-menu { background: #fff; color: #163b2c; border: 1px solid #d7e1d8; min-width: 224px; max-height: var(--radix-dropdown-menu-content-available-height); overflow-y: auto; border-radius: 20px; padding: 8px; box-shadow: 0 16px 48px #001c1726, inset 0 1px 0 #fff; }
   .nv-brand-account-menu [role="menuitem"] { min-height: 44px; color: #163b2c; border-radius: 12px; }
   .nv-brand-account-menu [role="menuitem"][data-highlighted] { background: #edf4e7; color: #163b2c; }
+  /* The mobile sheet is portaled outside the browser brand root. */
+  .nv-mobile-navigation-sheet { display: flex; flex-direction: column; gap: 0; width: min(420px, 100%); max-width: none; height: 100dvh; padding: 0; overflow: hidden; border: 0; background: #fff; color: #163b2c; letter-spacing: 0; }
+  .nv-mobile-navigation-heading { flex-shrink: 0; padding: calc(24px + env(safe-area-inset-top)) 76px 24px 24px; background: #eaf2ed; border-bottom: 1px solid #d7e1d8; }
+  .nv-mobile-navigation-heading p { font-size: 12px; line-height: 1.5; color: #416451; margin-bottom: 6px; }
+  .nv-mobile-navigation-heading h2 { color: #163b2c; font: 650 26px/1.2 var(--font-heading); letter-spacing: 0; }
+  .nv-mobile-navigation-sheet > button { top: calc(20px + env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); width: 44px; height: 44px; display: grid; place-items: center; opacity: 1; border-radius: 50%; background: #fff; color: #163b2c; border: 1px solid #d7e1d8; }
+  .nv-mobile-navigation-sheet > button svg { width: 22px; height: 22px; }
+  .nv-mobile-navigation-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 8px max(24px, env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); }
+  .nv-mobile-navigation-sheet a { display: flex; justify-content: space-between; align-items: center; gap: 16px; min-height: 48px; color: #163b2c; padding-block: 12px; text-decoration: none; }
+  .nv-mobile-navigation-sheet a svg { flex-shrink: 0; color: #3b7454; }
+  .nv-mobile-navigation-primary a { min-height: 60px; border-bottom: 1px solid #e3eae5; font: 600 23px/1.3 var(--font-heading); }
+  .nv-mobile-navigation-sheet a:is(:hover,[aria-current="page"]) { color: #197047; }
+  .nv-mobile-navigation-sheet a[aria-current="page"] span { text-decoration: underline; text-underline-offset: 6px; }
+  .nv-mobile-navigation-sheet :is(a,button):focus-visible { outline: 2px solid #28794b; outline-offset: 2px; }
+  .nv-mobile-navigation-secondary { margin-top: 24px; }
+  .nv-mobile-navigation-secondary p { margin-bottom: 4px; font-size: 12px; font-weight: 600; color: #54705e; }
+  .nv-mobile-navigation-secondary a { font-size: 15px; line-height: 1.5; font-weight: 500; }
   [data-desktop-brand="true"] .nv-brand-hero { position: relative; isolation: isolate; height: calc(100svh - 156px); max-height: 780px; min-height: 540px; overflow: hidden; background: #082d20; color: #fff; }
   [data-desktop-brand="true"] .nv-brand-hero-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 52%; z-index: -2; }
   [data-desktop-brand="true"] .nv-brand-hero-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(4,18,12,.82), rgba(4,18,12,.66) 30%, rgba(4,18,12,.08) 60%, transparent 76%); z-index: -1; }
@@ -564,6 +581,7 @@
     --background: 0 0% 100%; --foreground: 158 32% 14%; --card: 0 0% 100%; --card-foreground: 158 32% 14%; --primary: 151 64% 25%; --primary-foreground: 0 0% 100%; --secondary: 135 13% 95%; --muted: 135 13% 95%; --muted-foreground: 150 8% 38%; --border: 140 10% 84%; --input: 140 10% 82%;
     color: #163b2c; background: #fff; border: 1px solid #d5e1d6; border-radius: 24px; box-shadow: 0 24px 80px #082d2033, inset 0 1px 0 #fff; letter-spacing: 0;
   }
+  body:has([data-desktop-brand="true"]) [role="dialog"].nv-mobile-navigation-sheet { border: 0; border-radius: 0; }
   body:has([data-desktop-brand="true"]) [role="dialog"][aria-label="Measurement preferences"] { max-width: 520px; left: auto; right: 24px; bottom: 24px; }
   body:has([data-desktop-brand="true"]) [role="dialog"][aria-label="Measurement preferences"] > div:first-child { padding: 24px; }
   body:has([data-desktop-brand="true"]) [role="dialog"][aria-label="Measurement preferences"] > div:last-child { padding: 16px 24px 24px; }
@@ -759,6 +777,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .nv-mobile-navigation-sheet { animation: none !important; transition: none !important; }
   [data-desktop-brand="true"] .nv-brand-program-photo img { transition: none; }
   [data-desktop-brand="true"] .nv-brand-button { transition: none; }
 }
@@ -893,6 +912,8 @@ body:has([data-desktop-brand="true"]) > [data-purchase-placement="mobile-dock"] 
   [data-desktop-brand="true"] .nv-brand-navigation nav { display: none; }
   [data-desktop-brand="true"] .nv-brand-utilities { gap: 2px; }
   [data-desktop-brand="true"] .nv-brand-utilities .nv-brand-compact-menu { display: grid; }
+  [data-desktop-brand="true"] .nv-brand-utilities .nv-brand-desktop-account { display: none; }
+  [data-desktop-brand="true"] .nv-brand-compact-menu { order: 1; }
   [data-desktop-brand="true"] .nv-brand-bag { padding-left: 10px; gap: 5px; }
   [data-desktop-brand="true"] .nv-brand-bag > span:not(.nv-brand-bag-count) { display: none; }
   [data-desktop-brand="true"] .nv-brand-utilities > a[aria-label="View notifications"] { display: none; }
