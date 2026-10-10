@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { inflateSync } from 'node:zlib';
 
 const read = file => fs.readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
 const app = read('android/app/build.gradle');
@@ -84,11 +85,35 @@ check('launcher artwork is padded without regenerating the approved icon', () =>
   assert.match(foreground, /android:insetLeft="16\.67%"/);
   assert.match(foreground, /@mipmap\/ic_launcher_foreground/);
 });
-check('React startup logo is bundled and byte-identical to native artwork', () => {
+check('React startup logo preserves the native artwork pixels and metadata', () => {
   assert.match(read('src/components/SplashScreen.jsx'), /const LOGO_URL = "\/images\/brand\/nuvira-wordmark\.png"/);
+  // PNG compression may differ; the decoded image and every other chunk must not.
+  const artwork = file => {
+    const png = fs.readFileSync(new URL(`../../${file}`, import.meta.url));
+    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    const metadata = [];
+    const image = [];
+    let ended = false;
+    for (let offset = 8; offset < png.length;) {
+      assert.ok(offset + 12 <= png.length, 'Complete PNG chunk header and checksum');
+      const length = png.readUInt32BE(offset);
+      const end = offset + length + 12;
+      assert.ok(end <= png.length, 'Complete PNG chunk data');
+      const type = png.toString('ascii', offset + 4, offset + 8);
+      if (type === 'IDAT') image.push(png.subarray(offset + 8, end - 4));
+      else metadata.push(png.subarray(offset, end));
+      if (type === 'IEND') {
+        assert.equal(end, png.length, 'No data after PNG end');
+        ended = true;
+      }
+      offset = end;
+    }
+    assert.ok(ended && image.length, 'PNG contains image data and an end marker');
+    return { metadata, pixels: inflateSync(Buffer.concat(image)) };
+  };
   assert.deepEqual(
-    fs.readFileSync(new URL('../../public/images/brand/nuvira-wordmark.png', import.meta.url)),
-    fs.readFileSync(new URL('../../android/app/src/main/res/drawable-nodpi/nuvira_wordmark.png', import.meta.url)),
+    artwork('public/images/brand/nuvira-wordmark.png'),
+    artwork('android/app/src/main/res/drawable-nodpi/nuvira_wordmark.png'),
   );
 });
 check('live updates remain on the shared Production channel', () => {
