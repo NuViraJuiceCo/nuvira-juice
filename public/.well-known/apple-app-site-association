@@ -8,6 +8,12 @@
           "/native-login",
           "/native-login/*"
         ]
+      },
+      {
+        "appID": "JPFWU38MTS.com.nuvirajuice.nativepreview",
+        "paths": [
+          "/reset-password"
+        ]
       }
     ]
   },
